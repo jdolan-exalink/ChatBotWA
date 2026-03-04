@@ -1054,16 +1054,16 @@ async def qr():
     return Response(content=b, media_type="image/png")
 
 @app.post('/bot/pause')
-async def bot_pause(current_admin: dict = Depends(get_current_admin), db: Session = Depends(get_db)):
-    """Pausar el bot (solo admin)"""
+async def bot_pause(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Pausar el bot (requiere autenticación)"""
     global _bot_paused
     _bot_paused = True
     cfg = get_bot_config(db)
     return {'ok': True, 'paused': _bot_paused}
 
 @app.post('/bot/resume')
-async def bot_resume(current_admin: dict = Depends(get_current_admin), db: Session = Depends(get_db)):
-    """Reanudar el bot (solo admin)"""
+async def bot_resume(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Reanudar el bot (requiere autenticación)"""
     global _bot_paused
     _bot_paused = False
     cfg = get_bot_config(db)

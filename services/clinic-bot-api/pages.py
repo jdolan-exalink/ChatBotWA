@@ -552,6 +552,11 @@ def get_user_panel_page() -> str:
             </div>
             
             <div class="card">
+                <h2>Control del Bot</h2>
+                <button class="toggle-btn" id="toggleBtn" onclick="toggleBot()">▶️ Activar Bot</button>
+            </div>
+            
+            <div class="card">
                 <h2>WhatsApp</h2>
                 <button class="btn-connect" id="waBtn" onclick="toggleWhatsApp()">🔴 Conectar WhatsApp</button>
             </div>
@@ -611,6 +616,18 @@ def get_user_panel_page() -> str:
                     // Solución
                     document.getElementById('solutionName').textContent = status.solution_name || '—';
                     
+                    // Botón toggle del bot
+                    const toggleBtn = document.getElementById('toggleBtn');
+                    if (isPaused) {
+                        toggleBtn.textContent = '▶️ Activar Bot';
+                        toggleBtn.classList.remove('active');
+                        toggleBtn.classList.add('paused');
+                    } else {
+                        toggleBtn.textContent = '⏸️ Pausar Bot';
+                        toggleBtn.classList.add('active');
+                        toggleBtn.classList.remove('paused');
+                    }
+                    
                     // Botón WhatsApp
                     const waBtn = document.getElementById('waBtn');
                     if (connected) {
@@ -620,6 +637,32 @@ def get_user_panel_page() -> str:
                     }
                 } catch (error) {
                     console.error('Error al cargar estado:', error);
+                }
+            }
+            
+            async function toggleBot() {
+                try {
+                    const token = localStorage.getItem('token');
+                    const res = await fetch('/status', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const status = await res.json();
+                    const isPaused = status.paused;
+                    
+                    const endpoint = isPaused ? '/bot/resume' : '/bot/pause';
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    if (response.ok) {
+                        loadStatus();
+                    } else {
+                        alert('Error al cambiar estado del bot');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error al cambiar estado del bot');
                 }
             }
             
