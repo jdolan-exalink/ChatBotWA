@@ -1,0 +1,42 @@
+services:
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: clinic-waha
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    environment:
+      - WHATSAPP_HOOK_URL=http://wa-bot:8088/webhook
+      - WHATSAPP_HOOK_EVENTS=message
+      - WAHA_API_KEY=${WAHA_API_KEY}
+    volumes:
+      - ./data/waha:/app/.sessions
+
+  wa-bot:
+    build: ./services/clinic-bot-api
+    container_name: wa-bot
+    restart: unless-stopped
+    depends_on:
+      - waha
+    ports:
+      - "8088:8088"
+    environment:
+      - PORT=8088
+      - WAHA_URL=http://waha:3000
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      - WAHA_SESSION=${WAHA_SESSION:-default}
+      - OLLAMA_URL=${OLLAMA_URL:-http://10.1.1.39:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-lfm2:latest}
+      - N8N_EVENT_WEBHOOK=${N8N_EVENT_WEBHOOK}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REFRESH_TOKEN=${GOOGLE_REFRESH_TOKEN}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/chatbot.sql}
+      - CLINIC_KB_PATH=/app/data/MenuP.MD
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - SOLUTION_NAME=${SOLUTION_NAME:-Clínica}
+    volumes:
+      - ./data:/app/data
