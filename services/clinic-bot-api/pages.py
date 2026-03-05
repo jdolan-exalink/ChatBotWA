@@ -606,8 +606,17 @@ def get_user_panel_page() -> str:
                     
                     // Estado Bot
                     const isPaused = status.paused;
-                    document.getElementById('botIcon').textContent = isPaused ? '⏸️' : '▶️';
-                    document.getElementById('botStatus').textContent = isPaused ? 'Pausado' : 'Activo';
+                    const connected = status.connected;
+                    if (!connected) {
+                        document.getElementById('botIcon').textContent = '🔴';
+                        document.getElementById('botStatus').textContent = 'Desconectado';
+                    } else if (isPaused) {
+                        document.getElementById('botIcon').textContent = '⏸️';
+                        document.getElementById('botStatus').textContent = 'Pausado';
+                    } else {
+                        document.getElementById('botIcon').textContent = '▶️';
+                        document.getElementById('botStatus').textContent = 'Activo';
+                    }
                     
                     // Horarios
                     document.getElementById('hoursIcon').textContent = status.off_hours ? '🕐' : '✅';
@@ -694,31 +703,39 @@ def get_user_panel_page() -> str:
                             return;
                         }
                         
-                        // Esperar a que WAHA genere el QR
-                        await new Promise(r => setTimeout(r, 5000));
+                        // Mostrar modal de carga
+                        document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="50" text-anchor="middle" font-size="14" fill="%2300d4ff" dy=".3em">Cargando QR...</text></svg>';
+                        document.getElementById('qrModal').classList.add('show');
+                        
+                        // Esperar a que WAHA genere el QR (8 segundos)
+                        await new Promise(r => setTimeout(r, 8000));
                         
                         // Intentar cargar el QR con reintentos
                         let qrLoaded = false;
-                        for (let i = 0; i < 10; i++) {
+                        for (let i = 0; i < 15; i++) {
                             try {
                                 const qrRes = await fetch('/qr?ts=' + Date.now());
                                 if (qrRes.ok) {
                                     const blob = await qrRes.blob();
                                     const url = URL.createObjectURL(blob);
                                     document.getElementById('qrImage').src = url;
-                                    document.getElementById('qrModal').classList.add('show');
                                     qrLoaded = true;
+                                    console.log('QR cargado en intento ' + (i+1));
                                     return;
+                                } else {
+                                    console.log('Intento ' + (i+1) + ' - Status: ' + qrRes.status);
                                 }
                             } catch (e) {
                                 console.error('Intento ' + (i+1) + ' - Error loading QR:', e);
                             }
-                            if (i < 9) await new Promise(r => setTimeout(r, 1500));
+                            if (i < 14) await new Promise(r => setTimeout(r, 2000));
                         }
                         
-                        // Si el QR no está disponible, simplemente actualizar estado
+                        // Si el QR no está disponible después de todos los intentos
                         if (!qrLoaded) {
-                            loadStatus();
+                            document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="40" text-anchor="middle" font-size="12" fill="%23ff6b6b" dy=".3em">QR no disponible</text><text x="50" y="60" text-anchor="middle" font-size="10" fill="%23888" dy=".3em">Intenta de nuevo</text></svg>';
+                            console.log('QR no disponible después de 15 intentos');
+                        }
                         }
                     } else {
                         // Intenta reconectar
@@ -1506,29 +1523,37 @@ def get_dashboard_page() -> str:
                             return;
                         }
                         
-                        await new Promise(r => setTimeout(r, 5000));
+                        // Mostrar modal de carga
+                        document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="50" text-anchor="middle" font-size="14" fill="%2300d4ff" dy=".3em">Cargando QR...</text></svg>';
+                        document.getElementById('qrModal').style.display = 'flex';
+                        
+                        // Esperar a que WAHA genere el QR (8 segundos)
+                        await new Promise(r => setTimeout(r, 8000));
                         
                         let qrLoaded = false;
-                        for (let i = 0; i < 10; i++) {
+                        for (let i = 0; i < 15; i++) {
                             try {
                                 const qrRes = await fetch('/qr?ts=' + Date.now());
                                 if (qrRes.ok) {
                                     const blob = await qrRes.blob();
                                     const url = URL.createObjectURL(blob);
                                     document.getElementById('qrImage').src = url;
-                                    document.getElementById('qrModal').style.display = 'flex';
                                     qrLoaded = true;
+                                    console.log('QR cargado en intento ' + (i+1));
                                     return;
+                                } else {
+                                    console.log('Intento ' + (i+1) + ' - Status: ' + qrRes.status);
                                 }
                             } catch (e) {
                                 console.error('Intento ' + (i+1) + ' - Error loading QR:', e);
                             }
-                            if (i < 9) await new Promise(r => setTimeout(r, 1500));
+                            if (i < 14) await new Promise(r => setTimeout(r, 2000));
                         }
                         
-                        // Si el QR no está disponible, simplemente actualizar estado
+                        // Si el QR no está disponible después de todos los intentos
                         if (!qrLoaded) {
-                            refresh();
+                            document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="40" text-anchor="middle" font-size="12" fill="%23ff6b6b" dy=".3em">QR no disponible</text><text x="50" y="60" text-anchor="middle" font-size="10" fill="%23888" dy=".3em">Intenta de nuevo</text></svg>';
+                            console.log('QR no disponible después de 15 intentos');
                         }
                     } else {
                         try {
