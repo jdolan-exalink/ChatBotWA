@@ -19,7 +19,7 @@ from models import Base, User, BotConfig, CountryFilter, Holiday, HolidayMenu, W
 from schemas import (
     UserLogin, UserCreate, UserResponse, TokenResponse, BotConfigUpdate,
     BotConfigResponse, HolidayCreate, HolidayResponse, HolidayMenuCreate,
-    HolidayMenuResponse, PasswordChangeRequest, PasswordResetRequest
+    HolidayMenuResponse, PasswordChangeRequest, PasswordResetRequest, UserUpdate
 )
 from security import (
     hash_password, verify_password, create_access_token, get_current_user,
@@ -64,7 +64,7 @@ CHAT_IDLE_RESET_SEC = int(os.getenv("CHAT_IDLE_RESET_SEC", "180"))
 # ======================== FASTAPI APP =========================
 app = FastAPI(
     title="WA-BOT",
-    version="1.0.1",
+    version="1.0.3",
     description="Sistema integral de chatbot WhatsApp con gestión de usuarios y administración"
 )
 
@@ -295,28 +295,37 @@ def get_bot_config(db: Session) -> BotConfig:
 def is_off_hours(db: Session) -> bool:
     """Verificar si estamos fuera de horarios o es fin de semana/feriado"""
     cfg = get_bot_config(db)
-    if not cfg.off_hours_enabled:
-        return False
-    
     now = datetime.now()
     current_time = now.strftime("%H:%M")
+    day_of_week = now.weekday()  # 0=lunes, 4=viernes, 5=sábado, 6=domingo
     
-    # Verificar si es fuera de horarios
-    if cfg.opening_time and cfg.closing_time:
-        if current_time < cfg.opening_time or current_time > cfg.closing_time:
-            return True
-    
-    # Verificar si es fin de semana (5=sábado, 6=domingo)
-    if now.weekday() >= 5:
-        return True
-    
-    # Verificar si es feriado
+    # Verificar si es FERIADO (siempre es fuera de horarios)
     holiday = db.query(Holiday).filter(
         Holiday.date == now.strftime("%Y-%m-%d")
     ).first()
     if holiday:
+        print(f"[OFF_HOURS] Es un feriado registrado")
         return True
     
+    # Verificar según el día de la semana
+    if day_of_week >= 5:  # Sábado (5) o Domingo (6)
+        # Es fin de semana - usar horarios de sábado
+        sat_opening = cfg.sat_opening_time or "10:00"
+        sat_closing = cfg.sat_closing_time or "14:00"
+        
+        if current_time < sat_opening or current_time > sat_closing:
+            print(f"[OFF_HOURS] Es fin de semana y está fuera de horarios: {current_time} no está entre {sat_opening} y {sat_closing}")
+            return True
+    else:
+        # Es entre lunes y viernes - usar horarios de semana
+        opening = cfg.opening_time or "09:00"
+        closing = cfg.closing_time or "18:00"
+        
+        if current_time < opening or current_time > closing:
+            print(f"[OFF_HOURS] Está fuera de horarios: {current_time} no está entre {opening} y {closing}")
+            return True
+    
+    print(f"[OFF_HOURS] Dentro de horarios")
     return False
 
 async def ollama_reply(user_text: str, db: Session) -> str:
@@ -630,7 +639,7 @@ async def create_user(
 @app.put("/api/admin/users/{user_id}")
 async def update_user(
     user_id: int,
-    user_data: UserCreate,
+    user_data: UserUpdate,
     current_admin: dict = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
@@ -639,11 +648,14 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    user.email = user_data.email
-    user.full_name = user_data.full_name
-    user.is_admin = user_data.is_admin
+    if user_data.email:
+        user.email = user_data.email
+    if user_data.full_name:
+        user.full_name = user_data.full_name
     if user_data.password:
         user.hashed_password = hash_password(user_data.password)
+    if user_data.is_active is not None:
+        user.is_active = user_data.is_active
     
     db.commit()
     return UserResponse.from_orm(user)
@@ -1228,14 +1240,14 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
             pass
 
     if _bot_paused:
-        print(f"[WEBHOOK] Bot pausado")
+        print(f"[WEBHOOK] Bot pausado globalmente")
         return {"ok": True, "paused": True}
 
     msg = data.get("payload") or data.get("message") or data
     chat_id = msg.get("from") or msg.get("chatId") or msg.get("chat_id")
     text = msg.get("body") or msg.get("text") or (msg.get("message") if isinstance(msg.get("message"), str) else None)
 
-    print(f"[WEBHOOK] chat_id={chat_id}, text={text}, paused={_bot_paused}")
+    print(f"[WEBHOOK] chat_id={chat_id}, text={text}")
     
     if not chat_id or not text:
         print(f"[WEBHOOK] Ignorado - sin chat_id o text")
@@ -1250,24 +1262,25 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     # Verificar filtros antispam
     block = db.query(WhatsAppBlockList).filter(WhatsAppBlockList.phone_number == chat_id).first()
     if block:
+        print(f"[WEBHOOK] Número bloqueado: {chat_id}")
         return {"ok": True, "blocked": True, "reason": "Número bloqueado"}
     
     # Verificar filtro por país
+    # Si está HABILITADO: SOLO responder a números con los códigos de país permitidos
     if cfg.country_filter_enabled and cfg.country_codes:
         allowed_codes = [c.strip() for c in cfg.country_codes.split(",")]
-        # Extraer código de país del número (primeros caracteres después del +)
         has_allowed_code = any(chat_id.startswith(code) for code in allowed_codes)
         if not has_allowed_code:
-            # Número no coincide con los códigos permitidos
+            print(f"[WEBHOOK] País no permitido para {chat_id}. Códigos permitidos: {allowed_codes}")
             return {"ok": True, "filtered": True, "reason": "País no permitido"}
     
     # Verificar filtro por localidad/área
+    # Si está HABILITADO: SOLO responder a números con los patrones de área permitidos
     if cfg.area_filter_enabled and cfg.area_codes:
         allowed_areas = [a.strip() for a in cfg.area_codes.split(",")]
-        # Buscar si algún patrón de área está en el número
         has_allowed_area = any(area in chat_id for area in allowed_areas)
         if not has_allowed_area:
-            # Número no coincide con las áreas permitidas
+            print(f"[WEBHOOK] Área no permitida para {chat_id}. Áreas permitidas: {allowed_areas}")
             return {"ok": True, "filtered": True, "reason": "Área no permitida"}
 
     now_ts = int(time.time())
@@ -1280,8 +1293,9 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     # Verificar si es fuera de horarios
     off_hours = is_off_hours(db)
     print(f"[WEBHOOK] off_hours={off_hours}")
+    
     if off_hours:
-        # Usar menú de fuera de horarios
+        # Usar menú de fuera de horarios (SIEMPRE, no el menú principal)
         # Primero intentar leer MenuF.MD (archivo de fuera de horarios)
         try:
             import os
@@ -1295,15 +1309,15 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
                 if menu:
                     answer = menu.content
                 else:
-                    answer = cfg.off_hours_message or f"Atendemos de {cfg.opening_time} a {cfg.closing_time}"
+                    answer = cfg.off_hours_message or f"🕐 Estamos fuera de horario. Atendemos de {cfg.opening_time} a {cfg.closing_time}"
         except Exception as e:
             print(f"[WEBHOOK] Error leyendo MenuF.MD: {e}")
             menu = db.query(HolidayMenu).filter(HolidayMenu.is_active == True).first()
             if menu:
                 answer = menu.content
             else:
-                answer = cfg.off_hours_message or f"Atendemos de {cfg.opening_time} a {cfg.closing_time}"
-        print(f"[WEBHOOK] Usando respuesta off_hours: {answer[:50]}")
+                answer = cfg.off_hours_message or f"🕐 Estamos fuera de horario. Atendemos de {cfg.opening_time} a {cfg.closing_time}"
+        print(f"[WEBHOOK] Usando respuesta off_hours")
     else:
         # En la PRIMERA VEZ siempre mostrar menú principal
         if state.get("first_time", True):

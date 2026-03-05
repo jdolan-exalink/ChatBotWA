@@ -1288,6 +1288,7 @@ def get_dashboard_page() -> str:
                 <div class="card">
                     <h2>👥 Gestión de Usuarios</h2>
                     <div class="message" id="usersMessage"></div>
+                    <button class="btn btn-primary" onclick="openCreateUserModal()" style="margin-bottom: 20px;">➕ Crear Nuevo Usuario</button>
                     <div style="overflow-x: auto;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
                             <thead>
@@ -1295,13 +1296,82 @@ def get_dashboard_page() -> str:
                                     <th style="padding: 12px; text-align: left; color: #cbd5e1;">Usuario</th>
                                     <th style="padding: 12px; text-align: left; color: #cbd5e1;">Email</th>
                                     <th style="padding: 12px; text-align: left; color: #cbd5e1;">Rol</th>
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Estado</th>
+                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Activo</th>
+                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Pausa</th>
+                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="usersTable">
-                                <tr><td colspan="4" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
+                                <tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MODAL CREAR USUARIO -->
+            <div class="modal" id="createUserModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 1000;">
+                <div style="background: rgba(18, 24, 40, 0.95); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 20px; padding: 40px; max-width: 500px; width: 90%;">
+                    <h2 style="color: #f1f5f9; margin-bottom: 24px;">Crear Nuevo Usuario</h2>
+                    <form onsubmit="createNewUser(event)">
+                        <div class="form-group">
+                            <label>Usuario</label>
+                            <input type="text" id="newUsername" required placeholder="nombre_usuario">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="newEmail" placeholder="usuario@example.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Contraseña</label>
+                            <input type="password" id="newPassword" required placeholder="Contraseña segura">
+                        </div>
+                        <div class="form-group">
+                            <label>Nombre Completo</label>
+                            <input type="text" id="newFullName" placeholder="Nombre Completo">
+                        </div>
+                        <label style="display: flex; align-items: center; cursor: pointer; margin-bottom: 20px;">
+                            <input type="checkbox" id="newIsAdmin" style="width: auto; margin-right: 8px;">
+                            <span style="color: #cbd5e1;">Es administrador</span>
+                        </label>
+                        <div style="display: flex; gap: 12px;">
+                            <button type="submit" class="btn btn-primary" style="flex: 1;">✅ Crear Usuario</button>
+                            <button type="button" class="btn btn-secondary" onclick="closeCreateUserModal()" style="flex: 1;">❌ Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- MODAL CAMBIAR CONTRASEÑA -->
+            <div class="modal" id="changePasswordModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 1000;">
+                <div style="background: rgba(18, 24, 40, 0.95); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 20px; padding: 40px; max-width: 500px; width: 90%;">
+                    <h2 style="color: #f1f5f9; margin-bottom: 24px;" id="changePasswordTitle">Cambiar Contraseña</h2>
+                    <form onsubmit="saveNewPassword(event)" id="changePasswordForm">
+                        <input type="hidden" id="changePasswordUserId">
+                        <div class="form-group">
+                            <label>Nueva Contraseña</label>
+                            <input type="password" id="newPasswordValue" required placeholder="Nueva contraseña" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label>Confirmar Contraseña</label>
+                            <input type="password" id="confirmPasswordValue" required placeholder="Confirmar contraseña" autocomplete="new-password">
+                        </div>
+                        <div style="display: flex; gap: 12px;">
+                            <button type="submit" class="btn btn-primary" style="flex: 1;">✅ Cambiar Contraseña</button>
+                            <button type="button" class="btn btn-secondary" onclick="closeChangePasswordModal()" style="flex: 1;">❌ Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- MODAL CONFIRMAR ELIMINACIÓN -->
+            <div class="modal" id="deleteUserModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 1000;">
+                <div style="background: rgba(18, 24, 40, 0.95); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 20px; padding: 40px; max-width: 500px; width: 90%; text-align: center;">
+                    <h2 style="color: #f1f5f9; margin-bottom: 16px;">⚠️ Eliminar Usuario</h2>
+                    <p style="color: #cbd5e1; margin-bottom: 24px;">¿Estás seguro de que deseas eliminar a <strong id="deleteUsernamePlaceholder"></strong>? Esta acción no se puede deshacer.</p>
+                    <div style="display: flex; gap: 12px;">
+                        <button onclick="confirmDeleteUser()" class="btn btn-primary" style="flex: 1; background: rgba(239, 68, 68, 0.1); border-color: rgba(244, 63, 94, 0.5); color: #fca5a5;">🗑️ Eliminar</button>
+                        <button onclick="closeDeleteUserModal()" class="btn btn-secondary" style="flex: 1;">❌ Cancelar</button>
                     </div>
                 </div>
             </div>
@@ -1734,13 +1804,31 @@ def get_dashboard_page() -> str:
                     tbody.innerHTML = users.map(u => `
                         <tr style="border-bottom: 1px solid rgba(226, 232, 240, 0.05);">
                             <td style="padding: 12px; color: #cbd5e1;">${u.username}</td>
-                            <td style="padding: 12px; color: #cbd5e1;">${u.email}</td>
+                            <td style="padding: 12px; color: #cbd5e1;">${u.email || '-'}</td>
                             <td style="padding: 12px; color: #cbd5e1;">${u.is_admin ? '👑 Admin' : '👤 Usuario'}</td>
-                            <td style="padding: 12px; color: #cbd5e1;">${u.is_active ? '✅ Activo' : '❌ Inactivo'}</td>
+                            <td style="padding: 12px; color: #cbd5e1;">
+                                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.85em;" onclick="toggleUserActive(${u.id}, ${u.is_active})">
+                                    ${u.is_active ? '✅ Activo' : '❌ Inactivo'}
+                                </button>
+                            </td>
+                            <td style="padding: 12px; color: #cbd5e1;">
+                                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.85em;" onclick="toggleUserPause(${u.id}, ${u.is_paused})">
+                                    ${u.is_paused ? '⏸️ En Pausa' : '▶️ Activo'}
+                                </button>
+                            </td>
+                            <td style="padding: 12px;">
+                                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                    <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.85em;" onclick="openChangePasswordModal(${u.id}, '${u.username}')">🔑</button>
+                                    <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.85em;" onclick="openDeleteUserModal(${u.id}, '${u.username}')">🗑️</button>
+                                </div>
+                            </td>
                         </tr>
                     `).join('');
                 } catch (error) {
                     console.error('Error loading users:', error);
+                    const msg = document.getElementById('usersMessage');
+                    msg.textContent = '❌ Error al cargar usuarios';
+                    msg.className = 'message show error';
                 }
             }
             
@@ -2082,6 +2170,221 @@ def get_dashboard_page() -> str:
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 window.location.href = '/login';
+            }
+            
+            // ========== FUNCIONES DE USUARIOS ==========
+            
+            function openCreateUserModal() {
+                document.getElementById('createUserModal').style.display = 'flex';
+                document.getElementById('newUsername').focus();
+            }
+            
+            function closeCreateUserModal() {
+                document.getElementById('createUserModal').style.display = 'none';
+                document.getElementById('newUsername').value = '';
+                document.getElementById('newEmail').value = '';
+                document.getElementById('newPassword').value = '';
+                document.getElementById('newFullName').value = '';
+                document.getElementById('newIsAdmin').checked = false;
+            }
+            
+            async function createNewUser(e) {
+                e.preventDefault();
+                
+                const username = document.getElementById('newUsername').value.trim();
+                const email = document.getElementById('newEmail').value.trim();
+                const password = document.getElementById('newPassword').value;
+                const fullName = document.getElementById('newFullName').value.trim();
+                const isAdmin = document.getElementById('newIsAdmin').checked;
+                
+                if (!username || !password) {
+                    alert('Usuario y contraseña son requeridos');
+                    return;
+                }
+                
+                try {
+                    const res = await fetch(`${API_URL}/admin/users`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            username,
+                            email: email || null,
+                            password,
+                            full_name: fullName || null,
+                            is_admin: isAdmin
+                        })
+                    });
+                    
+                    const msg = document.getElementById('usersMessage');
+                    if (res.ok) {
+                        msg.textContent = '✅ Usuario creado correctamente';
+                        msg.className = 'message show success';
+                        closeCreateUserModal();
+                        loadUsers();
+                    } else {
+                        const error = await res.json();
+                        msg.textContent = '❌ ' + (error.detail || 'Error al crear usuario');
+                        msg.className = 'message show error';
+                    }
+                    setTimeout(() => msg.classList.remove('show'), 3000);
+                } catch (error) {
+                    console.error('Error:', error);
+                    const msg = document.getElementById('usersMessage');
+                    msg.textContent = '❌ Error de conexión';
+                    msg.className = 'message show error';
+                }
+            }
+            
+            function openChangePasswordModal(userId, username) {
+                document.getElementById('changePasswordModal').style.display = 'flex';
+                document.getElementById('changePasswordTitle').textContent = `Cambiar Contraseña - ${username}`;
+                document.getElementById('changePasswordUserId').value = userId;
+                document.getElementById('newPasswordValue').value = '';
+                document.getElementById('confirmPasswordValue').value = '';
+                document.getElementById('newPasswordValue').focus();
+            }
+            
+            function closeChangePasswordModal() {
+                document.getElementById('changePasswordModal').style.display = 'none';
+            }
+            
+            async function saveNewPassword(e) {
+                e.preventDefault();
+                
+                const userId = parseInt(document.getElementById('changePasswordUserId').value);
+                const newPassword = document.getElementById('newPasswordValue').value;
+                const confirmPassword = document.getElementById('confirmPasswordValue').value;
+                
+                if (!newPassword || newPassword.length < 4) {
+                    alert('La contraseña debe tener al menos 4 caracteres');
+                    return;
+                }
+                
+                if (newPassword !== confirmPassword) {
+                    alert('Las contraseñas no coinciden');
+                    return;
+                }
+                
+                try {
+                    const res = await fetch(`${API_URL}/admin/users/${userId}/reset-password`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            new_password: newPassword
+                        })
+                    });
+                    
+                    const msg = document.getElementById('usersMessage');
+                    if (res.ok) {
+                        msg.textContent = '✅ Contraseña actualizada correctamente';
+                        msg.className = 'message show success';
+                        closeChangePasswordModal();
+                        loadUsers();
+                    } else {
+                        const error = await res.json();
+                        msg.textContent = '❌ ' + (error.detail || 'Error al cambiar contraseña');
+                        msg.className = 'message show error';
+                    }
+                    setTimeout(() => msg.classList.remove('show'), 3000);
+                } catch (error) {
+                    console.error('Error:', error);
+                    const msg = document.getElementById('usersMessage');
+                    msg.textContent = '❌ Error de conexión';
+                    msg.className = 'message show error';
+                }
+            }
+            
+            function openDeleteUserModal(userId, username) {
+                document.getElementById('deleteUserModal').style.display = 'flex';
+                document.getElementById('deleteUsernamePlaceholder').textContent = username;
+                document.getElementById('deleteUserModal').dataset.userId = userId;
+            }
+            
+            function closeDeleteUserModal() {
+                document.getElementById('deleteUserModal').style.display = 'none';
+            }
+            
+            async function confirmDeleteUser() {
+                const userId = parseInt(document.getElementById('deleteUserModal').dataset.userId);
+                
+                try {
+                    const res = await fetch(`${API_URL}/admin/users/${userId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const msg = document.getElementById('usersMessage');
+                    if (res.ok) {
+                        msg.textContent = '✅ Usuario eliminado correctamente';
+                        msg.className = 'message show success';
+                        closeDeleteUserModal();
+                        loadUsers();
+                    } else {
+                        const error = await res.json();
+                        msg.textContent = '❌ ' + (error.detail || 'Error al eliminar usuario');
+                        msg.className = 'message show error';
+                    }
+                    setTimeout(() => msg.classList.remove('show'), 3000);
+                } catch (error) {
+                    console.error('Error:', error);
+                    const msg = document.getElementById('usersMessage');
+                    msg.textContent = '❌ Error de conexión';
+                    msg.className = 'message show error';
+                }
+            }
+            
+            async function toggleUserActive(userId, isActive) {
+                try {
+                    const res = await fetch(`${API_URL}/admin/users/${userId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            is_active: !isActive
+                        })
+                    });
+                    
+                    if (res.ok) {
+                        loadUsers();
+                    } else {
+                        alert('Error al cambiar estado del usuario');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error de conexión');
+                }
+            }
+            
+            async function toggleUserPause(userId, isPaused) {
+                try {
+                    const res = await fetch(`${API_URL}/admin/users/${userId}/toggle-pause`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (res.ok) {
+                        loadUsers();
+                    } else {
+                        alert('Error al cambiar pausa del usuario');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error de conexión');
+                }
             }
             
             refresh();
