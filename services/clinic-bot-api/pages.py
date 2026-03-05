@@ -674,7 +674,6 @@ def get_user_panel_page() -> str:
                     
                     // Estado Bot
                     const isPaused = status.paused;
-                    const connected = status.connected;
                     if (!connected) {
                         document.getElementById('botIcon').textContent = '🔴';
                         document.getElementById('botStatus').textContent = 'Desconectado';
@@ -832,6 +831,10 @@ def get_user_panel_page() -> str:
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 window.location.href = '/login';
+            }
+            
+            function closeQrModal() {
+                document.getElementById('qrModal').classList.remove('show');
             }
             
             loadStatus();
