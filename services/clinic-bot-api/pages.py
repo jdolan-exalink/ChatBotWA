@@ -517,6 +517,24 @@ def get_user_panel_page() -> str:
                 cursor: pointer;
                 margin-top: 20px;
             }
+            
+            .panel-footer {
+                text-align: center;
+                padding: 32px 20px;
+                margin-top: 40px;
+                border-top: 1px solid rgba(226, 232, 240, 0.1);
+            }
+            
+            .panel-footer .company {
+                color: #cbd5e1;
+                font-weight: 600;
+                margin-bottom: 4px;
+            }
+            
+            .panel-footer .version {
+                color: #64748b;
+                font-size: 0.85em;
+            }
         </style>
     </head>
     <body>
@@ -559,6 +577,11 @@ def get_user_panel_page() -> str:
             <div class="card">
                 <h2>WhatsApp</h2>
                 <button class="btn-connect" id="waBtn" onclick="toggleWhatsApp()">🔴 Conectar WhatsApp</button>
+            </div>
+            
+            <div class="panel-footer">
+                <div class="company">DOLAN SS - 2026</div>
+                <div class="version">v1.0.1</div>
             </div>
         </div>
         
@@ -846,8 +869,10 @@ def get_dashboard_page() -> str:
                 background: rgba(15, 23, 42, 0.95);
                 backdrop-filter: blur(10px);
                 border-right: 1px solid rgba(226, 232, 240, 0.1);
-                padding: 24px 0;
+                padding: 24px 0 120px 0;
                 overflow-y: auto;
+                display: flex;
+                flex-direction: column;
             }
             
             .sidebar-header {
@@ -888,6 +913,29 @@ def get_dashboard_page() -> str:
                 background: rgba(59, 130, 246, 0.2);
                 color: #3b82f6;
                 border-left-color: #3b82f6;
+            }
+            
+            .sidebar-footer {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                padding: 20px;
+                border-top: 1px solid rgba(226, 232, 240, 0.1);
+                background: rgba(15, 23, 42, 0.95);
+                text-align: center;
+                font-size: 0.85em;
+            }
+            
+            .sidebar-footer .company {
+                color: #cbd5e1;
+                font-weight: 600;
+                margin-bottom: 4px;
+            }
+            
+            .sidebar-footer .version {
+                color: #64748b;
+                font-size: 0.75em;
             }
             
             .main {
@@ -1184,6 +1232,11 @@ def get_dashboard_page() -> str:
             <div class="nav-item" onclick="switchSection('offhours')">🕐 Fuera de Hora</div>
             <div class="nav-item" onclick="switchSection('holidays')">📅 Feriados</div>
             <div class="nav-item" onclick="switchSection('blocklist')">🚫 Bloqueados</div>
+            
+            <div class="sidebar-footer">
+                <div class="company">DOLAN SS - 2026</div>
+                <div class="version">v1.0.1</div>
+            </div>
         </div>
         
         <div class="main">
