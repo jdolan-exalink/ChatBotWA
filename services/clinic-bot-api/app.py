@@ -84,7 +84,7 @@ CHAT_IDLE_RESET_SEC = int(os.getenv("CHAT_IDLE_RESET_SEC", "180"))
 # ======================== FASTAPI APP =========================
 app = FastAPI(
     title="WA-BOT",
-    version="1.0.3",
+    version="1.0.4",
     description="Sistema integral de chatbot WhatsApp con gestión de usuarios y administración"
 )
 
