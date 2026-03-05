@@ -1081,6 +1081,15 @@ async def health():
         "info": info,
     }
 
+@app.get("/version")
+async def get_version():
+    """Obtener versión del sistema"""
+    return {
+        "version": "1.0.4",
+        "name": "WA-BOT",
+        "title": "Sistema Integral de WhatsApp",
+    }
+
 @app.get("/status")
 async def status(
     current_user: dict = Depends(get_current_user),

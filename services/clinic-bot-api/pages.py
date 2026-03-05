@@ -231,7 +231,7 @@ def get_login_page() -> str:
                         DOLAN SS - 2026
                     </p>
                     <p style="color: #64748b; font-size: 0.7em; text-align: center; margin-top: 4px;">
-                        Ver: 1.0.0
+                        Ver: <span id="versionDisplay">1.0.4</span>
                     </p>
                 </div>
             </div>
@@ -313,8 +313,22 @@ def get_login_page() -> str:
                 }
             });
             
+            // Obtener versión del servidor
+            async function loadVersion() {
+                try {
+                    const res = await fetch('/version');
+                    if (res.ok) {
+                        const data = await res.json();
+                        document.getElementById('versionDisplay').textContent = data.version;
+                    }
+                } catch (e) {
+                    console.log('Version not available:', e);
+                }
+            }
+            
             // Focus en username al cargar
             document.getElementById('username').focus();
+            loadVersion();
         </script>
     </body>
     </html>
@@ -602,7 +616,7 @@ def get_user_panel_page() -> str:
             
             <div class="panel-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version">v1.0.1</div>
+                <div class="version" id="userPanelVersion">v1.0.4</div>
             </div>
         </div>
         
@@ -858,6 +872,23 @@ def get_user_panel_page() -> str:
                 document.getElementById('qrModal').classList.remove('show');
             }
             
+            // Cargar versión del servidor
+            async function loadVersion() {
+                try {
+                    const res = await fetch('/version');
+                    if (res.ok) {
+                        const data = await res.json();
+                        const versionEl = document.getElementById('userPanelVersion');
+                        if (versionEl) {
+                            versionEl.textContent = data.version;
+                        }
+                    }
+                } catch (e) {
+                    console.log('Version not available:', e);
+                }
+            }
+            
+            loadVersion();
             loadStatus();
             setInterval(loadStatus, 5000);
         </script>
@@ -1258,7 +1289,7 @@ def get_dashboard_page() -> str:
             
             <div class="sidebar-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version">v1.0.1</div>
+                <div class="version" id="dashboardVersion">v1.0.4</div>
             </div>
         </div>
         
@@ -2408,6 +2439,21 @@ def get_dashboard_page() -> str:
                 }
             }
             
+            // Cargar versión del servidor
+            async function loadVersion() {
+                try {
+                    const res = await fetch('/version');
+                    if (res.ok) {
+                        const data = await res.json();
+                        document.getElementById('dashboardVersion').textContent = data.version;
+                        document.getElementById('userPanelVersion').textContent = data.version;
+                    }
+                } catch (e) {
+                    console.log('Version not available:', e);
+                }
+            }
+            
+            loadVersion();
             refresh();
             setInterval(refresh, 5000);
         </script>
