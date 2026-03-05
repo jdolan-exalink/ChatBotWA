@@ -608,6 +608,26 @@ def get_user_panel_page() -> str:
                 <h2>Control del Bot</h2>
                 <button class="toggle-btn" id="toggleBtn" onclick="toggleBot()">▶️ Activar Bot</button>
             </div>
+
+            <div class="card">
+                <h2>🔐 Cambiar Contraseña</h2>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500;">Contraseña Actual</label>
+                        <input type="password" id="oldPassword" placeholder="Tu contraseña actual" style="width: 100%; padding: 12px; background: rgba(226, 232, 240, 0.1); border: 1px solid rgba(226, 232, 240, 0.2); border-radius: 8px; color: #f1f5f9; font-size: 0.95em;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500;">Contraseña Nueva</label>
+                        <input type="password" id="newPassword" placeholder="Nueva contraseña" style="width: 100%; padding: 12px; background: rgba(226, 232, 240, 0.1); border: 1px solid rgba(226, 232, 240, 0.2); border-radius: 8px; color: #f1f5f9; font-size: 0.95em;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500;">Confirmar Contraseña</label>
+                        <input type="password" id="confirmPassword" placeholder="Confirma la contraseña" style="width: 100%; padding: 12px; background: rgba(226, 232, 240, 0.1); border: 1px solid rgba(226, 232, 240, 0.2); border-radius: 8px; color: #f1f5f9; font-size: 0.95em;">
+                    </div>
+                    <button class="btn-connect" onclick="changePassword()" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); margin-top: 8px;">💾 Guardar Contraseña</button>
+                    <div id="passwordStatus" style="text-align: center; margin-top: 8px; font-size: 0.9em; color: #cbd5e1;"></div>
+                </div>
+            </div>
             
             <div class="card">
                 <h2>WhatsApp</h2>
@@ -775,6 +795,63 @@ def get_user_panel_page() -> str:
                 } catch (error) {
                     console.error('Error:', error);
                     alert('Error al cambiar estado del bot');
+                }
+            }
+            
+            async function changePassword() {
+                try {
+                    const oldPassword = document.getElementById('oldPassword').value;
+                    const newPassword = document.getElementById('newPassword').value;
+                    const confirmPassword = document.getElementById('confirmPassword').value;
+                    const statusDiv = document.getElementById('passwordStatus');
+                    
+                    if (!oldPassword || !newPassword || !confirmPassword) {
+                        statusDiv.textContent = '❌ Por favor completa todos los campos';
+                        statusDiv.style.color = '#ef4444';
+                        return;
+                    }
+                    
+                    if (newPassword !== confirmPassword) {
+                        statusDiv.textContent = '❌ Las contraseñas no coinciden';
+                        statusDiv.style.color = '#ef4444';
+                        return;
+                    }
+                    
+                    if (newPassword.length < 6) {
+                        statusDiv.textContent = '❌ La contraseña debe tener al menos 6 caracteres';
+                        statusDiv.style.color = '#ef4444';
+                        return;
+                    }
+                    
+                    const token = localStorage.getItem('token');
+                    const response = await fetch('/api/auth/change-password', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            old_password: oldPassword,
+                            new_password: newPassword
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        statusDiv.textContent = '✅ Contraseña actualizada correctamente';
+                        statusDiv.style.color = '#10b981';
+                        document.getElementById('oldPassword').value = '';
+                        document.getElementById('newPassword').value = '';
+                        document.getElementById('confirmPassword').value = '';
+                        setTimeout(() => { statusDiv.textContent = ''; }, 3000);
+                    } else {
+                        const error = await response.json();
+                        statusDiv.textContent = '❌ ' + (error.detail || 'Error al cambiar contraseña');
+                        statusDiv.style.color = '#ef4444';
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    document.getElementById('passwordStatus').textContent = '❌ Error al cambiar contraseña';
+                    document.getElementById('passwordStatus').style.color = '#ef4444';
                 }
             }
             

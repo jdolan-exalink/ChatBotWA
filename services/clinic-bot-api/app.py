@@ -52,6 +52,26 @@ ALERT_EMAIL_FROM = os.getenv("ALERT_EMAIL_FROM", ALERT_EMAIL_TO)
 
 SOLUTION_NAME = os.getenv("SOLUTION_NAME", "Clínica")
 
+# ======================== FILE PATHS =========================
+# Función helper para obtener rutas de archivos de forma robusta
+def get_data_file(filename: str) -> str:
+    """Obtener ruta absoluta de un archivo en la carpeta data/"""
+    # Si la ruta es absoluta, usarla directamente
+    if os.path.isabs(filename):
+        return filename
+    # Construir ruta basada en el directorio de trabajo actual
+    # En Docker: /app es el WORKDIR, datos están en /app/data
+    # En desarrollo local: pueden estar en ../data
+    if os.path.exists('/app/data'):
+        return os.path.join('/app/data', filename)
+    # Fallback: intentar relativo desde el directorio del script
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    fallback_dir = os.path.join(script_dir, 'data')
+    if os.path.exists(fallback_dir):
+        return os.path.join(fallback_dir, filename)
+    # Último fallback: usar la ruta por defecto de Docker
+    return os.path.join('/app/data', filename)
+
 # Estado global
 _last_status = {"connected": None, "last_alert_at": 0}
 _evo_qr_cache = {"png": None, "updated_at": 0}
@@ -137,7 +157,7 @@ async def init_default_admin():
                 menu_title=SOLUTION_NAME,
                 opening_time="08:00",
                 closing_time="16:00",
-                off_hours_enabled=False,
+                off_hours_enabled=True,
                 ollama_url=OLLAMA_URL,
                 ollama_model=OLLAMA_MODEL,
                 admin_idle_timeout_sec=900
@@ -777,13 +797,15 @@ async def get_config(db: Session = Depends(get_db)):
     
     # Leer menús desde archivos
     menu_content = ""
-    if os.path.exists('data/MenuP.MD'):
-        with open('data/MenuP.MD', 'r', encoding='utf-8') as f:
+    menu_path = get_data_file('MenuP.MD')
+    if os.path.exists(menu_path):
+        with open(menu_path, 'r', encoding='utf-8') as f:
             menu_content = f.read()
     
     offhours_content = ""
-    if os.path.exists('data/MenuF.MD'):
-        with open('data/MenuF.MD', 'r', encoding='utf-8') as f:
+    offhours_path = get_data_file('MenuF.MD')
+    if os.path.exists(offhours_path):
+        with open(offhours_path, 'r', encoding='utf-8') as f:
             offhours_content = f.read()
     
     # Convertir a diccionario y agregar contenidos
@@ -854,14 +876,13 @@ async def update_menu(
         if not content or not content.strip():
             return {'ok': False, 'error': 'El contenido del menú no puede estar vacío'}, 400
         
-        # Crear directorio data si no existe
-        os.makedirs('data', exist_ok=True)
-        
         # Guardar en archivo
-        with open('data/MenuP.MD', 'w', encoding='utf-8') as f:
+        menu_path = get_data_file('MenuP.MD')
+        os.makedirs(os.path.dirname(menu_path), exist_ok=True)
+        with open(menu_path, 'w', encoding='utf-8') as f:
             f.write(content)
         
-        return {'ok': True, 'bytes': len(content), 'saved_to': 'data/MenuP.MD'}
+        return {'ok': True, 'bytes': len(content), 'saved_to': menu_path}
     except Exception as e:
         print(f"[ERROR] en update_menu: {e}")
         return {'ok': False, 'error': str(e)}, 500
@@ -881,14 +902,13 @@ async def update_offhours(
         if not content or not content.strip():
             return {'ok': False, 'error': 'El contenido no puede estar vacío'}, 400
         
-        # Crear directorio data si no existe
-        os.makedirs('data', exist_ok=True)
-        
         # Guardar en archivo
-        with open('data/MenuF.MD', 'w', encoding='utf-8') as f:
+        offhours_path = get_data_file('MenuF.MD')
+        os.makedirs(os.path.dirname(offhours_path), exist_ok=True)
+        with open(offhours_path, 'w', encoding='utf-8') as f:
             f.write(content)
         
-        return {'ok': True, 'bytes': len(content), 'saved_to': 'data/MenuF.MD'}
+        return {'ok': True, 'bytes': len(content), 'saved_to': offhours_path}
     except Exception as e:
         print(f"[ERROR] en update_offhours: {e}")
         return {'ok': False, 'error': str(e)}, 500
@@ -1361,8 +1381,9 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
         # Primero intentar leer MenuF.MD (archivo de fuera de horarios)
         try:
             import os
-            if os.path.exists('data/MenuF.MD'):
-                with open('data/MenuF.MD', 'r', encoding='utf-8') as f:
+            offhours_path = get_data_file('MenuF.MD')
+            if os.path.exists(offhours_path):
+                with open(offhours_path, 'r', encoding='utf-8') as f:
                     answer = f.read()
                     print(f"[WEBHOOK] Leyendo MenuF.MD para fuera de horarios")
             else:
