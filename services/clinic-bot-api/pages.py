@@ -693,12 +693,12 @@ def get_user_panel_page() -> str:
                             return;
                         }
                         
-                        // Esperar un poco para que WAHA genere el QR
-                        await new Promise(r => setTimeout(r, 2000));
+                        // Esperar a que WAHA genere el QR
+                        await new Promise(r => setTimeout(r, 5000));
                         
-                        // Intentar cargar el QR con máximo 2 intentos
+                        // Intentar cargar el QR con reintentos
                         let qrLoaded = false;
-                        for (let i = 0; i < 2; i++) {
+                        for (let i = 0; i < 10; i++) {
                             try {
                                 const qrRes = await fetch('/qr?ts=' + Date.now());
                                 if (qrRes.ok) {
@@ -712,7 +712,7 @@ def get_user_panel_page() -> str:
                             } catch (e) {
                                 console.error('Intento ' + (i+1) + ' - Error loading QR:', e);
                             }
-                            if (i < 1) await new Promise(r => setTimeout(r, 1000));
+                            if (i < 9) await new Promise(r => setTimeout(r, 1500));
                         }
                         
                         // Si el QR no está disponible, simplemente actualizar estado
@@ -1504,10 +1504,10 @@ def get_dashboard_page() -> str:
                             return;
                         }
                         
-                        await new Promise(r => setTimeout(r, 2000));
+                        await new Promise(r => setTimeout(r, 5000));
                         
                         let qrLoaded = false;
-                        for (let i = 0; i < 2; i++) {
+                        for (let i = 0; i < 10; i++) {
                             try {
                                 const qrRes = await fetch('/qr?ts=' + Date.now());
                                 if (qrRes.ok) {
@@ -1521,7 +1521,7 @@ def get_dashboard_page() -> str:
                             } catch (e) {
                                 console.error('Intento ' + (i+1) + ' - Error loading QR:', e);
                             }
-                            if (i < 1) await new Promise(r => setTimeout(r, 1000));
+                            if (i < 9) await new Promise(r => setTimeout(r, 1500));
                         }
                         
                         // Si el QR no está disponible, simplemente actualizar estado
