@@ -696,9 +696,9 @@ def get_user_panel_page() -> str:
                         // Esperar un poco para que WAHA genere el QR
                         await new Promise(r => setTimeout(r, 2000));
                         
-                        // Intentar cargar el QR con reintentos
+                        // Intentar cargar el QR con máximo 2 intentos
                         let qrLoaded = false;
-                        for (let i = 0; i < 5; i++) {
+                        for (let i = 0; i < 2; i++) {
                             try {
                                 const qrRes = await fetch('/qr?ts=' + Date.now());
                                 if (qrRes.ok) {
@@ -712,11 +712,12 @@ def get_user_panel_page() -> str:
                             } catch (e) {
                                 console.error('Intento ' + (i+1) + ' - Error loading QR:', e);
                             }
-                            if (i < 4) await new Promise(r => setTimeout(r, 1000));
+                            if (i < 1) await new Promise(r => setTimeout(r, 1000));
                         }
                         
+                        // Si el QR no está disponible, simplemente actualizar estado
                         if (!qrLoaded) {
-                            alert('QR no disponible aún. Por favor escanea desde tu teléfono o intenta de nuevo en unos momentos.');
+                            loadStatus();
                         }
                     } else {
                         // Intenta reconectar
@@ -1506,7 +1507,7 @@ def get_dashboard_page() -> str:
                         await new Promise(r => setTimeout(r, 2000));
                         
                         let qrLoaded = false;
-                        for (let i = 0; i < 5; i++) {
+                        for (let i = 0; i < 2; i++) {
                             try {
                                 const qrRes = await fetch('/qr?ts=' + Date.now());
                                 if (qrRes.ok) {
@@ -1518,13 +1519,14 @@ def get_dashboard_page() -> str:
                                     return;
                                 }
                             } catch (e) {
-                                console.error('Error ' + (i+1) + ':', e);
+                                console.error('Intento ' + (i+1) + ' - Error loading QR:', e);
                             }
-                            if (i < 4) await new Promise(r => setTimeout(r, 1000));
+                            if (i < 1) await new Promise(r => setTimeout(r, 1000));
                         }
                         
+                        // Si el QR no está disponible, simplemente actualizar estado
                         if (!qrLoaded) {
-                            alert('QR no disponible aún. Por favor escanea desde tu teléfono o intenta de nuevo en unos momentos.');
+                            refresh();
                         }
                     } else {
                         try {
