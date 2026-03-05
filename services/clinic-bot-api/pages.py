@@ -573,6 +573,28 @@ def get_user_panel_page() -> str:
         </div>
         
         <script>
+            // Variables para rastrear cambios de estado
+            let lastConnectedStatus = null;
+            let statusPollingInterval = null;
+            
+            // Solicitar permisos de notificación
+            function requestNotificationPermission() {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            }
+            
+            // Mostrar notificación de desconexión
+            function notifyDisconnection() {
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('🤖 WA-BOT', {
+                        body: '⚠️ El bot se ha desconectado de WhatsApp',
+                        icon: '🔴',
+                        tag: 'bot-disconnect'
+                    });
+                }
+            }
+            
             // Validar autenticación al cargar la página
             window.addEventListener('DOMContentLoaded', function() {
                 const token = localStorage.getItem('token');
@@ -580,7 +602,29 @@ def get_user_panel_page() -> str:
                     window.location.href = '/login';
                     return;
                 }
+                requestNotificationPermission();
                 loadStatus();
+                
+                // Polling cada 8 segundos para detectar desconexiones
+                statusPollingInterval = setInterval(async () => {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const res = await fetch('/status', {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const status = await res.json();
+                        
+                        // Detectar cambio de conectado a desconectado
+                        if (lastConnectedStatus === true && status.connected === false) {
+                            console.warn('[STATUS] Desconexión detectada!');
+                            notifyDisconnection();
+                        }
+                        
+                        lastConnectedStatus = status.connected;
+                    } catch (e) {
+                        console.error('[STATUS_POLL] Error:', e);
+                    }
+                }, 8000);
             });
             
             async function loadStatus() {
@@ -598,6 +642,7 @@ def get_user_panel_page() -> str:
                         throw new Error(`HTTP ${res.status}`);
                     }
                     const status = await res.json();
+                    lastConnectedStatus = status.connected;  // Actualizar estado para notificaciones
                     
                     // Estado WhatsApp
                     const connected = status.connected;
@@ -1402,8 +1447,52 @@ def get_dashboard_page() -> str:
             const API_URL = '/api';
             const token = localStorage.getItem('token');
             
+            // Variables para rastrear cambios de estado
+            let lastConnectedStatus = null;
+            let statusPollingInterval = null;
+            
+            // Solicitar permisos de notificación
+            function requestNotificationPermission() {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            }
+            
+            // Mostrar notificación de desconexión
+            function notifyDisconnection() {
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('🤖 WA-BOT', {
+                        body: '⚠️ El bot se ha desconectado de WhatsApp',
+                        icon: '🔴',
+                        tag: 'bot-disconnect'
+                    });
+                }
+            }
+            
             // Validar autenticación y permisos al cargar la página
             window.addEventListener('DOMContentLoaded', function() {
+                requestNotificationPermission();
+                
+                // Polling cada 8 segundos para detectar desconexiones
+                statusPollingInterval = setInterval(async () => {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const res = await fetch('/status', {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const status = await res.json();
+                        
+                        // Detectar cambio de conectado a desconectado
+                        if (lastConnectedStatus === true && status.connected === false) {
+                            console.warn('[STATUS] Desconexión detectada!');
+                            notifyDisconnection();
+                        }
+                        
+                        lastConnectedStatus = status.connected;
+                    } catch (e) {
+                        console.error('[STATUS_POLL] Error:', e);
+                    }
+                }, 8000);
                 const userStr = localStorage.getItem('user');
                 
                 if (!token) {
@@ -1467,6 +1556,7 @@ def get_dashboard_page() -> str:
                     }
                     
                     const status = await res.json();
+                    lastConnectedStatus = status.connected;  // Actualizar estado para notificaciones
                     
                     document.getElementById('waIcon').textContent = status.connected ? '🟢' : '🔴';
                     document.getElementById('waStatus').textContent = status.connected ? 'Conectado' : 'Desconectado';

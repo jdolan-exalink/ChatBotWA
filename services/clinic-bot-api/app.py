@@ -1031,7 +1031,16 @@ async def status(
     global _chats_today
     info = await waha_session_info()
     s = str(info).lower()
-    connected = any(x in s for x in ["working", "connected", "authenticated", "open"]) and "qr" not in s
+    
+    # Mejor detección de conexión: verificar engine state y que haya autenticación real
+    engine = info.get("engine", {})
+    engine_state = str(engine.get("state", "")).lower() if isinstance(engine, dict) else ""
+    has_me = info.get("me") is not None  # Indica autenticación exitosa
+    has_qr = "qr" in s
+    
+    # Solo conectado si: engine está CONNECTED, hay autenticación (me), y no hay QR pendiente
+    connected = engine_state == "connected" and has_me and not has_qr
+    
     qr = await waha_qr_bytes() if not connected else None
     _last_status["connected"] = connected
     cfg = get_bot_config(db)
