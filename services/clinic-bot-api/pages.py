@@ -630,7 +630,8 @@ def get_user_panel_page() -> str:
                     
                     // Botón WhatsApp
                     const waBtn = document.getElementById('waBtn');
-                    if (connected) {
+                    const hasQr = status.has_qr;
+                    if (connected && !hasQr) {
                         waBtn.textContent = '🟢 Reconectar WhatsApp';
                     } else {
                         waBtn.textContent = '🔴 Conectar WhatsApp';
@@ -1460,7 +1461,8 @@ def get_dashboard_page() -> str:
                     document.getElementById('waStatusText').textContent = status.connected ? 'Conectado' : 'Desconectado';
                     
                     const waBtn = document.getElementById('waBtn');
-                    if (status.connected) {
+                    const hasQr = status.has_qr;
+                    if (status.connected && !hasQr) {
                         waBtn.textContent = '🟢 Reconectar WhatsApp';
                     } else {
                         waBtn.textContent = '🔴 Conectar WhatsApp';
