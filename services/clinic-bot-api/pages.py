@@ -260,20 +260,40 @@ def get_login_page() -> str:
                 submitBtn.disabled = true;
                 
                 try {
+                    console.log('[LOGIN] Enviando credenciales...');
+                    
                     const response = await fetch(`${API_URL}/auth/login`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ username, password })
                     });
                     
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.detail || 'Credenciales inválidas');
+                    console.log('[LOGIN] Status:', response.status);
+                    
+                    // Intentar parsear JSON
+                    let data = null;
+                    let errorDetail = 'Error desconocido';
+                    
+                    try {
+                        data = await response.json();
+                        errorDetail = data.detail || data.message || 'Error en el servidor';
+                    } catch (parseError) {
+                        console.error('[LOGIN] No se puede parsear JSON:', parseError);
+                        // Si no es JSON válido, es un error del servidor
+                        errorDetail = 'Error de servidor. Intenta de nuevo.';
                     }
                     
-                    const data = await response.json();
+                    if (!response.ok) {
+                        console.error('[LOGIN] Error:', errorDetail);
+                        throw new Error(errorDetail);
+                    }
+                    
+                    console.log('[LOGIN] Login exitoso, guardando token...');
+                    
                     localStorage.setItem('token', data.access_token);
                     localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    console.log('[LOGIN] Token guardado, redirigiendo...');
                     
                     // Redirigir según rol
                     setTimeout(() => {
@@ -285,6 +305,7 @@ def get_login_page() -> str:
                     }, 500);
                     
                 } catch (error) {
+                    console.error('[LOGIN] Error capturado:', error);
                     errorMsg.textContent = error.message;
                     errorMsg.classList.add('show');
                     loading.style.display = 'none';

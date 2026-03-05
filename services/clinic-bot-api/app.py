@@ -90,9 +90,12 @@ async def init_default_admin():
     await asyncio.sleep(1)
     db = SessionLocal()
     try:
+        print("[INIT] Inicializando usuarios por defecto...")
+        
         # Crear admin si no existe
         admin = db.query(User).filter(User.is_admin == True).first()
         if not admin:
+            print("[INIT] Admin no existe, creando...")
             default_admin = User(
                 username="admin",
                 email="admin@clinic.local",
@@ -102,11 +105,15 @@ async def init_default_admin():
                 is_active=True
             )
             db.add(default_admin)
+            db.flush()  # Flush para asegurar que se inserta
             print("✅ Admin creado. Usuario: admin, Contraseña: admin123")
+        else:
+            print("[INIT] Admin ya existe")
         
         # Crear usuario regular si no existe
         user = db.query(User).filter(User.username == "usuario").first()
         if not user:
+            print("[INIT] Usuario regular no existe, creando...")
             default_user = User(
                 username="usuario",
                 email="usuario@clinic.local",
@@ -116,11 +123,15 @@ async def init_default_admin():
                 is_active=True
             )
             db.add(default_user)
+            db.flush()  # Flush para asegurar que se inserta
             print("✅ Usuario creado. Usuario: usuario, Contraseña: usuario123")
+        else:
+            print("[INIT] Usuario regular ya existe")
             
         # Crear config por defecto
         cfg = db.query(BotConfig).first()
         if not cfg:
+            print("[INIT] Config no existe, creando...")
             default_config = BotConfig(
                 solution_name=SOLUTION_NAME,
                 menu_title=SOLUTION_NAME,
@@ -132,10 +143,18 @@ async def init_default_admin():
                 admin_idle_timeout_sec=900
             )
             db.add(default_config)
+            db.flush()
+            print("✅ Configuración creada")
+        else:
+            print("[INIT] Configuración ya existe")
         
         db.commit()
+        print("[INIT] ✅ Inicialización completada")
     except Exception as e:
         print(f"⚠️ Error al crear usuarios por defecto: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
     finally:
         db.close()
 
@@ -557,24 +576,52 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 @app.post("/api/auth/login")
 async def login(credentials: UserLogin, db: Session = Depends(get_db)):
     """Login de usuario"""
-    user = db.query(User).filter(User.username == credentials.username).first()
-    
-    if not user or not verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Usuario inactivo")
-    
-    # Actualizar último login
-    user.last_login = datetime.utcnow()
-    db.commit()
-    
-    access_token = create_access_token({"sub": user.username, "is_admin": user.is_admin})
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserResponse.from_orm(user)
-    )
+    try:
+        print(f"[LOGIN] Intento de login para usuario: {credentials.username}")
+        
+        # Buscar usuario
+        user = db.query(User).filter(User.username == credentials.username).first()
+        
+        if not user:
+            print(f"[LOGIN] Usuario no encontrado: {credentials.username}")
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        
+        print(f"[LOGIN] Usuario encontrado, verificando contraseña...")
+        
+        # Verificar contraseña
+        if not verify_password(credentials.password, user.hashed_password):
+            print(f"[LOGIN] Contraseña incorrecta para: {credentials.username}")
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        
+        # Verificar si está activo
+        if not user.is_active:
+            print(f"[LOGIN] Usuario inactivo: {credentials.username}")
+            raise HTTPException(status_code=403, detail="Usuario inactivo")
+        
+        print(f"[LOGIN] Login exitoso para: {credentials.username}")
+        
+        # Actualizar último login
+        user.last_login = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+        
+        # Crear token
+        access_token = create_access_token({"sub": user.username, "is_admin": user.is_admin})
+        
+        print(f"[LOGIN] Token creado, devolviendo respuesta...")
+        
+        return TokenResponse(
+            access_token=access_token,
+            token_type="bearer",
+            user=UserResponse.from_orm(user)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[LOGIN] Error inesperado: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error interno en login: {str(e)}")
 
 @app.get("/api/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):

@@ -4,6 +4,34 @@ Todos los cambios notables de este proyecto serán documentados en este archivo.
 
 ---
 
+## [1.0.4] - 2026-03-04 (Hotfix)
+
+### 🐛 Correcciones de Bugs
+- **Arreglado error de login "Unexpected token 'I', "Internal S"... is not valid JSON"**
+  - ✅ Mejorado manejo de errores en endpoint `/api/auth/login`
+  - ✅ Mejor logging en backend para debugging
+  - ✅ Validación individual de credenciales
+  - ✅ Mejorado manejo de respuestas JSON en frontend
+  - ✅ Try-catch para parseo de JSON en JavaScript
+
+### 🔧 Mejoras Internas
+- **Inicialización de usuarios mejorada**
+  - ✅ Agregado `db.flush()` para asegurar inserciones
+  - ✅ `db.rollback()` en caso de errores
+  - ✅ Logging detallado en cada paso
+  - ✅ Mejor detección de problemas
+
+### 📚 Documentación
+- Agregado [LOGIN_FIX.md](LOGIN_FIX.md) con guía completa de solución
+- Agregado script [test_login.py](services/clinic-bot-api/test_login.py) para diagnóstico
+
+### 🧪 Testing
+- Script de prueba para verificar usuarios en BD
+- Detección automática de problemas de login
+- Debugging mejorado en logs
+
+---
+
 ## [1.0.3] - 2026-03-04
 
 ### ✨ Nuevas Características
