@@ -64,9 +64,12 @@ if not cfg:
     config = BotConfig(
         solution_name=SOLUTION_NAME,
         menu_title=SOLUTION_NAME,
-        opening_time='08:00',
-        closing_time='16:00',
-        off_hours_enabled=False,
+        opening_time='09:00',
+        closing_time='18:00',
+        sat_opening_time='10:00',
+        sat_closing_time='14:00',
+        off_hours_enabled=True,
+        off_hours_message='🕐 Estamos fuera de horario. Nos vemos pronto!',
         ollama_url=OLLAMA_URL,
         ollama_model=OLLAMA_MODEL,
         admin_idle_timeout_sec=900

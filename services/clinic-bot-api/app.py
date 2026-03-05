@@ -314,6 +314,12 @@ def get_bot_config(db: Session) -> BotConfig:
 def is_off_hours(db: Session) -> bool:
     """Verificar si estamos fuera de horarios o es fin de semana/feriado"""
     cfg = get_bot_config(db)
+    
+    # Si off_hours está DESHABILITADO, nunca es fuera de horarios
+    if not cfg.off_hours_enabled:
+        print(f"[OFF_HOURS] Fuera de horarios DESHABILITADO - respondiendo normalmente")
+        return False
+    
     now = datetime.now()
     current_time = now.strftime("%H:%M")
     day_of_week = now.weekday()  # 0=lunes, 4=viernes, 5=sábado, 6=domingo

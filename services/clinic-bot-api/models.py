@@ -36,8 +36,8 @@ class BotConfig(Base):
     closing_time = Column(String(5))  # HH:MM (Lunes-Viernes)
     sat_opening_time = Column(String(5), default="10:00")  # HH:MM Sábado
     sat_closing_time = Column(String(5), default="14:00")  # HH:MM Sábado
-    off_hours_enabled = Column(Boolean, default=False)
-    off_hours_message = Column(Text)
+    off_hours_enabled = Column(Boolean, default=True)
+    off_hours_message = Column(Text, default="🕐 Estamos fuera de horario. Nos vemos pronto!")
     
     # Filtros
     country_filter_enabled = Column(Boolean, default=False)

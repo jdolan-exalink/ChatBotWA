@@ -1502,6 +1502,15 @@ def get_dashboard_page() -> str:
                     <div class="message" id="offhoursMessage"></div>
                     <form onsubmit="saveOffhours(event)">
                         <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="offhoursEnabled" onchange="toggleOffhoursState()"> 
+                                ✓ Habilitar Fuera de Horario
+                            </label>
+                            <p style="color: #94a3b8; font-size: 0.85em; margin-top: 8px;">
+                                Cuando está habilitado, responde con este mensaje fuera de horarios y feriados.
+                            </p>
+                        </div>
+                        <div class="form-group">
                             <label>Mensaje Fuera de Horario</label>
                             <textarea id="offhoursContent" placeholder="Lo sentimos, estamos fuera de horario..." style="min-height: 300px;"></textarea>
                         </div>
@@ -1697,6 +1706,7 @@ def get_dashboard_page() -> str:
             let selectedDates = new Set();
             let originalMenuContent = '';
             let originalOffhoursContent = '';
+            let originalOffhoursEnabled = false;
             
             function switchSection(section) {
                 document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -1996,23 +2006,34 @@ def get_dashboard_page() -> str:
                     });
                     const config = await res.json();
                     originalOffhoursContent = config.off_hours_message || 'Lo sentimos, estamos fuera de horario.';
+                    originalOffhoursEnabled = config.off_hours_enabled || false;
                     document.getElementById('offhoursContent').value = originalOffhoursContent;
+                    document.getElementById('offhoursEnabled').checked = originalOffhoursEnabled;
+                    toggleOffhoursState();
                 } catch (error) {
                     console.error('Error:', error);
                 }
             }
             
+            function toggleOffhoursState() {
+                const enabled = document.getElementById('offhoursEnabled').checked;
+                document.getElementById('offhoursContent').disabled = !enabled;
+                document.getElementById('offhoursContent').style.opacity = enabled ? '1' : '0.5';
+            }
+            
             async function saveOffhours(e) {
                 e.preventDefault();
                 try {
-                    const res = await fetch(`${API_URL}/config/offhours`, {
+                    const enabled = document.getElementById('offhoursEnabled').checked;
+                    const res = await fetch(`${API_URL}/config`, {
                         method: 'PUT',
                         headers: {
                             'Authorization': `Bearer ${token}`,
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            content: document.getElementById('offhoursContent').value
+                            off_hours_enabled: enabled,
+                            off_hours_message: document.getElementById('offhoursContent').value
                         })
                     });
                     
@@ -2021,10 +2042,10 @@ def get_dashboard_page() -> str:
                     
                     if (res.ok) {
                         originalOffhoursContent = document.getElementById('offhoursContent').value;
-                        msg.textContent = '✅ Menú fuera de hora guardado correctamente (' + data.bytes + ' bytes)';
+                        msg.textContent = '✅ Configuración de fuera de hora guardada correctamente';
                         msg.className = 'message show success';
                     } else {
-                        msg.textContent = '❌ Error: ' + (data.error || 'Error al guardar');
+                        msg.textContent = '❌ Error: ' + (data.detail || data.error || 'Error al guardar');
                         msg.className = 'message show error';
                     }
                     setTimeout(() => msg.classList.remove('show'), 3000);
@@ -2039,6 +2060,8 @@ def get_dashboard_page() -> str:
             
             function resetOffhoursEditor() {
                 document.getElementById('offhoursContent').value = originalOffhoursContent;
+                document.getElementById('offhoursEnabled').checked = originalOffhoursEnabled;
+                toggleOffhoursState();
                 const msg = document.getElementById('offhoursMessage');
                 msg.textContent = '↺ Cambios deshechados';
                 msg.className = 'message show success';
