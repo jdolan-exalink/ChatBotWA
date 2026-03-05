@@ -804,7 +804,6 @@ def get_user_panel_page() -> str:
                             document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="40" text-anchor="middle" font-size="12" fill="%23ff6b6b" dy=".3em">QR no disponible</text><text x="50" y="60" text-anchor="middle" font-size="10" fill="%23888" dy=".3em">Intenta de nuevo</text></svg>';
                             console.log('QR no disponible después de 15 intentos');
                         }
-                        }
                     } else {
                         // Intenta reconectar
                         try {
