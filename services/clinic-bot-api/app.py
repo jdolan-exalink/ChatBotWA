@@ -262,15 +262,20 @@ async def waha_qr_bytes() -> bytes | None:
     for p in candidates:
         try:
             r = await waha_get(p)
+            print(f"[QR_GET] {p} -> Status: {r.status_code}")
             ctype = r.headers.get("content-type", "")
             if "image" in ctype:
+                print(f"[QR_GET] Got image from {p}")
                 return r.content
             data = r.json()
             b = _extract_qr_from_any(data if isinstance(data, dict) else {})
             if b:
+                print(f"[QR_GET] Extracted QR from {p}")
                 return b
-        except Exception:
+        except Exception as e:
+            print(f"[QR_GET] Error trying {p}: {e}")
             continue
+    print("[QR_GET] No QR available from any candidate")
     return None
 
 # ======================== BOT LOGIC =========================
@@ -1072,6 +1077,7 @@ async def bot_resume(current_user: dict = Depends(get_current_user), db: Session
 @app.post('/bot/connect')
 async def bot_connect_whatsapp(current_user: Optional[dict] = Depends(get_current_user), db: Session = Depends(get_db)):
     """Iniciar conexión con WhatsApp"""
+    print("[BOT_CONNECT] Starting WhatsApp connection attempt")
     tries = [
         # Intentar crear una nueva sesión
         ("POST", f"{WAHA_URL}/api/sessions", {
@@ -1089,13 +1095,17 @@ async def bot_connect_whatsapp(current_user: Optional[dict] = Depends(get_curren
     async with httpx.AsyncClient(timeout=20) as c:
         for method, url, payload in tries:
             try:
+                print(f"[BOT_CONNECT] Trying {method} {url}")
                 r = await c.request(method, url, headers=waha_headers(), json=payload)
+                print(f"[BOT_CONNECT] Response status: {r.status_code}")
                 if r.status_code < 400:
+                    print(f"[BOT_CONNECT] Success! WhatsApp connection initiated")
                     return {'ok': True, 'status': r.status_code, 'message': 'Conexión iniciada'}
             except Exception as e:
-                print(f"Error trying {url}: {e}")
+                print(f"[BOT_CONNECT] Error trying {url}: {e}")
                 pass
     
+    print("[BOT_CONNECT] Failed to connect - all attempts exhausted")
     return {'ok': False, 'message': 'No se pudo conectar a WAHA'}
 
 @app.post('/bot/logout')
