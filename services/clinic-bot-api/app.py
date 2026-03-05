@@ -1331,6 +1331,23 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
 
     print(f"[WEBHOOK] chat_id={chat_id}, text={text}")
     
+    # Filtros: Solo responder a chats privados, ignorar estados, grupos y ruido de plataforma
+    if msg.get("fromMe") is True:
+        print(f"[WEBHOOK] Ignorado - mensaje propio (fromMe=True)")
+        return {"ok": True, "ignored": "from_me"}
+    
+    if isinstance(chat_id, str) and ("status@" in chat_id or "@status" in chat_id or "broadcast" in chat_id):
+        print(f"[WEBHOOK] Ignorado - mensaje de estado/broadcast: {chat_id}")
+        return {"ok": True, "ignored": "status_or_broadcast"}
+    
+    if isinstance(chat_id, str) and "@g.us" in chat_id:
+        print(f"[WEBHOOK] Ignorado - mensaje de grupo: {chat_id}")
+        return {"ok": True, "ignored": "group_message"}
+    
+    if isinstance(text, str) and text.strip().lower() in {"estado", "estados", "status"}:
+        print(f"[WEBHOOK] Ignorado - texto de estado")
+        return {"ok": True, "ignored": "status_text"}
+    
     if not chat_id or not text:
         print(f"[WEBHOOK] Ignorado - sin chat_id o text")
         return {"ok": True, "ignored": True}
