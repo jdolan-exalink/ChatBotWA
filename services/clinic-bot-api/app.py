@@ -1058,6 +1058,24 @@ async def qr():
         raise HTTPException(404, "QR not available")
     return Response(content=b, media_type="image/png")
 
+@app.get('/api/debug/status')
+async def debug_status(current_user: dict = Depends(get_current_user)):
+    """Debug endpoint to see raw WAHA status"""
+    info = await waha_session_info()
+    qr = await waha_qr_bytes()
+    return {
+        "raw_info": info,
+        "has_qr": qr is not None,
+        "status_string": str(info).lower(),
+        "debug": {
+            "has_working": "working" in str(info).lower(),
+            "has_connected": "connected" in str(info).lower(),
+            "has_authenticated" : "authenticated" in str(info).lower(),
+            "has_open": "open" in str(info).lower(),
+            "has_qr_keyword": "qr" in str(info).lower(),
+        }
+    }
+
 @app.post('/bot/pause')
 async def bot_pause(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     """Pausar el bot (requiere autenticación)"""
