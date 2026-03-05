@@ -1,21 +1,19 @@
-¡Hola! 👋 Bienvenido/a a la Clínica UOM Seccional Santa Fe
+¡Hola! 👋 Bienvenido/a a la Clínica. UOM Seccional Santa Fe
 Para continuar, respondé con el número de opción:
 
 1️⃣ Turnos
-2️⃣ Asuntos Laborales
+2️⃣ Asuntos laborales
 3️⃣ Farmacia
 4️⃣ Afiliaciones
 5️⃣ Discapacidad
 6️⃣ Bocas de expendio
 7️⃣ Compra de Orden de Consulta
-
-↩️ En cualquier momento escribí **0** para volver al menú principal.
+↩️ En cualquier momento podés escribir **0** para volver al menú principal.
 
 ---
 
-## 1️⃣ Turnos
-
-Seleccionaste TURNOS.
+## 1 Turnos
+Seleccionaste *TURNOS*.
 Indicá la especialidad:
 
 1. 🩺 Clínica Médica
@@ -31,467 +29,334 @@ Indicá la especialidad:
 11. 💡 Psicopedagogía
 12. 🩻 Ecografías
 13. ↩️ Volver al menú principal
+---
+
+### 1.1 Clínica Médica
+Profesionales disponibles:
+
+1. 👩‍⚕️ **Dra. Gómez Vanesa**
+   • Atención: Martes de 09:00 a 11:00 H.
+   • Atención: Jueves de 14:00 a 15:00 H.
+   • Modalidad: orden de llegada.
+
+2. 👨‍⚕️ **Dr. Aramayo Alejandro**
+   • Atención: Miércoles de 09:30 a 12:30 H.
+   • Modalidad: orden de llegada.
+   • Lunes y Viernes: consultar horario.
+
+3. 👩‍⚕️ **Dra. Sánchez Teresa**
+   • Atención: Lunes, Jueves y Viernes de 11:00 a 13:30 H.
+   • Turnos: en el día al 5802184 / 4580099 (Interno: 1)
+   ⚠️ Importante: no se otorgan turnos por WhatsApp.
 
 ---
 
-### 1.1 🩺 Clínica Médica
+### 1.2 Traumatología
 
-Seleccionaste Clínica Médica.
-Elige el médico:
-
-1. 👩‍⚕️ Dra. Gómez Vanesa
-2. 👨‍⚕️ Dr. Aramayo Alejandro
-3. 👩‍⚕️ Dra. Sánchez Teresa
-4. ↩️ Volver atrás
-
----
-
-#### 1.1.1 👩‍⚕️ Dra. Gómez Vanesa
-
-Médico seleccionado: **Dra. Gómez Vanesa**
-
-📋 Detalles:
-• Especialidad: Medicina General
-• Horario: Martes 09:00-11:00 H. | Jueves 14:00-15:00 H.
-• Modalidad: Orden de llegada
-• Teléfono: 5802184 / 4580099 (Interno: 1)
-
-¿Qué deseas hacer?
-
-1. 📅 Agendar turno
-2. 📞 Contactar por teléfono
-3. ↩️ Volver atrás
-
----
-
-##### 1.1.1.1 📅 Agendar turno
-
-[N8N] create_appointment
-WEBHOOK: https://webhook.tudominio.n8n.io/turno
-
-Tu solicitud de turno con Dra. Gómez Vanesa ha sido registrada.
-
-⏳ **Estado:** Confirmación en proceso
-Recibirás un mensaje en los próximos minutos.
-
-1. ↩️ Volver al menú principal
-
----
-
-##### 1.1.1.2 📞 Contactar por teléfono
-
-**Teléfono de atención:**
-☎️ 5802184 / 4580099
-🗣️ Interno: 1 (Clínica Médica)
-
-**Horarios:**
-• Lunes a Viernes: 08:00-16:00 H.
-• Sábados: 09:00-13:00 H.
-
-Puedes llamar en cualquier momento o usar WhatsApp Business.
-
-1. ↩️ Volver al menú principal
-
----
-
-#### 1.1.2 👨‍⚕️ Dr. Aramayo Alejandro
-
-Médico seleccionado: **Dr. Aramayo Alejandro**
-
-📋 Detalles:
-• Especialidad: Medicina General
-• Horario: Miércoles 09:30-12:30 H.
-• Modalidad: Orden de llegada
-• Disponibilidad: Lunes y Viernes (consultar)
-• Teléfono: 5802184 / 4580099 (Interno: 1)
-
-¿Qué deseas hacer?
-
-1. 📅 Agendar turno
-2. 📞 Contactar por teléfono
-3. ↩️ Volver atrás
-
----
-
-##### 1.1.2.1 📅 Agendar turno
-
-[N8N] create_appointment
-WEBHOOK: https://webhook.tudominio.n8n.io/turno
-
-Tu solicitud de turno con Dr. Aramayo ha sido registrada.
-
-⏳ **Estado:** Confirmación en proceso
-Recibirás un mensaje en los próximos minutos.
-
-1. ↩️ Volver al menú principal
-
----
-
-##### 1.1.2.2 📞 Contactar por teléfono
-
-**Teléfono de atención:**
-☎️ 5802184 / 4580099
-🗣️ Interno: 1 (Clínica Médica)
-
-**Horarios:**
-• Lunes a Viernes: 08:00-16:00 H.
-• Sábados: 09:00-13:00 H.
-
-1. ↩️ Volver al menú principal
-
----
-
-#### 1.1.3 👩‍⚕️ Dra. Sánchez Teresa
-
-Médico seleccionado: **Dra. Sánchez Teresa**
-
-📋 Detalles:
-• Especialidad: Medicina General
-• Horario: Lunes, Jueves y Viernes 11:00-13:30 H.
-• Modalidad: Turnos por teléfono
-• Teléfono: 5802184 / 4580099 (Interno: 1)
-
-⚠️ **IMPORTANTE:** No se otorgan turnos por WhatsApp
-
-1. 📞 Llamar para agendar turno
-2. ↩️ Volver atrás
-
----
-
-##### 1.1.3.1 📞 Llamar para agendar turno
-
-**Debes llamar para agendar:**
-☎️ 5802184 / 4580099
-🗣️ Interno: 1 (Clínica Médica)
-
-**Horarios de atención:**
-• Lunes a Viernes: 08:00-16:00 H.
-• Sábados: 09:00-13:00 H.
-
-Menciona que quieres turno con Dra. Sánchez Teresa.
-
-1. ↩️ Volver al menú principal
-
----
-
-### 1.2 🦴 Traumatología
-
-Seleccionaste Traumatología.
 Profesional disponible:
-
-1. 👨‍⚕️ Dr. Meoli Daniel
-2. ↩️ Volver atrás
-
----
-
-#### 1.2.1 👨‍⚕️ Dr. Meoli Daniel
-
-Médico seleccionado: **Dr. Meoli Daniel**
-
-📋 Detalles:
-• Especialidad: Traumatología
-• Horario: Lunes 10:00 H.
-• Modalidad: Orden de llegada
-• Teléfono: 5802184 / 4580099
-
-⚠️ Importante: 
-- Asistir con agendado previo
-- Primera consulta solo con derivación autorizada
-
-¿Qué deseas hacer?
-
-1. 📅 Agendar turno
-2. 📞 Contactar por teléfono
-3. ↩️ Volver atrás
+👨‍⚕️ **Dr. Meoli Daniel**
+• Atención: Lunes 10:00 H.
+• Modalidad: orden de llegada.
+⚠️ Importante: asistir con agendado previo.
+⚠️ Primera consulta solo con derivación autorizada.
 
 ---
 
-##### 1.2.1.1 📅 Agendar turno
+### 1.3 Cardiología
 
-[N8N] create_appointment
-WEBHOOK: https://webhook.tudominio.n8n.io/turno
-
-Tu solicitud de turno con Dr. Meoli ha sido registrada.
-
-⏳ **Estado:** Confirmación en proceso
-Recibirás un mensaje en los próximos minutos.
-
-1. ↩️ Volver al menú principal
+Profesional disponible:
+👨‍⚕️ **Dr. Viñuela Leonardo**
+• Atención: Jueves 13:30 H.
+• Modalidad: orden de llegada.
+⚠️ Importante: asistir con agendado previo, por límite de pacientes.
 
 ---
 
-##### 1.2.1.2 📞 Contactar por teléfono
+### 1.4 Ginecología y Obstetricia
 
-**Teléfono de atención:**
-☎️ 5802184 / 4580099
-🗣️ Pregunta por Traumatología
+Profesionales disponibles:
 
-**Horarios:**
-• Lunes a Viernes: 08:00-16:00 H.
-• Sábados: 09:00-13:00 H.
+1. 👨‍⚕️ **Dr. Bosquiazzo Leandro**
+   • Atención: Lunes 13:30 H.
+   • Modalidad: orden de llegada.
+   ⚠️ Importante: asistir con agendado previo.
 
-1. ↩️ Volver al menú principal
+2. 👩‍⚕️ **Dra. Sencar Shirli**
+   • Atención: Martes 10:00 H. (cada 15 días)
+   • Modalidad: orden de llegada.
+   ⚠️ Importante: asistir con agendado previo, por límite de pacientes.
 
 ---
 
-## 2️⃣ Asuntos Laborales
+### 1.5 Odontología
 
-Seleccionaste ASUNTOS LABORALES.
+Profesionales disponibles:
 
-🧾 **Detalles Generales:**
+1. 👩‍⚕️ **Od. Herrera Ma. José**
+   • Atención: Martes y Jueves
+   • Turnos: desde las 14:00 H.
+   • Tel.: 5802184 / 4580099 (Interno: 1)
+   ⚠️ No se otorgan turnos por WhatsApp.
+
+2. 👩‍⚕️ **Od. Mondini Evangelina**
+   • Atención: Lunes, Miércoles y Viernes
+   • Turnos: desde las 14:00 H.
+   • Tel.: 5802184 / 4580099 (Interno: 1)
+   ⚠️ No se otorgan turnos por WhatsApp.
+
+---
+
+### 1.6 Cirugía General
+
+Profesional disponible:
+👨‍⚕️ **Dr. Francia Federico**
+• Atención: Viernes (dos veces al mes)
+• Modalidad: orden de llegada.
+⚠️ Importante: asistir con agendado previo.
+⚠️ Primera consulta solo con derivación autorizada.
+
+---
+
+### 1.7 Nutrición
+
+Profesional disponible:
+👩‍⚕️ **Lic. Escandell Macarena**
+• Atención: Miércoles
+• Turnos: solicitar con anticipación.
+⚠️ Primera consulta solo con derivación autorizada.
+
+---
+
+### 1.8 Pediatría
+
+Profesional disponible:
+👨‍⚕️ **Dr. Taborda Guillermo**
+• Atención: Lunes, Miércoles y Viernes de 11:30 a 12:30 H.
+• Modalidad: orden de llegada.
+
+---
+
+### 1.9 Psicología
+
+Profesionales disponibles:
+
+1. 👩‍⚕️ **Lic. Figoli Lucila**
+   • Atención: Lunes y Viernes
+   • Turnos: con anticipación.
+   ⚠️ Primera consulta solo con derivación autorizada.
+
+2. 👩‍⚕️ **Lic. Caffaratti Melisa**
+   • Atención: Miércoles
+   • Turnos: con anticipación.
+   ⚠️ Primera consulta solo con derivación autorizada.
+
+3. 👩‍⚕️ **Bertoni Ma. Eugenia**
+   • Atención: Lunes y Martes
+   • Turnos: con anticipación.
+   ⚠️ Primera consulta solo con derivación autorizada.
+
+---
+
+### 1.10 Terapia Ocupacional
+
+Profesionales disponibles:
+
+1. 👩‍⚕️ **Lic. Reina Lucila**
+   • Atención: día y horario a convenir.
+   ⚠️ Primera consulta solo con derivación autorizada.
+
+2. 👩‍⚕️ **Lic. Sarramona Carolina**
+   • Atención: día y horario a convenir.
+   ⚠️ Primera consulta solo con derivación autorizada.
+
+---
+
+### 1.11 Psicopedagogía
+
+👩‍⚕️ **Vecchietti Marcela**
+• Atención: Jueves (horarios a convenir).
+⚠️ Primera consulta solo con derivación autorizada.
+
+---
+
+### 1.12 Ecografías
+
+👨‍⚕️ **Dr. Marchese Fernando**
+• Atención: Miércoles
+• Turnos: con anticipación.
+
+---
+
+## 2 Asuntos laborales
+
+🧾 *Asuntos Laborales*
 • Horario: 08:00 a 16:00 H.
-• Teléfono: 4580099 / 5802184
-• WhatsApp: Elige una opción para chatear
+• Tel.: 4580099 / 5802184
+• WhatsApp (elegí una opción para chatear):
 
-1. 📲 WhatsApp Línea 1
-2. 📲 WhatsApp Línea 2
-3. 📲 WhatsApp Línea 3
-4. 📋 Consultas generales
-5. ↩️ Volver al menú principal
-
----
-
-### 2.1 📲 WhatsApp Línea 1
-
-**Número de WhatsApp:**
-📱 +54 9 3425 016120
-
-Contacta por WhatsApp para:
-• Consultas sobre adicionales
-• Cuestiones administrativas
-• Solicitudes documentales
-
-Horarios: Lunes a Viernes 09:00-17:00
-
-1. ↩️ Volver atrás
-
----
-
-### 2.2 📲 WhatsApp Línea 2
-
-**Número de WhatsApp:**
-📱 +54 9 3424 438163
-
-Contacta por WhatsApp para:
-• Solicitudes de baja
-• Cambios de planes
-• Problemas de cobertura
-
-Horarios: Lunes a Viernes 09:00-17:00
-
-1. ↩️ Volver atrás
-
----
-
-### 2.3 📲 WhatsApp Línea 3
-
-**Número de WhatsApp:**
-📱 +54 9 3425 442025
-
-Contacta por WhatsApp para:
-• Reclamos y denuncias
-• Consultas especializadas
-• Asesoramiento legal
-
-Horarios: Lunes a Viernes 10:00-17:00
-
-1. ↩️ Volver atrás
-
----
-
-### 2.4 📋 Consultas Generales
-
-¿Qué tipo de consulta tienes?
-
-1. 📧 Enviar email a recursos humanos
-2. 📋 Ver preguntas frecuentes
-3. ↩️ Volver atrás
-
----
-
-#### 2.4.1 📧 Enviar email a recursos humanos
-
-[N8N] send_email_rrhh
-WEBHOOK: https://webhook.tudominio.n8n.io/email
-
-Tu consulta será asignada al equipo de Recursos Humanos.
-
-📧 Email: rrhh@clinica.com.ar
-⏳ Respuesta esperada en 24-48 horas
-
-1. ↩️ Volver al menú principal
-
----
-
-#### 2.4.2 📋 Ver preguntas frecuentes
-
-**Preguntas Frecuentes - Asuntos Laborales**
-
-❓ ¿Cómo solicito una licencia?
-Comunícate con Recursos Humanos al 4580099, interno 2.
-
-❓ ¿Cómo cambio mi plan de cobertura?
-Ingresa a tu cuenta online o llama a Asuntos Laborales.
-
-❓ ¿Cómo me doy de baja?
-Se requiere presentar solicitud formal en oficinas.
-
-1. ↩️ Volver al menú principal
-
----
-
-## 3️⃣ Farmacia
-
-Seleccionaste FARMACIA.
-
-💊 Información de Farmacia:
-
-• Dirección: Calle Principal 123, Santa Fe
-• Horario: 08:00-20:00 H. (Lunes a Viernes)
-• Horario Sábado: 09:00-14:00 H.
-• Teléfono: 4580099 - Interno Farmacia
-• Despachos en línea: ✅ Disponible
-
-¿Qué necesitas?
-
-1. 💻 Despachar medicamentos online
-2. 📞 Consultar disponibilidad
-3. 📋 Ver promociones
+1. 📲 3425016120
+2. 📲 3424438163
+3. 📲 3425442025
 4. ↩️ Volver al menú principal
+---
+
+### 2.1 Contacto directo 1
+
+📲 WhatsApp: 3425016120
+Puedes contactarlos directamente en este número.
 
 ---
 
-### 3.1 💻 Despacho Online
+### 2.2 Contacto directo 2
 
-[N8N] pharmacy_online_order
-WEBHOOK: https://webhook.tudominio.n8n.io/farmacia
-
-Nuestro sistema de despacho online está bajo mantenimiento.
-
-⏳ Estará disponible nuevamente el 08/03/2026
-
-Mientras tanto puedes:
-• Llamar al 4580099 (Interno Farmacia)
-• Visitar personalmente la farmacia
-
-1. ↩️ Volver al menú principal
+📲 WhatsApp: 3424438163
+Puedes contactarlos directamente en este número.
 
 ---
 
-### 3.2 📞 Consultar Disponibilidad
+### 2.3 Contacto directo 3
 
-Disponibilidad de medicamentos:
-
-📞 Llama para consultar disponibilidad
-Teléfono: 4580099
-🗣️ Interno: Farmacia
-⏰ Horarios laborales
-
-O envía el nombre del medicamento por WhatsApp.
-
-1. ↩️ Volver al menú principal
+📲 WhatsApp: 3425442025
+Puedes contactarlos directamente en este número.
 
 ---
 
-### 3.3 📋 Ver Promociones
+## 3 Farmacia
 
-**Promociones Vigentes**
-
-🏷️ **Medicamentos Genéricos -40%**
-Válido hasta 31/03/2026
-
-🏷️ **2x1 en Vitaminas**
-Válido hasta 15/03/2026
-
-🏷️ **Envios GRATIS**
-En compras mayores a $2000
-
-Consultar con farmacéutico por disponibilidad.
-
-1. ↩️ Volver al menú principal
+💊 *Farmacia*
+• Horario: 08:00 a 16:00 H.
+• Tel.: 4580099 / 5802184
+• Interno: 1122
+• WhatsApp: 📲 3424483057
+• Link directo: [https://wa.me/5493424483057](https://wa.me/5493424483057)
 
 ---
 
-## 4️⃣ Afiliaciones
+## 4 Afiliaciones
 
-Seleccionaste AFILIACIONES.
-
-📋 Departamento de Afiliaciones:
-
-• Horario: 08:00 a 17:00 H.
-• Teléfono: 4580099 / 5802184
-• Email: afiliaciones@clinica.com.ar
-
-¿Qué necesitas?
-
-1. 📝 Nueva afiliación
-2. ✏️ Modificar datos
-3. 🔄 Reactivar afiliación
-4. 📋 Transferencia de fondos
-5. ↩️ Volver al menú principal
+🪪 *Afiliaciones*
+• Horario: 08:00 a 16:00 H.
+• Tel.: 4580099 / 5802184
+• WhatsApp: 📲 3426506301
+• Link directo: [https://wa.me/5493426506301](https://wa.me/5493426506301)
 
 ---
 
-## 5️⃣ Discapacidad
+## 5 Discapacidad
 
-Seleccionasta DISCAPACIDAD.
-
-♿ Departamento de Discapacidad:
-
-Somos pioneros en atención integral para personas con discapacidad.
-
-• Horario: 09:00 a 16:00 H.
-• Teléfono: 4580099 / 5802184
-• Esta es un área especializada
-
-¿Qué tipo de consulta tienes?
-
-1. 📞 Contactar equipo de discapacidad
-2. 📋 Servicios disponibles
-3. ↩️ Volver al menú principal
+♿ *Discapacidad*
+• Horario: 08:00 a 13:30 H.
+• Tel.: 4580099 / 5802184
+• Interno: 1104
+• WhatsApp: 📲 3425667161
+• Link directo: [https://wa.me/5493425667161](https://wa.me/5493425667161)
 
 ---
 
-## 6️⃣ Bocas de Expendio
+## 6 Bocas de expendio
 
-Seleccionaste BOCAS DE EXPENDIO.
-
-📍 Bocas de Expendio disponibles:
+📍 *Bocas de expendio*
 
 1. 🏢 Recreo Sur
-   • Dirección: Avenida Recreo 1234
-   • Tel: 4558899
-
 2. 🏢 Santo Tomé
-   • Dirección: Calle Principal 456
-   • Tel: 4229944
-
-3. 🏢 Santa Fe
-   • Dirección: Peatonal San Martín 789
-   • Tel: 4234455
-
+3. 📌 Ver ambas
 4. ↩️ Volver al menú principal
 
 ---
 
-## 7️⃣ Compra de Orden de Consulta
+### 6.1 Recreo Sur
 
-Seleccionaste COMPRA DE ORDEN DE CONSULTA.
+• Horario: 08:00 a 16:00 H.
+• Dirección: Juan de Garay 4791
+• WhatsApp: 📲 3425013622
+• Link directo: [https://wa.me/5493425013622](https://wa.me/5493425013622)
 
-💳 Compra de Órdenes de Consulta:
+---
 
-Puedes comprar órdenes directamente:
+### 6.2 Santo Tomé
 
-1. 🏢 En cualquier boca de expendio
-2. 💳 Online en nuestro portal
-3. 📞 Por teléfono
+• Horario: 09:00 a 15:00 H.
+• Dirección: República de Irak 3556
+• WhatsApp: 📲 3424673443
+• Link directo: [https://wa.me/5493424673443](https://wa.me/5493424673443)
 
-Valores:
-• Orden de Consulta: $1.500
-• Paquete x3 órdenes: $4.000
+---
 
-🔗 Portal Online: https://clinica.com.ar/ordenes
+### 6.3 Ver ambas
 
-1. ↩️ Volver al menú principal
+**Bocas disponibles:**
+
+🏢 **Recreo Sur**
+• Horario: 08:00 a 16:00 H.
+• Dirección: Juan de Garay 4791
+• Link: [https://wa.me/5493425013622](https://wa.me/5493425013622)
+
+🏢 **Santo Tomé**
+• Horario: 09:00 a 15:00 H.
+• Dirección: República de Irak 3556
+• Link: [https://wa.me/5493424673443](https://wa.me/5493424673443)
+
+**POR GESTIÓN DE AUTORIZACIONES VÍA WHATSAPP**
+📎 Enviar foto completa, clara y legible de:
+
+1. Pedido médico
+2. Recibo de sueldo del titular de la obra social
+3. Carnet de obra social del paciente y/o documentación provisoria
+
+---
+
+## 7 Compra de Orden de Consulta
+
+🔐 **¿No tenés usuario y contraseña?**
+Debés solicitar el alta.
+✅ Este trámite se hace una sola vez
+✅ Es obligatorio estar afiliado a UOM – Seccional Santa Fe
+
+1. 🧾 Tengo Usuario y quiero comprar
+2. 🧾 Quiero ver un video de como crear mi usuario
+3. 🧾 Quiero leer como crear mi usuario
+4. ↩️ Volver al menú principal
+
+---
+
+### 7.1 Compra de Orden de Consulta
+
+🧾 *Compra de Orden de Consulta*
+Para comprar tu orden de consulta, ingresá acá:
+👉 [https://os.uomsantafe.com.ar](https://os.uomsantafe.com.ar)
+
+---
+
+### 7.2 Video de creación de usuario
+
+🧾 *Ver video de como crear usuario*
+Para ver el video sobre cómo crear usuario, ingresá acá:
+👉 https://youtu.be/7WlrZ6zW_qs
+
+---
+
+### 7.3 Guía de creación de usuario
+
+📋 **Antes de empezar, necesitás:**
+✔ DNI del titular
+✔ Nombre de la empresa donde trabaja
+✔ Teléfono de contacto
+✔ Email válido y al que tengas acceso
+✔ Foto del último recibo de sueldo
+(⚠️ Importante: las claves llegan por email)
+
+📝 **Cómo solicitar el alta**
+1️⃣ Ingresá a:
+👉 [https://os.uomsantafe.com.ar/Formularios/SolicitarAlta.aspx](https://os.uomsantafe.com.ar/Formularios/SolicitarAlta.aspx)
+2️⃣ Cargá el DNI del titular y tocá "Buscar Titular"
+3️⃣ Verificá los datos y corregí si es necesario
+📧 No olvides cargar un email válido
+4️⃣ Adjuntá la foto del último recibo de sueldo
+5️⃣ Tocá "Solicitar Alta"
+
+✅ **¿Qué pasa después?**
+📩 Vas a recibir un mail de confirmación
+👉 Si no lo ves, revisá Spam / Correo no deseado
+🔑 Dentro de los 5 días hábiles recibirás las claves de acceso
 
 ---
