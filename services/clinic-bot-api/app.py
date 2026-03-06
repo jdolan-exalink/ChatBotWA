@@ -63,7 +63,7 @@ _last_status  = {"connected": None, "last_alert_at": 0}
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.1.2")
+app = FastAPI(title="WA-BOT", version="2.1.4")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
@@ -758,7 +758,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.1.2", "name": "WA-BOT"}
+    return {"version": "2.1.4", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -767,7 +767,8 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
     eng = info.get("engine", {})
     eng_state = str(eng.get("state", "")).lower() if isinstance(eng, dict) else ""
     connected = eng_state == "connected" and info.get("me") is not None and "qr" not in s
-    qr = await _waha_qr() if not connected else None
+    session_status = str(info.get("status", "")).upper()
+    qr = await _waha_qr() if (not connected and session_status == "SCAN_QR_CODE") else None
     cfg = _get_cfg(db)
     return {
         "provider": "waha", "instance": WAHA_SESSION,
@@ -781,6 +782,13 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
 
 @app.get("/qr")
 async def qr_image():
+    # Fast-fail: only fetch QR when session is actually in SCAN_QR_CODE state.
+    # Without this check, _waha_qr() tries 4 paths each waiting 5s → 10s per call,
+    # causing dozens of concurrent stalled requests during session startup.
+    info = await _waha_session_info()
+    status_str = str(info.get("status", "")).upper()
+    if status_str != "SCAN_QR_CODE":
+        raise HTTPException(404, "QR no disponible")
     b = await _waha_qr()
     if not b: raise HTTPException(404, "QR no disponible")
     return Response(content=b, media_type="image/png")

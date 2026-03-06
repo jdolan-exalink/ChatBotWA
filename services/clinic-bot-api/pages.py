@@ -231,7 +231,7 @@ def get_login_page() -> str:
                         DOLAN SS - 2026
                     </p>
                     <p style="color: #64748b; font-size: 0.7em; text-align: center; margin-top: 4px;">
-                        Ver: <span id="versionDisplay">2.1.2</span>
+                        Ver: <span id="versionDisplay">2.1.4</span>
                     </p>
                 </div>
             </div>
@@ -497,10 +497,36 @@ def get_user_panel_page() -> str:
                 cursor: pointer;
                 transition: all 0.3s ease;
             }
-            
-            .btn-connect:hover {
+            .btn-connect:hover:not(:disabled) {
                 transform: translateY(-2px);
                 box-shadow: 0 10px 25px rgba(6, 182, 212, 0.3);
+            }
+            .btn-connect:disabled {
+                cursor: default;
+                opacity: 0.85;
+            }
+            .btn-connect.connected {
+                background: linear-gradient(135deg, #16a34a, #15803d);
+            }
+            .wa-toast {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%) translateY(80px);
+                background: #16a34a;
+                color: white;
+                padding: 14px 28px;
+                border-radius: 12px;
+                font-weight: 600;
+                font-size: 0.95em;
+                z-index: 9999;
+                opacity: 0;
+                transition: transform 0.35s ease, opacity 0.35s ease;
+                pointer-events: none;
+            }
+            .wa-toast.show {
+                transform: translateX(-50%) translateY(0);
+                opacity: 1;
             }
             
             .modal {
@@ -642,7 +668,7 @@ def get_user_panel_page() -> str:
             
             <div class="panel-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="userPanelVersion">v2.1.2</div>
+                <div class="version" id="userPanelVersion">v2.1.4</div>
             </div>
         </div>
         
@@ -776,11 +802,14 @@ def get_user_panel_page() -> str:
                     
                     // Botón WhatsApp
                     const waBtn = document.getElementById('waBtn');
-                    const hasQr = status.has_qr;
-                    if (connected && !hasQr) {
-                        waBtn.textContent = '🟢 Reconectar WhatsApp';
+                    if (connected) {
+                        waBtn.textContent = '✅ WhatsApp Conectado';
+                        waBtn.disabled = true;
+                        waBtn.classList.add('connected');
                     } else {
                         waBtn.textContent = '🔴 Conectar WhatsApp';
+                        waBtn.disabled = false;
+                        waBtn.classList.remove('connected');
                     }
                 } catch (error) {
                     console.error('Error al cargar estado:', error);
@@ -896,12 +925,15 @@ def get_user_panel_page() -> str:
                 return false;
             }
 
-            async function _retryQr() {
+            function _retryQr() {
                 const token = localStorage.getItem('token');
                 document.getElementById('qrError').style.display = 'none';
                 document.getElementById('qrLoading').style.display = 'flex';
-                document.getElementById('qrStatus').innerHTML = 'Solicitando nuevo QR...<br><small>Por favor espera</small>';
-                try { await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); } catch(e) {}
+                const st = document.getElementById('qrStatus');
+                if (st) st.innerHTML = 'Solicitando nuevo QR...<br><small>Por favor espera</small>';
+                // Asegurar sesión en segundo plano — sin bloquear
+                fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                    .catch(e => console.warn('[WA] retry connect:', e));
                 _startQrPhase1(token);
             }
 
@@ -938,36 +970,34 @@ def get_user_panel_page() -> str:
                 }, 1500);
             }
 
-            async function toggleWhatsApp() {
+            function toggleWhatsApp() {
                 const btn = document.getElementById('waBtn');
                 const token = localStorage.getItem('token');
-                try {
-                    const res = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
-                    const status = await res.json();
+                if (btn && btn.disabled) return;
+                if (btn) { btn.disabled = true; btn.textContent = '⏳ Conectando...'; }
 
-                    if (status.connected) {
-                        // Reconectar
-                        btn.textContent = '⏳ Reconectando...';
-                        await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-                        btn.textContent = '🟢 Reconectar WhatsApp';
-                        alert('Reconexión iniciada');
+                if (lastConnectedStatus === true) {
+                    // Ya conectado → solo reconectar, sin mostrar QR
+                    if (btn) btn.textContent = '⏳ Reconectando...';
+                    fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                        .catch(e => console.warn('[WA] reconnect:', e));
+                    setTimeout(() => {
+                        if (btn) { btn.disabled = false; btn.textContent = '🟢 Reconectar WhatsApp'; }
                         loadStatus();
-                        return;
-                    }
-
-                    // Iniciar conexión
-                    btn.textContent = '⏳ Conectando...';
-                    _openQrModal();
-                    try {
-                        await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-                    } catch(e) { console.warn('connect:', e); }
-
-                    _startQrPhase1(token);
-
-                } catch (error) {
-                    console.error('toggleWhatsApp error:', error);
-                    btn.textContent = '🔴 Conectar WhatsApp';
+                    }, 5000);
+                    return;
                 }
+
+                // No conectado: abrir modal YA, sin esperar nada
+                _openQrModal();
+
+                // Lanzar /bot/connect en segundo plano (sin await = sin bloquear)
+                fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                    .catch(e => console.warn('[WA] connect:', e));
+
+                // Empezar polling de QR inmediatamente
+                _startQrPhase1(token);
+                if (btn) btn.disabled = false;
             }
 
             // Fase 2: polling de /status hasta detectar conexión exitosa
@@ -995,9 +1025,24 @@ def get_user_panel_page() -> str:
 
             function _closeQrSuccess() {
                 closeQrModal();
-                // Mostrar feedback
+                // Deshabilitar botón y poner estado conectado
                 const btn = document.getElementById('waBtn');
-                if (btn) btn.textContent = '🟢 Reconectar WhatsApp';
+                if (btn) {
+                    btn.textContent = '✅ WhatsApp Conectado';
+                    btn.disabled = true;
+                    btn.classList.add('connected');
+                }
+                // Toast de éxito
+                let toast = document.getElementById('waToast');
+                if (!toast) {
+                    toast = document.createElement('div');
+                    toast.id = 'waToast';
+                    toast.className = 'wa-toast';
+                    document.body.appendChild(toast);
+                }
+                toast.textContent = '✅ WhatsApp conectado exitosamente';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 4000);
                 // Refrescar estado del panel
                 if (typeof loadStatus === 'function') loadStatus();
             }
@@ -1025,6 +1070,10 @@ def get_user_panel_page() -> str:
                 document.getElementById('qrError').style.display = 'none';
                 const st = document.getElementById('qrStatus');
                 if (st) st.innerHTML = 'Iniciando sesión...<br><small>Por favor espera unos segundos</small>';
+                // Rehabilitar botón y refrescar estado
+                const waBtn = document.getElementById('waBtn');
+                if (waBtn) waBtn.disabled = false;
+                setTimeout(() => loadStatus(), 500);
             }
 
             function logout() {
@@ -2242,6 +2291,35 @@ def get_dashboard_page() -> str:
                 transform: translateY(-2px);
                 box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
             }
+            .btn-connected {
+                background: linear-gradient(135deg, #16a34a, #15803d) !important;
+                opacity: 0.85;
+                cursor: default !important;
+            }
+            .btn-connected:hover {
+                transform: none !important;
+                box-shadow: none !important;
+            }
+            .wa-toast {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%) translateY(80px);
+                background: #16a34a;
+                color: white;
+                padding: 14px 28px;
+                border-radius: 12px;
+                font-weight: 600;
+                font-size: 0.95em;
+                z-index: 9999;
+                opacity: 0;
+                transition: transform 0.35s ease, opacity 0.35s ease;
+                pointer-events: none;
+            }
+            .wa-toast.show {
+                transform: translateX(-50%) translateY(0);
+                opacity: 1;
+            }
         </style>
     </head>
     <body>
@@ -2261,7 +2339,7 @@ def get_dashboard_page() -> str:
             
             <div class="sidebar-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="dashboardVersion">v2.1.2</div>
+                <div class="version" id="dashboardVersion">v2.1.4</div>
             </div>
         </div>
         
@@ -2749,11 +2827,14 @@ def get_dashboard_page() -> str:
                     document.getElementById('waStatusText').textContent = status.connected ? 'Conectado' : 'Desconectado';
                     
                     const waBtn = document.getElementById('waBtn');
-                    const hasQr = status.has_qr;
-                    if (status.connected && !hasQr) {
-                        waBtn.textContent = '🟢 Reconectar WhatsApp';
+                    if (status.connected) {
+                        waBtn.textContent = '✅ WhatsApp Conectado';
+                        waBtn.disabled = true;
+                        waBtn.classList.add('btn-connected');
                     } else {
                         waBtn.textContent = '🔴 Conectar WhatsApp';
+                        waBtn.disabled = false;
+                        waBtn.classList.remove('btn-connected');
                     }
                 } catch (error) {
                     console.error('Error:', error);
@@ -2801,12 +2882,13 @@ def get_dashboard_page() -> str:
                 return false;
             }
 
-            async function _retryQr() {
+            function _retryQr() {
                 document.getElementById('qrError').style.display = 'none';
                 document.getElementById('qrLoading').style.display = 'flex';
                 const st = document.getElementById('qrStatus');
                 if (st) st.innerHTML = 'Solicitando nuevo QR...<br><small>Por favor espera</small>';
-                try { await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); } catch(e) {}
+                fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                    .catch(e => console.warn('[WA] retry connect:', e));
                 _startQrPhase1();
             }
 
@@ -2843,43 +2925,33 @@ def get_dashboard_page() -> str:
                 }, 1500);
             }
 
-            async function toggleWhatsApp() {
-                try {
-                    const res = await fetch('/status', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+            function toggleWhatsApp() {
+                const btn = document.getElementById('waBtn');
+                if (btn && btn.disabled) return;
+                if (btn) { btn.disabled = true; btn.textContent = '⏳ Conectando...'; }
 
-                    if (!res.ok) {
-                        if (res.status === 403) { window.location.href = '/login'; return; }
-                        throw new Error(`HTTP ${res.status}`);
-                    }
-
-                    const status = await res.json();
-
-                    if (status.connected) {
-                        // Reconectar
-                        const btn = document.getElementById('waBtn');
-                        btn.textContent = '⏳ Reconectando...';
-                        try {
-                            await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-                        } catch(e) {}
-                        btn.textContent = '🟢 Reconectar WhatsApp';
-                        alert('Reconexión iniciada');
+                if (lastConnectedStatus === true) {
+                    // Ya conectado → solo reconectar, sin mostrar QR
+                    if (btn) btn.textContent = '⏳ Reconectando...';
+                    fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                        .catch(e => console.warn('[WA] reconnect:', e));
+                    setTimeout(() => {
+                        if (btn) { btn.disabled = false; btn.textContent = '🟢 Reconectar WhatsApp'; }
                         refresh();
-                        return;
-                    }
-
-                    // No conectado - abrir modal y lanzar connect
-                    _openQrModal();
-                    try {
-                        await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-                    } catch(e) { console.warn('connect:', e); }
-
-                    _startQrPhase1();
-
-                } catch (error) {
-                    console.error('toggleWhatsApp error:', error);
+                    }, 5000);
+                    return;
                 }
+
+                // No conectado: abrir modal YA, sin esperar nada
+                _openQrModal();
+
+                // Lanzar /bot/connect en segundo plano (sin await = sin bloquear)
+                fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                    .catch(e => console.warn('[WA] connect:', e));
+
+                // Empezar polling de QR inmediatamente
+                _startQrPhase1();
+                if (btn) btn.disabled = false;
             }
 
             // Fase 2: polling de /status hasta detectar conexión exitosa
@@ -2907,8 +2979,24 @@ def get_dashboard_page() -> str:
 
             function _closeQrSuccess() {
                 closeQrModal();
+                // Deshabilitar botón y poner estado conectado
                 const btn = document.getElementById('waBtn');
-                if (btn) btn.textContent = '🟢 Reconectar WhatsApp';
+                if (btn) {
+                    btn.textContent = '✅ WhatsApp Conectado';
+                    btn.disabled = true;
+                    btn.classList.add('btn-connected');
+                }
+                // Toast de éxito
+                let toast = document.getElementById('waToast');
+                if (!toast) {
+                    toast = document.createElement('div');
+                    toast.id = 'waToast';
+                    toast.className = 'wa-toast';
+                    document.body.appendChild(toast);
+                }
+                toast.textContent = '✅ WhatsApp conectado exitosamente';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 4000);
                 if (typeof refresh === 'function') refresh();
             }
 
@@ -2935,6 +3023,10 @@ def get_dashboard_page() -> str:
                 document.getElementById('qrError').style.display = 'none';
                 const st = document.getElementById('qrStatus');
                 if (st) st.innerHTML = 'Iniciando sesión...<br><small>Por favor espera unos segundos</small>';
+                // Rehabilitar botón y refrescar estado
+                const waBtn = document.getElementById('waBtn');
+                if (waBtn) waBtn.disabled = false;
+                setTimeout(() => refresh(), 500);
             }
 
             async function loadUsers() {
