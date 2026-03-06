@@ -4,6 +4,46 @@ Todos los cambios notables de este proyecto serán documentados en este archivo.
 
 ---
 
+## [2.1.0] - 2026-03-06
+
+### ✨ Nuevas Funcionalidades
+- **Modo Operador (Human Mode) completamente reescrito**
+  - ✅ Tecla `99` activa modo operador correctamente
+  - ✅ Tecla `98` desactiva modo operador y regresa al menú
+  - ✅ Lógica de horario con `calendar.timegm()` para timezone-safe comparison
+  - ✅ Silenciamiento correcto de mensajes en modo humano
+- **Nueva página `/user-config` (Configuración de Usuario)**
+  - ✅ Calendario de feriados interactivo (click-to-toggle)
+  - ✅ Gestión de lista de bloqueados
+  - ✅ Cambio de contraseña movido a esta página
+- **Calendario de Feriados — rediseño completo**
+  - ✅ Click en día = marcar/desmarcar como feriado
+  - ✅ Estados visuales: azul (guardado), amarillo (pendiente add), rojo tachado (pendiente delete)
+  - ✅ Sábados/domingos en rosa, día de hoy con contorno
+  - ✅ Badge dinámico de cambios pendientes
+  - ✅ Guardado por diff: solo hace POST de nuevos + DELETE de eliminados
+  - ✅ Botón Cancelar restaura la selección original desde el servidor
+- **Mejoras de UX en panel de usuario y admin**
+  - ✅ Modal QR con apertura instantánea + spinner de carga
+  - ✅ Polling cada 1.5s (hasta 45s) sin bloquear la UI
+  - ✅ Botón Pausar Bot en panel admin y usuario con feedback visual
+
+### 🔧 Endpoints API
+- `/api/holidays` GET/POST/DELETE: abierto a usuarios regulares (antes solo admin)
+- `/api/blocklist` GET/POST/DELETE: abierto a usuarios regulares
+- `/user-config` GET: nueva ruta para la página de configuración de usuario
+
+### 🐛 Correcciones
+- Modo operador: opción `99` y `98` funcionan correctamente en todos los flujos
+- QR: eliminado delay hardcodeado de 8s
+- Panel admin: botón Pausar Bot no existía, ahora agregado
+
+### 📦 Infraestructura
+- Dockerfile + docker-compose sin cambios de estructura
+- `conversation_manager.py` y `state_cache.py` agregados al repo
+
+---
+
 ## [1.0.4] - 2026-03-04 (Hotfix)
 
 ### 🐛 Correcciones de Bugs

@@ -150,6 +150,57 @@ class WhatsAppBlockResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# ===================== CONVERSATION STATE (Handoff) =====================
+class ConversationStateResponse(BaseModel):
+    id: int
+    phone_number: str
+    current_state: str  # BOT_MENU, COLLECTING_DATA, WAITING_AGENT, IN_AGENT, CLOSED, BLACKLISTED
+    handoff_active: bool
+    assigned_agent_id: Optional[int]
+    assigned_agent_name: Optional[str]
+    ticket_id: Optional[str]
+    last_message_at: datetime
+    handoff_started_at: Optional[datetime]
+    closed_at: Optional[datetime]
+    is_blocked: bool
+    
+    class Config:
+        from_attributes = True
+
+class ConversationStateUpdate(BaseModel):
+    current_state: Optional[str] = None
+    handoff_active: Optional[bool] = None
+    assigned_agent_id: Optional[int] = None
+    assigned_agent_name: Optional[str] = None
+    collected_data: Optional[str] = None
+    ticket_id: Optional[str] = None
+    is_blocked: Optional[bool] = None
+    block_reason: Optional[str] = None
+
+class StartHandoffRequest(BaseModel):
+    phone_number: str
+    collected_data: Optional[dict] = None
+    agent_id: Optional[int] = None
+    agent_name: Optional[str] = None
+
+class CloseHandoffRequest(BaseModel):
+    phone_number: str
+    resolution: Optional[str] = None
+    notes: Optional[str] = None
+
+class AgentAssignmentResponse(BaseModel):
+    id: int
+    conversation_id: int
+    agent_id: int
+    phone_number: str
+    ticket_id: str
+    status: str
+    assigned_at: datetime
+    notes: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
 # ===================== STATUS =====================
 class BotStatusResponse(BaseModel):
     provider: str

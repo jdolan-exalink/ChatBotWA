@@ -1,0 +1,384 @@
+# 🎯 DIAGRAMA DE FLUJO - Bloqueados Mejorado
+
+## Flujo Actual del Sistema
+
+### 1. Agregar Número a Blocklist
+
+```
+┌─────────────────────────────────────────┐
+│  Usuario en Dashboard -> Bloqueados     │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌──────────────────────────────────────────┐
+│ Formulario: Número + Razón               │
+│ ✓ Campo: Número de WhatsApp              │
+│ ✓ Campo: Razón/Motivo                    │
+│ ✓ Botón: 🚫 Bloquear                     │
+└────────────────┬─────────────────────────┘
+                 │
+       ┌─────────▼──────────┐
+       │ VALIDACIÓN LOCAL   │
+       │ (Frontend)         │
+       └─────────┬──────────┘
+       ┌─────────▼──────────────────────┐
+       │ ¿Número no vacío?              │
+       │ ¿Comienza con "+"?             │
+       │ ¿Razón no vacía?               │
+       └──┬──────────────────────────┬──┘
+      SÍ │                           │ NO
+        │                           │
+   ┌────▼──────────────┐    ┌──────▼──────────────┐
+   │ Envía POST        │    │ Muestra Error ❌    │
+   │ /api/blocklist    │    │ (Mensaje específico)│
+   │                   │    └─────────────────────┘
+   │ Headers:          │
+   │ - Bearer Token    │
+   │ - Content-Type    │
+   │                   │
+   │ Body:             │
+   │ {                 │
+   │   "phone_number"  │
+   │   "reason"        │
+   │ }                 │
+   └────┬──────────────┘
+        │
+        ▼
+   ┌────────────────────────────────────┐
+   │ API Backend                        │
+   │ POST /api/blocklist                │
+   │                                    │
+   │ ✓ Verifica autenticación (admin)   │
+   │ ✓ Valida datos de entrada          │
+   │ ✓ Verifica unicidad del número     │
+   │ ✓ Inserta en BD                    │
+   │ ✓ Retorna JSON                     │
+   └────┬───────┬────────────────────┬──┘
+        │       │                    │
+      200│  409  │ 400             500│
+      OK │DUP    │ Bad            ERR │
+        │       │                    │
+   ┌────▼──┐┌───▼───┐         ┌─────▼────┐
+   │ Éxito ││ Existe│         │ Error BD │
+   └─┬──┬──┘└───┬───┘         └────┬─────┘
+     │  │       │                  │
+     │  │   ┌───▼───────┐      ┌───▼──────┐
+     │  │   │Error ❌   │      │Error ❌  │
+     │  │   │"Ya existe"│      │Server    │
+     │  │   └───────────┘      └──────────┘
+     │  │
+     │  └─ Muestra: "Error: Número ya está bloqueado"
+     │
+     │
+     └─▶ ┌──────────────────────────────┐
+         │ JavaScript recibe 200 OK     │
+         │ Response JSON:               │
+         │ {                            │
+         │   "ok": true,                │
+         │   "id": 123,                 │
+         │   "phone_number": "...",     │
+         │   "reason": "...",           │
+         │   "blocked_at": "2026-03-05" │
+         │ }                            │
+         └──────────┬───────────────────┘
+                    │
+                    ▼
+              ┌─────────────────────┐
+              │ Muestra ✅ "Éxito"   │
+              │ Limpia formulario   │
+              │ Recarga lista       │
+              └─────────────────────┘
+```
+
+---
+
+### 2. Listar Números Bloqueados
+
+```
+┌──────────────────────────────────────┐
+│ Al cargar sección o después de       │
+│ agregar/eliminar un número           │
+└────────────────┬─────────────────────┘
+                 │
+                 ▼
+         ┌──────────────────────┐
+         │ GET /api/blocklist   │
+         │ Headers:             │
+         │ - Bearer Token       │
+         └──────────┬───────────┘
+                    │
+                    ▼
+         ┌──────────────────────────────┐
+         │ API Backend                  │
+         │                              │
+         │ ✓ Verifica autenticación     │
+         │ ✓ Consulta todos los bloques │
+         │ ✓ Retorna array de objetos   │
+         └──────────┬───────────────────┘
+                    │
+         ┌──────────▼──────────┐
+         │ Response Array      │
+         │ [                   │
+         │   {id, phone, ...},  │
+         │   {id, phone, ...},  │
+         │   ...               │
+         │ ]                   │
+         └──────────┬──────────┘
+                    │
+                    ▼
+      ┌─────────────────────────────────┐
+      │ Frontend recibe array            │
+      │ Genera filas de tabla            │
+      │ Por cada bloqueo:                │
+      │ ┌──────────────────────────────┐ │
+      │ │ Número │ Razón │ [Desbloque] │ │
+      │ │ +543... │ Fact. │   Botón    │ │
+      │ └──────────────────────────────┘ │
+      └─────────────────────────────────┘
+                    │
+                    ▼
+      ┌─────────────────────────────────┐
+      │ Si lista es vacía:              │
+      │ Muestra: "No hay números..."    │
+      │                                 │
+      │ Si error en fetch:              │
+      │ Muestra: "❌ Error al cargar..." │
+      └─────────────────────────────────┘
+```
+
+---
+
+### 3. Desbloquear Número
+
+```
+┌──────────────────────────────────────┐
+│ Usuario hace click en              │
+│ botón "Desbloquear" en una fila    │
+└────────────────┬─────────────────────┘
+                 │
+                 ▼
+         ┌──────────────────────┐
+         │ Confirmación:        │
+         │ "¿Seguro desbloquear │
+         │  este número?"       │
+         │ [Cancelar] [Aceptar] │
+         └──────────┬───────────┘
+                 NO │ │ SÍ
+            Cancela │ │
+                    │ ▼
+                    ├─▶ ┌────────────────────────────┐
+                    │   │ DELETE /api/blocklist/123  │
+                    │   │ Headers:                    │
+                    │   │ - Bearer Token              │
+                    │   └──────────┬─────────────────┘
+                    │              │
+                    │              ▼
+                    │      ┌────────────────────────┐
+                    │      │ API Backend            │
+                    │      │                        │
+                    │      │ ✓ Verifica auth (admin)│
+                    │      │ ✓ Busca registro por ID│
+                    │      │ ✓ Si existe, lo elimina│
+                    │      │ ✓ Commit transacción   │
+                    │      │ ✓ Retorna OK           │
+                    │      └──────┬───────────┬──────┘
+                    │             │           │
+                    │           200│      404 │
+                    │            OK│     Not  │
+                    │             │         Found
+                    │      ┌──────▼────┐  ┌──▼──────────┐
+                    │      │ Desbloq.  │  │ No encontrado│
+                    │      │ Éxito ✅   │  │ Error ❌     │
+                    │      └──────┬─────┘  └──────┬──────┘
+                    │             │               │
+                    │      ┌──────▼────────────────▼────┐
+                    │      │ Frontend recibe respuesta  │
+                    │      │ Si éxito (200):            │
+                    │      │ - Muestra ✅               │
+                    │      │ - Recarga lista            │
+                    │      │ Si error:                  │
+                    │      │ - Muestra ❌               │
+                    │      └────────────────────────────┘
+                    │
+                    └─────────── No hacer nada
+```
+
+---
+
+## Estructura de Datos
+
+### Modelo WhatsAppBlockList
+```
+┌─────────────────────────────────────┐
+│ whatsapp_blocklist                  │
+├─────────────────────────────────────┤
+│ id (INT, PRIMARY KEY)               │ ← Auto-incrementado
+│ phone_number (STRING, UNIQUE)       │ ← +54342443815
+│ reason (STRING, MAX 255)            │ ← "Facturación"
+│ blocked_at (DATETIME)               │ ← 2026-03-05 10:30:15
+├─────────────────────────────────────┤
+│ Índices:                            │
+│ - id (principal)                    │
+│ - phone_number (búsqueda rápida)    │
+└─────────────────────────────────────┘
+```
+
+### Flujo de Datos JSON
+
+#### Request POST (Agregar)
+```json
+{
+  "phone_number": "+543424438150",
+  "reason": "Facturación"
+}
+```
+
+#### Response GET (Listar)
+```json
+[
+  {
+    "id": 1,
+    "phone_number": "+543424438150",
+    "reason": "Facturación",
+    "blocked_at": "2026-03-05T10:30:15.123456"
+  },
+  {
+    "id": 2,
+    "phone_number": "+5491112345678",
+    "reason": "Spam",
+    "blocked_at": "2026-03-04T15:22:30.654321"
+  }
+]
+```
+
+#### Response POST (Respuesta después de agregar)
+```json
+{
+  "ok": true,
+  "id": 1,
+  "phone_number": "+543424438150",
+  "reason": "Facturación",
+  "blocked_at": "2026-03-05T10:30:15.123456"
+}
+```
+
+#### Response DELETE (Confirmación)
+```json
+{
+  "ok": true,
+  "message": "Número desbloqueado"
+}
+```
+
+---
+
+## Estados de la UI
+
+### Estado Normal
+```
+┌─────────────────────────────────────┐
+│ 🚫 Bloqueados                       │
+├─────────────────────────────────────┤
+│ 📋 Lista de Bloqueados              │
+│ ┌─────────┬────────┬────────────────┤
+│ │ Número  │ Razón  │ Acción         │
+│ ├─────────┼────────┼────────────────┤
+│ │ +543... │ Fact.  │ [Desbloquear]  │
+│ │ +5491.. │ Spam   │ [Desbloquear]  │
+│ └─────────┴────────┴────────────────┘
+└─────────────────────────────────────┘
+```
+
+### Estado Cargando
+```
+┌──────────────────────────────┐
+│ ⏳ Agregando número...       │
+│ (azul, intermitente)         │
+└──────────────────────────────┘
+```
+
+### Estado Éxito
+```
+┌──────────────────────────────┐
+│ ✅ Número bloqueado         │
+│    exitosamente              │
+│ (verde, 3 segundos)          │
+└──────────────────────────────┘
+```
+
+### Estado Error
+```
+┌──────────────────────────────┐
+│ ❌ Error: Número ya bloqueado│
+│    (rojo, permanente)        │
+│    [Cerrar mensaje]          │
+└──────────────────────────────┘
+```
+
+### Estado Validación
+```
+┌──────────────────────────────┐
+│ ⚠️ El número debe comenzar   │
+│    con +                     │
+│ (naranja, al hacer click)    │
+└──────────────────────────────┘
+```
+
+---
+
+## Tabla de Transiciones de Estado
+
+| Estado | Acción Usuario | Validación | Resultado |
+|--------|---|---|---|
+| Normal | Completa formulario | ✓ OK | Habilita botón |
+| Normal | Completa formulario | ✗ Telefono vacío | Muestra ⚠️ error |
+| Normal | Completa formulario | ✗ Sin "+" | Muestra ⚠️ error |
+| Normal | Completa formulario | ✗ Razón vacía | Muestra ⚠️ error |
+| Normal | Completa y valida | ✓ OK | Muestra ⏳ procesando |
+| Procesando | API responde 200 | ✓ OK | Muestra ✅ éxito |
+| Procesando | API responde 409 | ✗ Duplicado | Muestra ❌ error |
+| Procesando | API responde 500 | ✗ Error BD | Muestra ❌ error |
+| Normal | Click Desbloquear | - | Confirmación |
+| Confirmación | Cancela | - | Vuelve a Normal |
+| Confirmación | Acepta | - | Muestra ⏳ |
+| Procesando | API responde 200 | ✓ OK | Muestra ✅ |
+| Procesando | API responde 404 | ✗ No existe | Muestra ❌ |
+
+---
+
+## Seguridad del Flujo
+
+1. **Autenticación**
+   - ✓ Usuario debe iniciar sesión
+   - ✓ Token en localStorage
+   - ✓ Token enviado en Headers
+
+2. **Autorización**
+   - ✓ get_current_admin verifica rol
+   - ✓ Solo admin puede agregar/eliminar
+   - ✓ Validación en backend
+
+3. **Validación de Datos**
+   - ✓ Frontend: validación básica
+   - ✓ Backend: validación completa
+   - ✓ BD: restricción UNIQUE en phone_number
+
+4. **Manejo de Errores**
+   - ✓ Errores visibles al usuario
+   - ✓ Logs en backend (console.error)
+   - ✓ Recuperación sin reload
+
+---
+
+## Performance
+
+| Operación | Tiempo Esperado |
+|-----------|---|
+| Cargar lista | < 500ms |
+| Agregar número | < 2s |
+| Desbloquear | < 2s |
+| Validación local | < 100ms |
+
+---
+
+**Revisión Complete**: ✅ Marzo 2026
