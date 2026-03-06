@@ -246,31 +246,35 @@ async def _waha_session_info() -> dict:
     return {"name": WAHA_SESSION, "status": "unknown"}
 
 async def _waha_qr() -> bytes | None:
-    """Tries multiple WAHA QR endpoints. Returns PNG bytes or None."""
+    """Prueba las 4 rutas de QR en PARALELO con timeout corto. Retorna PNG bytes o None."""
+    client = _get_waha_client()
     paths = [
         f"/api/{WAHA_SESSION}/auth/qr?format=image",
         f"/api/sessions/{WAHA_SESSION}/auth/qr?format=image",
         f"/api/{WAHA_SESSION}/auth/qr",
         f"/api/sessions/{WAHA_SESSION}/qr",
     ]
-    for p in paths:
+
+    async def _try(p: str) -> bytes | None:
         try:
-            r = await _waha_get(p)
+            r = await client.get(p, headers=_waha_headers(),
+                                 timeout=httpx.Timeout(connect=2.0, read=3.0, write=3.0, pool=2.0))
             ct = r.headers.get("content-type", "")
-            if "image" in ct:
+            if "image" in ct and r.content:
                 return r.content
-            # Some WAHA versions return JSON with base64 value
             if "json" in ct:
                 data = r.json()
                 raw = data.get("value") or data.get("data") or data.get("qr")
                 if raw and isinstance(raw, str):
-                    # Strip possible data URL prefix
                     if "," in raw:
                         raw = raw.split(",", 1)[1]
                     return base64.b64decode(raw)
         except Exception:
             pass
-    return None
+        return None
+
+    results = await asyncio.gather(*[_try(p) for p in paths])
+    return next((r for r in results if r), None)
 
 async def _send_wha(chat_id: str, text: str):
     """Envía texto por WhatsApp. Solo llamar desde flujo BOT, nunca en human mode."""
@@ -915,15 +919,11 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
 
 @app.get("/qr")
 async def qr_image():
-    # Fast-fail: only fetch QR when session is actually in SCAN_QR_CODE state.
-    # Without this check, _waha_qr() tries 4 paths each waiting 5s → 10s per call,
-    # causing dozens of concurrent stalled requests during session startup.
-    info = await _waha_session_info()
-    status_str = str(info.get("status", "")).upper()
-    if status_str != "SCAN_QR_CODE":
-        raise HTTPException(404, "QR no disponible")
+    # Intenta obtener el QR directamente (rutas en paralelo, timeout 3s c/u).
+    # No esperamos a SCAN_QR_CODE: WAHA puede tener QR listo incluso en STARTING.
     b = await _waha_qr()
-    if not b: raise HTTPException(404, "QR no disponible")
+    if not b:
+        raise HTTPException(404, "QR no disponible")
     return Response(content=b, media_type="image/png")
 
 @app.get("/api/debug/status")
@@ -952,7 +952,7 @@ async def _waha_delete_and_recreate() -> bool:
     except Exception as e:
         _log(f"[CONNECT] DELETE error (ok to ignore): {e}")
 
-    await asyncio.sleep(2)  # let WAHA clean up before recreating
+    await asyncio.sleep(1)  # let WAHA clean up before recreating
 
     try:
         r = await c.post(
@@ -962,8 +962,7 @@ async def _waha_delete_and_recreate() -> bool:
         )
         _log(f"[CONNECT] create session: {r.status_code}")
         if r.status_code < 400:
-            await asyncio.sleep(3)  # give WAHA time to boot QR
-            return True
+            return True  # el frontend hace polling, no necesitamos esperar aquí
     except Exception as e:
         _logc(f"[ERROR] CONNECT create: {e}")
 
@@ -975,7 +974,6 @@ async def _waha_delete_and_recreate() -> bool:
         )
         _log(f"[CONNECT] restart fallback: {r.status_code}")
         if r.status_code < 400:
-            await asyncio.sleep(3)
             return True
     except Exception as e:
         _logc(f"[ERROR] CONNECT restart fallback: {e}")
@@ -988,9 +986,8 @@ async def bot_connect(cu=Depends(get_current_user)):
     status_str = str(info.get("status", "")).upper()
     _log(f"[CONNECT] session status: {status_str}")
 
-    # STARTING → WAHA is booting, wait a moment and check for QR
+    # STARTING → WAHA is booting; retornamos inmediato, el frontend hace polling
     if status_str == "STARTING":
-        await asyncio.sleep(4)
         return {"ok": True, "status": status_str}
 
     # SCAN_QR_CODE → QR might already be valid, but could be expired.

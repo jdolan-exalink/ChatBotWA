@@ -944,11 +944,11 @@ def get_user_panel_page() -> str:
                 _qrPollTimer = setInterval(async () => {
                     attempts++;
                     // Update status text so user sees progress
-                    const secs = Math.round(attempts * 1.5);
+                    const secs = Math.round(attempts * 0.8);
                     const st = document.getElementById('qrStatus');
                     if (st) st.innerHTML = `Esperando QR... (${secs}s)<br><small>Conectando con WhatsApp</small>`;
 
-                    if (attempts > 60) { // 90s max
+                    if (attempts > 112) { // 90s max
                         clearInterval(_qrPollTimer); _qrPollTimer = null;
                         document.getElementById('qrLoading').style.display = 'none';
                         document.getElementById('qrError').style.display = 'block';
@@ -967,7 +967,7 @@ def get_user_panel_page() -> str:
                             await _fetchAndShowQr();
                         }, 50000);
                     }
-                }, 1500);
+                }, 800);
             }
 
             function toggleWhatsApp() {
