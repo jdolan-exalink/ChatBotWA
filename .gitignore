@@ -48,6 +48,9 @@ ENV/
 *.sqlite
 *.sqlite3
 /data/*.sqlite3
+# SQLite WAL runtime files
+*.sql-shm
+*.sql-wal
 
 # WhatsApp session data
 data/waha/
@@ -83,3 +86,6 @@ Thumbs.db
 *.tmp
 *.temp
 *~
+# Backup files
+*.bak
+*.backup

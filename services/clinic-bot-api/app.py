@@ -917,7 +917,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.1.6", "name": "WA-BOT"}
+    return {"version": "2.1.7", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
