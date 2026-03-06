@@ -20,6 +20,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, RedirectResponse
+from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy.orm import Session
 
 from database import init_db, get_db, SessionLocal, engine
@@ -61,6 +62,40 @@ _chats_date   = None
 _last_status  = {"connected": None, "last_alert_at": 0}
 
 # ──────────────────────────────────────────────────────────────
+#  CACHÉ EN MEMORIA  (elimina consultas DB en el hot path)
+#  El webhook recibe cientos de mensajes — cada query a SQLite
+#  bloquea el event loop y apila requests. Los cachemos y solo
+#  tocamos DB cuando los datos realmente cambian.
+# ──────────────────────────────────────────────────────────────
+_cfg_cache: "BotConfig | None" = None          # BotConfig única fila
+_off_hours_cache: tuple = (0.0, False)         # (timestamp, resultado) TTL 30s
+_blocklist_set: set = set()                    # teléfonos bloqueados
+_blocklist_loaded: bool = False                # ¿ya leimos de DB?
+_menu_cache: str = ""                          # contenido MenuP.MD en RAM
+
+# ──────────────────────────────────────────────────────────────
+#  CLIENTE HTTP GLOBAL PARA WAHA
+#  Un solo cliente reutilizado con pool acotado → evita saturar
+#  el event loop con cientos de conexiones simultáneas.
+# ──────────────────────────────────────────────────────────────
+_waha_client: httpx.AsyncClient | None = None
+
+def _get_waha_client() -> httpx.AsyncClient:
+    """Retorna el cliente global; lo crea si no existe aún."""
+    global _waha_client
+    if _waha_client is None or _waha_client.is_closed:
+        _waha_client = httpx.AsyncClient(
+            base_url=WAHA_URL,
+            timeout=httpx.Timeout(connect=3.0, read=6.0, write=6.0, pool=3.0),
+            limits=httpx.Limits(
+                max_connections=20,        # nunca más de 20 sockets a WAHA
+                max_keepalive_connections=10,
+                keepalive_expiry=30,
+            ),
+        )
+    return _waha_client
+
+# ──────────────────────────────────────────────────────────────
 #  LOGGING
 #  Modo operativo (debug_mode=False): solo [CHAT] y [ERROR]
 #  Modo debug   (debug_mode=True):  todos los logs detallados
@@ -80,6 +115,7 @@ def _logc(msg: str) -> None:
 #  APP
 # ──────────────────────────────────────────────────────────────
 app = FastAPI(title="WA-BOT", version="2.1.5")
+app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
@@ -92,8 +128,15 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     init_db()
+    _get_waha_client()              # pre-inicializar el cliente HTTP
     asyncio.create_task(_init_defaults())
     asyncio.create_task(_monitor_loop())
+
+@app.on_event("shutdown")
+async def shutdown():
+    global _waha_client
+    if _waha_client and not _waha_client.is_closed:
+        await _waha_client.aclose()
 
 async def _init_defaults():
     await asyncio.sleep(1)
@@ -124,6 +167,7 @@ async def _init_defaults():
             _log("[INIT] Config por defecto creada")
         db.commit()
         _sync_debug_mode(db)   # carga debug_mode al arrancar
+        _preload_caches(db)    # pre-carga config, blocklist, menú y off-hours
     except Exception as e:
         _logc(f"[ERROR] init: {e}")
         db.rollback()
@@ -178,12 +222,10 @@ def _waha_headers() -> dict:
     return {"X-API-Key": WAHA_API_KEY} if WAHA_API_KEY else {}
 
 async def _waha_get(path: str):
-    async with httpx.AsyncClient(timeout=20) as c:
-        return await c.get(f"{WAHA_URL}{path}", headers=_waha_headers())
+    return await _get_waha_client().get(path, headers=_waha_headers())
 
 async def _waha_post(path: str, data: dict):
-    async with httpx.AsyncClient(timeout=20) as c:
-        return await c.post(f"{WAHA_URL}{path}", json=data, headers=_waha_headers())
+    return await _get_waha_client().post(path, json=data, headers=_waha_headers())
 
 async def _waha_session_info() -> dict:
     for p in [f"/api/sessions/{WAHA_SESSION}", "/api/sessions"]:
@@ -236,19 +278,24 @@ async def _send_wha(chat_id: str, text: str):
         _log(f"[SEND] Bloqueado - texto vacío para {chat_id}")
         return
     _logc(f"[CHAT] → {chat_id}: {text[:80]}")
+    client = _get_waha_client()
     for path, payload in [
         ("/api/sendText",                 {"session": WAHA_SESSION, "chatId": chat_id, "text": text}),
         (f"/api/{WAHA_SESSION}/sendText", {"chatId": chat_id, "text": text}),
         ("/api/messages/text",            {"session": WAHA_SESSION, "chatId": chat_id, "text": text}),
     ]:
         try:
-            r = await _waha_post(path, payload)
+            r = await client.post(path, json=payload, headers=_waha_headers())
             if r.status_code < 400:
                 _log(f"[SEND] OK via {path}")
                 return
+        except httpx.TimeoutException:
+            _log(f"[SEND] timeout en {path}")
+            break   # si tarda, no seguir probando otras rutas
         except Exception as e:
             _logc(f"[ERROR] SEND en {path}: {e}")
-    _logc(f"[ERROR] SEND FALLIDO para {chat_id}")
+            break
+    _log(f"[SEND] no enviado para {chat_id} (WAHA no disponible)")
 
 # ──────────────────────────────────────────────────────────────
 #  HELPERS - EMAIL
@@ -284,6 +331,19 @@ def _get_cfg(db: Session) -> BotConfig:
         db.add(cfg); db.commit()
     return cfg
 
+def _get_cfg_cached(db: Session) -> BotConfig:
+    """Config con caché en memoria. Solo toca DB si el caché está vacío."""
+    global _cfg_cache
+    if _cfg_cache is None:
+        _cfg_cache = _get_cfg(db)
+    return _cfg_cache
+
+def _invalidate_cfg_cache():
+    """Invalida el caché de config y off-hours al guardar cambios."""
+    global _cfg_cache, _off_hours_cache
+    _cfg_cache = None
+    _off_hours_cache = (0.0, False)
+
 def _sync_debug_mode(db: Session) -> None:
     """Lee debug_mode desde DB y actualiza el global en memoria."""
     global _debug_mode
@@ -295,7 +355,7 @@ def _sync_debug_mode(db: Session) -> None:
 
 def _is_off_hours(db: Session) -> bool:
     import pytz
-    cfg = _get_cfg(db)
+    cfg = _get_cfg_cached(db)
     if not cfg.off_hours_enabled:
         return False
     try:
@@ -314,6 +374,47 @@ def _is_off_hours(db: Session) -> bool:
     off = t < o or t > c
     _log(f"[HOURS] {now.strftime('%A %H:%M')} | {o}-{c} | fuera={off}")
     return off
+
+def _is_off_hours_cached(db: Session) -> bool:
+    """Calcula off-hours con caché de 30s. Recalcula solo cuando cambia la hora."""
+    global _off_hours_cache
+    now_ts = time.time()
+    last_ts, last_val = _off_hours_cache
+    if now_ts - last_ts < 30:   # caché válido por 30 segundos
+        return last_val
+    result = _is_off_hours(db)
+    _off_hours_cache = (now_ts, result)
+    return result
+
+def _get_blocklist(db: Session) -> set:
+    """Blocklist cacheada. Se carga una vez y se actualiza en add/delete."""
+    global _blocklist_set, _blocklist_loaded
+    if not _blocklist_loaded:
+        try:
+            rows = db.query(WhatsAppBlockList).all()
+            _blocklist_set = {r.phone_number for r in rows}
+            _blocklist_loaded = True
+        except Exception:
+            pass
+    return _blocklist_set
+
+def _get_menu_cached() -> str:
+    """Lee el menú una sola vez y lo cachea en RAM. Invalida en save."""
+    global _menu_cache
+    if not _menu_cache:
+        _menu_cache = _read_menu()
+    return _menu_cache
+
+def _invalidate_menu_cache():
+    global _menu_cache
+    _menu_cache = ""
+
+def _preload_caches(db: Session):
+    """Pre-carga todos los cachés al arrancar para respuesta instantánea desde el primer mensaje."""
+    _get_cfg_cached(db)
+    _get_blocklist(db)
+    _get_menu_cached()
+    _is_off_hours_cached(db)
 
 # ──────────────────────────────────────────────────────────────
 #  HUMAN MODE  (WAHA-DOC §5, §8, §9, §11)
@@ -391,7 +492,7 @@ def _exit_human_mode(db: Session, chat_id: str):
 # ──────────────────────────────────────────────────────────────
 def _menu_main() -> str:
     """Devuelve el bloque inicial del menú (hasta primer ---)."""
-    lines = _read_menu().split("\n")
+    lines = _get_menu_cached().split("\n")
     out = []
     for ln in lines:
         out.append(ln)
@@ -404,7 +505,7 @@ def _menu_nav(choice: str, section: str) -> tuple[str, str]:
     if not choice.isdigit():
         return "", section   # texto libre → silent ignore
 
-    lines   = _read_menu().split("\n")
+    lines   = _get_menu_cached().split("\n")
     path    = [] if section == "main" else section.replace("menu_", "").split("_")
     npath   = path + [choice]
     marker  = ".".join(npath)
@@ -516,9 +617,9 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
         return {"ok": True, "status": "handoff", "ticket": ticket}
 
     # 8. Filtros de acceso ───────────────────────────────────────
-    cfg = _get_cfg(db)
+    cfg = _get_cfg_cached(db)
 
-    if db.query(WhatsAppBlockList).filter(WhatsAppBlockList.phone_number == chat_id).first():
+    if chat_id in _get_blocklist(db):
         return {"ok": True, "blocked": True}
 
     if cfg.country_filter_enabled and cfg.country_codes:
@@ -542,7 +643,7 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     answer = ""
 
     # 9a. Fuera de horario
-    if _is_off_hours(db):
+    if _is_off_hours_cached(db):
         p = _data_path("MenuF.MD")
         try:
             with open(p, "r", encoding="utf-8") as f:
@@ -684,6 +785,7 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
         if v is not None: setattr(cfg, f, v)
     db.commit(); db.refresh(cfg)
     _sync_debug_mode(db)   # actualiza el global en memoria
+    _invalidate_cfg_cache()    # limpia caché para próxima lectura
     return BotConfigResponse.from_orm(cfg)
 
 @app.put("/api/config/menu")
@@ -692,6 +794,7 @@ async def update_menu_file(req: Request, ca=Depends(get_current_admin)):
     if not content.strip(): raise HTTPException(400, "Vacío")
     p = _data_path("MenuP.MD"); os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w", encoding="utf-8") as f: f.write(content)
+    _invalidate_menu_cache()    # fuerza recarga en próximo acceso
     return {"ok": True, "bytes": len(content)}
 
 @app.put("/api/config/offhours")
@@ -767,13 +870,16 @@ async def add_blocklist(req: Request, cu=Depends(get_current_user), db: Session 
         raise HTTPException(400, "Ya bloqueado")
     b = WhatsAppBlockList(phone_number=phone, reason=body.get("reason", ""))
     db.add(b); db.commit(); db.refresh(b)
+    _blocklist_set.add(phone)   # actualiza caché en memoria
     return {"ok": True, "id": b.id}
 
 @app.delete("/api/blocklist/{bid}")
 async def del_blocklist(bid: int, cu=Depends(get_current_user), db: Session = Depends(get_db)):
     b = db.query(WhatsAppBlockList).filter(WhatsAppBlockList.id == bid).first()
     if not b: raise HTTPException(404, "No encontrado")
+    phone_to_remove = b.phone_number
     db.delete(b); db.commit()
+    _blocklist_set.discard(phone_to_remove)   # actualiza caché en memoria
     return {"ok": True}
 
 # ──────────────────────────────────────────────────────────────
@@ -836,43 +942,43 @@ async def bot_resume(cu=Depends(get_current_user)):
 
 async def _waha_delete_and_recreate() -> bool:
     """DELETE session + POST to recreate fresh → forces QR generation."""
-    async with httpx.AsyncClient(timeout=20) as c:
-        try:
-            rd = await c.delete(
-                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}",
-                headers=_waha_headers()
-            )
-            _log(f"[CONNECT] DELETE session: {rd.status_code}")
-        except Exception as e:
-            _log(f"[CONNECT] DELETE error (ok to ignore): {e}")
+    c = _get_waha_client()
+    try:
+        rd = await c.delete(
+            f"/api/sessions/{WAHA_SESSION}",
+            headers=_waha_headers()
+        )
+        _log(f"[CONNECT] DELETE session: {rd.status_code}")
+    except Exception as e:
+        _log(f"[CONNECT] DELETE error (ok to ignore): {e}")
 
-        await asyncio.sleep(2)  # let WAHA clean up before recreating
+    await asyncio.sleep(2)  # let WAHA clean up before recreating
 
-        try:
-            r = await c.post(
-                f"{WAHA_URL}/api/sessions",
-                headers=_waha_headers(),
-                json={"name": WAHA_SESSION, "start": True}
-            )
-            _log(f"[CONNECT] create session: {r.status_code}")
-            if r.status_code < 400:
-                await asyncio.sleep(3)  # give WAHA time to boot QR
-                return True
-        except Exception as e:
-            _logc(f"[ERROR] CONNECT create: {e}")
+    try:
+        r = await c.post(
+            f"/api/sessions",
+            headers=_waha_headers(),
+            json={"name": WAHA_SESSION, "start": True}
+        )
+        _log(f"[CONNECT] create session: {r.status_code}")
+        if r.status_code < 400:
+            await asyncio.sleep(3)  # give WAHA time to boot QR
+            return True
+    except Exception as e:
+        _logc(f"[ERROR] CONNECT create: {e}")
 
-        # Fallback: restart
-        try:
-            r = await c.post(
-                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
-                headers=_waha_headers(), json={}
-            )
-            _log(f"[CONNECT] restart fallback: {r.status_code}")
-            if r.status_code < 400:
-                await asyncio.sleep(3)
-                return True
-        except Exception as e:
-            _logc(f"[ERROR] CONNECT restart fallback: {e}")
+    # Fallback: restart
+    try:
+        r = await c.post(
+            f"/api/sessions/{WAHA_SESSION}/restart",
+            headers=_waha_headers(), json={}
+        )
+        _log(f"[CONNECT] restart fallback: {r.status_code}")
+        if r.status_code < 400:
+            await asyncio.sleep(3)
+            return True
+    except Exception as e:
+        _logc(f"[ERROR] CONNECT restart fallback: {e}")
     return False
 
 
@@ -901,17 +1007,17 @@ async def bot_connect(cu=Depends(get_current_user)):
 
     # WORKING → simple restart (keeps stored auth, just reconnects)
     if status_str == "WORKING":
-        async with httpx.AsyncClient(timeout=15) as c:
-            try:
-                r = await c.post(
-                    f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
-                    headers=_waha_headers(), json={}
-                )
-                _log(f"[CONNECT] restart (working): {r.status_code}")
-                return {"ok": r.status_code < 400}
-            except Exception as e:
-                _logc(f"[ERROR] CONNECT restart: {e}")
-                return {"ok": False}
+        try:
+            c = _get_waha_client()
+            r = await c.post(
+                f"/api/sessions/{WAHA_SESSION}/restart",
+                headers=_waha_headers(), json={}
+            )
+            _log(f"[CONNECT] restart (working): {r.status_code}")
+            return {"ok": r.status_code < 400}
+        except Exception as e:
+            _logc(f"[ERROR] CONNECT restart: {e}")
+            return {"ok": False}
 
     # FAILED or any other state → DELETE + recreate fresh (generates QR)
     ok = await _waha_delete_and_recreate()
@@ -920,16 +1026,16 @@ async def bot_connect(cu=Depends(get_current_user)):
 @app.post("/bot/logout")
 async def bot_logout(cu=Depends(get_current_user)):
     """Logout: DELETE session from WAHA (clears auth) then recreate stopped."""
-    async with httpx.AsyncClient(timeout=15) as c:
-        try:
-            r = await c.delete(
-                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}",
-                headers=_waha_headers()
-            )
-            _log(f"[LOGOUT] DELETE session: {r.status_code}")
-            return {"ok": r.status_code < 400}
-        except Exception as e:
-            _logc(f"[ERROR] LOGOUT: {e}")
+    try:
+        c = _get_waha_client()
+        r = await c.delete(
+            f"/api/sessions/{WAHA_SESSION}",
+            headers=_waha_headers()
+        )
+        _log(f"[LOGOUT] DELETE session: {r.status_code}")
+        return {"ok": r.status_code < 400}
+    except Exception as e:
+        _logc(f"[ERROR] LOGOUT: {e}")
     return {"ok": False}
 
 # ──────────────────────────────────────────────────────────────
@@ -937,11 +1043,12 @@ async def bot_logout(cu=Depends(get_current_user)):
 # ──────────────────────────────────────────────────────────────
 @app.get("/menu")
 async def get_menu():
-    return {"menu": _read_menu()}
+    return {"menu": _get_menu_cached()}
 
 @app.post("/menu/save")
 async def save_menu_legacy(req: Request, ca=Depends(get_current_admin)):
     body = await req.json(); _write_menu(body.get("menu", ""))
+    _invalidate_menu_cache()    # fuerza recarga en próximo acceso
     return {"ok": True}
 
 @app.post("/api/menu-action")

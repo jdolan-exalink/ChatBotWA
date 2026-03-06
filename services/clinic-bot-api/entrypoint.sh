@@ -122,4 +122,4 @@ print('   Schema actualizado.')
 # Ejecutar servidor
 echo ""
 echo "🚀 Iniciando WA-BOT..."
-python3 /app/app.py
+uvicorn app:app --host 0.0.0.0 --port ${PORT:-8088} --loop uvloop --log-level warning
