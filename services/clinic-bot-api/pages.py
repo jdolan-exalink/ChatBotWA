@@ -231,7 +231,7 @@ def get_login_page() -> str:
                         DOLAN SS - 2026
                     </p>
                     <p style="color: #64748b; font-size: 0.7em; text-align: center; margin-top: 4px;">
-                        Ver: <span id="versionDisplay">2.1.4</span>
+                        Ver: <span id="versionDisplay">2.1.5</span>
                     </p>
                 </div>
             </div>
@@ -668,7 +668,7 @@ def get_user_panel_page() -> str:
             
             <div class="panel-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="userPanelVersion">v2.1.4</div>
+                <div class="version" id="userPanelVersion">v2.1.5</div>
             </div>
         </div>
         
@@ -2339,7 +2339,7 @@ def get_dashboard_page() -> str:
             
             <div class="sidebar-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="dashboardVersion">v2.1.4</div>
+                <div class="version" id="dashboardVersion">v2.1.5</div>
             </div>
         </div>
         
@@ -2521,6 +2521,20 @@ def get_dashboard_page() -> str:
                                     <input type="time" id="satClosingTime">
                                 </div>
                             </div>
+                        </div>
+                        
+                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">🔧 Modo de Operación</h3>
+                            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="debugMode" style="margin-top: 3px; width: 16px; height: 16px; flex-shrink: 0;">
+                                <div>
+                                    <span style="color: #f1f5f9; font-weight: 500;">Modo Debug</span>
+                                    <p style="color: #94a3b8; font-size: 0.85em; margin: 4px 0 0;">
+                                        Activado: logs detallados (horarios, webhooks, conexión).<br>
+                                        Desactivado <em>(recomendado)</em>: solo chats entrantes y errores.
+                                    </p>
+                                </div>
+                            </label>
                         </div>
                         
                         <button type="submit" class="btn btn-primary">💾 Guardar Configuración</button>
@@ -3081,6 +3095,7 @@ def get_dashboard_page() -> str:
                     document.getElementById('closingTime').value = config.closing_time || '18:00';
                     document.getElementById('satOpeningTime').value = config.sat_opening_time || '10:00';
                     document.getElementById('satClosingTime').value = config.sat_closing_time || '14:00';
+                    document.getElementById('debugMode').checked = !!config.debug_mode;
                 } catch (error) {
                     console.error('Error loading config:', error);
                 }
@@ -3099,7 +3114,8 @@ def get_dashboard_page() -> str:
                             solution_name: document.getElementById('solutionName').value,
                             menu_title: document.getElementById('menuTitle').value,
                             opening_time: document.getElementById('openingTime').value,
-                            closing_time: document.getElementById('closingTime').value
+                            closing_time: document.getElementById('closingTime').value,
+                            debug_mode: document.getElementById('debugMode').checked
                         })
                     });
                     
