@@ -540,9 +540,128 @@ def _menu_nav(choice: str, section: str) -> tuple[str, str]:
 # ──────────────────────────────────────────────────────────────
 #  WEBHOOK  — motor del bot (WAHA-DOC §3, §5, §8, §9)
 # ──────────────────────────────────────────────────────────────
+
+def _sync_process_message(chat_id: str, text: str) -> str:
+    """
+    Toda la lógica síncrona con DB. Corre en thread pool.
+    Devuelve el mensaje a enviar (str vacío = no enviar nada).
+    """
+    global _chat_nav, _chats_today, _chats_date
+    db = SessionLocal()
+    try:
+        # 4. Contador diario
+        from datetime import date as _d
+        today = str(_d.today())
+        if _chats_date != today:
+            _chats_today = set(); _chats_date = today
+        _chats_today.add(chat_id)
+
+        # 5. HUMAN MODE
+        in_human = _is_human_mode(db, chat_id)
+        _log(f"[WH] human_mode={in_human}")
+
+        if in_human:
+            if text == "98":
+                _exit_human_mode(db, chat_id)
+                _chat_nav.pop(chat_id, None)
+                return (
+                    "✅ *Volviste al menú automático.*\n\n"
+                    "Escribe *0* para ver el menú principal."
+                )
+            else:
+                _log(f"[WH] HUMAN_MODE activo → ignorando '{text}'")
+                return ""
+
+        # 6. 98 fuera de human mode → silencio
+        if text == "98":
+            _log(f"[WH] 98 sin human_mode activo → ignorar")
+            return ""
+
+        # 7. Opción 99: activar modo humano
+        if text == "99":
+            ticket = _start_human_mode(db, chat_id)
+            _chat_nav.pop(chat_id, None)
+            return (
+                "📞 *Se ha iniciado transferencia a un operador*\n\n"
+                f"✅ Tu número de ticket: *{ticket}*\n\n"
+                "⏳ Por favor espera a que un operario se comunique contigo.\n"
+                "Esto generalmente toma unos minutos.\n\n"
+                "Gracias por tu paciencia 😊\n\n"
+                "_(Escribe *98* en cualquier momento para volver al menú automático)_"
+            )
+
+        # 8. Filtros de acceso
+        cfg = _get_cfg_cached(db)
+        if chat_id in _get_blocklist(db):
+            return ""
+        if cfg.country_filter_enabled and cfg.country_codes:
+            codes = [c.strip() for c in cfg.country_codes.split(",")]
+            if not any(chat_id.startswith(c) for c in codes):
+                return ""
+        if cfg.area_filter_enabled and cfg.area_codes:
+            areas = [a.strip() for a in cfg.area_codes.split(",")]
+            if not any(a in chat_id for a in areas):
+                return ""
+
+        # 9. Flujo normal del bot
+        now_ts = int(time.time())
+        nav    = _chat_nav.get(chat_id, {"section": "main", "ts": now_ts, "new": True})
+        if now_ts - nav.get("ts", now_ts) > CHAT_IDLE_RESET_SEC:
+            nav = {"section": "main", "ts": now_ts, "new": True}
+
+        answer = ""
+
+        # 9a. Fuera de horario
+        if _is_off_hours_cached(db):
+            p = _data_path("MenuF.MD")
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    answer = f.read()
+            except Exception:
+                m = db.query(HolidayMenu).filter(HolidayMenu.is_active == True).first()
+                answer = m.content if m else (cfg.off_hours_message or "🕐 Estamos fuera de horario.")
+
+        # 9b. Primera visita o timeout → menú principal
+        elif nav.get("new") or text == "0":
+            answer = _menu_main()
+            nav["section"] = "main"
+            nav["new"] = False
+
+        # 9c. Navegar menú
+        else:
+            answer, new_section = _menu_nav(text, nav.get("section", "main"))
+            nav["section"] = new_section
+
+        nav["ts"] = now_ts
+        _chat_nav[chat_id] = nav
+        return answer
+
+    except Exception as e:
+        _logc(f"[ERROR] _sync_process_message {chat_id}: {e}")
+        return ""
+    finally:
+        db.close()
+
+
+async def _handle_message(chat_id: str, text: str):
+    """
+    Wrapper async: corre lógica síncrona en thread pool y luego
+    envía la respuesta por WAHA (async). El event loop queda libre
+    durante toda la ejecución síncrona.
+    """
+    try:
+        # DB + lógica → thread pool (no bloquea el event loop)
+        answer = await asyncio.to_thread(_sync_process_message, chat_id, text)
+        # Envío HTTP → async
+        if answer:
+            await _send_wha(chat_id, answer)
+    except Exception as e:
+        _logc(f"[ERROR] _handle_message {chat_id}: {e}")
+
+
 @app.post("/webhook")
-async def webhook(req: Request, db: Session = Depends(get_db)):
-    global _bot_paused, _chat_nav, _chats_today, _chats_date
+async def webhook(req: Request):
+    global _bot_paused
 
     # 1. Parsear payload ─────────────────────────────────────────
     data = await req.json()
@@ -555,7 +674,7 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
 
     print(f"[CHAT] ← {chat_id!r}: {text!r}")
 
-    # 2. Filtros de ruido ────────────────────────────────────────
+    # 2. Filtros de ruido (sin DB) ───────────────────────────────
     if msg.get("fromMe"):
         return {"ok": True, "i": "from_me"}
     if not chat_id or not text:
@@ -571,109 +690,12 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     if _bot_paused:
         return {"ok": True, "paused": True}
 
-    # 4. Contador diario ─────────────────────────────────────────
-    from datetime import date as _d
-    today = str(_d.today())
-    if _chats_date != today:
-        _chats_today = set(); _chats_date = today
-    _chats_today.add(chat_id)
-
-    # 5. HUMAN MODE ──────────────────────────────────────────────
-    #
-    #  WAHA-DOC §8: si mode == "human" && expire > now → ignorar.
-    #  WAHA-DOC §9: NO ejecutar sendSeen.
-    #  WAHA-DOC §14: opción 98 permite salir.
-    #
-    in_human = _is_human_mode(db, chat_id)
-    _log(f"[WH] human_mode={in_human}")
-
-    if in_human:
-        if text == "98":
-            # WAHA-DOC §14: "98 volver al bot"
-            _exit_human_mode(db, chat_id)
-            _chat_nav.pop(chat_id, None)
-            await _send_wha(chat_id,
-                "✅ *Volviste al menú automático.*\n\n"
-                "Escribe *0* para ver el menú principal.")
-        else:
-            # WAHA-DOC §9: NO responder, NO sendSeen
-            _log(f"[WH] HUMAN_MODE activo → ignorando '{text}'")
-        return {"ok": True, "status": "human_mode"}
-
-    # 6. Opción 98 fuera de human mode → silencio ────────────────
-    if text == "98":
-        _log(f"[WH] 98 sin human_mode activo → ignorar")
-        return {"ok": True, "i": "98_outside_human"}
-
-    # 7. Opción 99: activar modo humano ──────────────────────────
-    #  WAHA-DOC §5: guardar estado HUMAN, enviar mensaje, suspender bot.
-    if text == "99":
-        ticket = _start_human_mode(db, chat_id)
-        _chat_nav.pop(chat_id, None)
-        await _send_wha(chat_id,
-            "📞 *Se ha iniciado transferencia a un operador*\n\n"
-            f"✅ Tu número de ticket: *{ticket}*\n\n"
-            "⏳ Por favor espera a que un operario se comunique contigo.\n"
-            "Esto generalmente toma unos minutos.\n\n"
-            "Gracias por tu paciencia 😊\n\n"
-            "_(Escribe *98* en cualquier momento para volver al menú automático)_"
-        )
-        return {"ok": True, "status": "handoff", "ticket": ticket}
-
-    # 8. Filtros de acceso ───────────────────────────────────────
-    cfg = _get_cfg_cached(db)
-
-    if chat_id in _get_blocklist(db):
-        return {"ok": True, "blocked": True}
-
-    if cfg.country_filter_enabled and cfg.country_codes:
-        codes = [c.strip() for c in cfg.country_codes.split(",")]
-        if not any(chat_id.startswith(c) for c in codes):
-            return {"ok": True, "filtered": "country"}
-
-    if cfg.area_filter_enabled and cfg.area_codes:
-        areas = [a.strip() for a in cfg.area_codes.split(",")]
-        if not any(a in chat_id for a in areas):
-            return {"ok": True, "filtered": "area"}
-
-    # 9. Flujo normal del bot ────────────────────────────────────
-    now_ts = int(time.time())
-    nav    = _chat_nav.get(chat_id, {"section": "main", "ts": now_ts, "new": True})
-
-    # Resetear si inactivo demasiado tiempo
-    if now_ts - nav.get("ts", now_ts) > CHAT_IDLE_RESET_SEC:
-        nav = {"section": "main", "ts": now_ts, "new": True}
-
-    answer = ""
-
-    # 9a. Fuera de horario
-    if _is_off_hours_cached(db):
-        p = _data_path("MenuF.MD")
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                answer = f.read()
-        except Exception:
-            m = db.query(HolidayMenu).filter(HolidayMenu.is_active == True).first()
-            answer = m.content if m else (cfg.off_hours_message or "🕐 Estamos fuera de horario.")
-
-    # 9b. Primera visita o timeout → menú principal
-    elif nav.get("new") or text == "0":
-        answer = _menu_main()
-        nav["section"] = "main"
-        nav["new"] = False
-
-    # 9c. Navegar menú
-    else:
-        answer, new_section = _menu_nav(text, nav.get("section", "main"))
-        nav["section"] = new_section
-
-    nav["ts"] = now_ts
-    _chat_nav[chat_id] = nav
-
-    if answer:
-        await _send_wha(chat_id, answer)
-
+    # Programar procesamiento en thread pool y retornar 200 inmediatamente.
+    # WAHA solo necesita el 200 rápido; el bot responde por su cuenta.
+    asyncio.create_task(_handle_message(chat_id, text))
     return {"ok": True}
+
+
 
 
 # ──────────────────────────────────────────────────────────────
