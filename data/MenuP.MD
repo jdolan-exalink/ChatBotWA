@@ -1,4 +1,4 @@
-¡Hola! 👋 Bienvenido/a a la Clínica. UOM Seccional Santa Fe
+¡Hola! 🤖📲 Bienvenido/a a UOM Sec. Santa Fe
 Para continuar, respondé con el número de opción:
 
 1️⃣ Turnos
@@ -8,10 +8,9 @@ Para continuar, respondé con el número de opción:
 5️⃣ Discapacidad
 6️⃣ Bocas de expendio
 7️⃣ Compra de Orden de Consulta
+🧑‍💻 **99 - Chatear con un Operador**
 
-🔴 **99 - Chatear con un Operador**
 ↩️ En cualquier momento podés escribir **0** para volver al menú principal.
-
 ---
 
 ## 1 Turnos
@@ -23,14 +22,15 @@ Indicá la especialidad:
 3. 🫀 Cardiología
 4. 🤰 Ginecología y Obstetricia
 5. 😁 Odontología
-6. 🏥 Cirugía General
+6. 🔪 Cirugía General
 7. 🥗 Nutrición
 8. 👶 Pediatría
 9. 🧠 Psicología
 10. 🧩 Terapia Ocupacional
 11. 💡 Psicopedagogía
 12. 🩻 Ecografías
-13. ↩️ Volver al menú principal
+
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.1 Clínica Médica
@@ -51,6 +51,7 @@ Profesionales disponibles:
    • Turnos: en el día al 5802184 / 4580099 (Interno: 1)
    ⚠️ Importante: no se otorgan turnos por WhatsApp.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.2 Traumatología
@@ -62,6 +63,7 @@ Profesional disponible:
 ⚠️ Importante: asistir con agendado previo.
 ⚠️ Primera consulta solo con derivación autorizada.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.3 Cardiología
@@ -72,6 +74,7 @@ Profesional disponible:
 • Modalidad: orden de llegada.
 ⚠️ Importante: asistir con agendado previo, por límite de pacientes.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.4 Ginecología y Obstetricia
@@ -88,6 +91,7 @@ Profesionales disponibles:
    • Modalidad: orden de llegada.
    ⚠️ Importante: asistir con agendado previo, por límite de pacientes.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.5 Odontología
@@ -106,6 +110,7 @@ Profesionales disponibles:
    • Tel.: 5802184 / 4580099 (Interno: 1)
    ⚠️ No se otorgan turnos por WhatsApp.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.6 Cirugía General
@@ -117,6 +122,7 @@ Profesional disponible:
 ⚠️ Importante: asistir con agendado previo.
 ⚠️ Primera consulta solo con derivación autorizada.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.7 Nutrición
@@ -127,6 +133,7 @@ Profesional disponible:
 • Turnos: solicitar con anticipación.
 ⚠️ Primera consulta solo con derivación autorizada.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.8 Pediatría
@@ -136,6 +143,7 @@ Profesional disponible:
 • Atención: Lunes, Miércoles y Viernes de 11:30 a 12:30 H.
 • Modalidad: orden de llegada.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.9 Psicología
@@ -157,6 +165,7 @@ Profesionales disponibles:
    • Turnos: con anticipación.
    ⚠️ Primera consulta solo con derivación autorizada.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.10 Terapia Ocupacional
@@ -171,6 +180,7 @@ Profesionales disponibles:
    • Atención: día y horario a convenir.
    ⚠️ Primera consulta solo con derivación autorizada.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.11 Psicopedagogía
@@ -179,6 +189,7 @@ Profesionales disponibles:
 • Atención: Jueves (horarios a convenir).
 ⚠️ Primera consulta solo con derivación autorizada.
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 1.12 Ecografías
@@ -187,6 +198,7 @@ Profesionales disponibles:
 • Atención: Miércoles
 • Turnos: con anticipación.
 
+0. ↩️ Volver al menú principal
 ---
 
 ## 2 Asuntos laborales
@@ -194,33 +206,21 @@ Profesionales disponibles:
 🧾 *Asuntos Laborales*
 • Horario: 08:00 a 16:00 H.
 • Tel.: 4580099 / 5802184
-• WhatsApp (elegí una opción para chatear):
+• Consultas por WhatsApp:
 
-1. 📲 3425016120
-2. 📲 3424438163
-3. 📲 3425442025
-4. ↩️ Volver al menú principal
----
+  WhatsApp: 📲 
+  • Link directo: https://wa.me/5493425016120
 
-### 2.1 Contacto directo 1
+  WhatsApp: 📲 
+  • Link directo: https://wa.me/5493424062609
 
-📲 WhatsApp: 3425016120
-Puedes contactarlos directamente en este número.
+  WhatsApp: 📲 
+  • Link directo: https://wa.me/5493425442025
 
----
+  WhatsApp: 📲 
+ • Link directo: https://wa.me/5493426483807
 
-### 2.2 Contacto directo 2
-
-📲 WhatsApp: 3424438163
-Puedes contactarlos directamente en este número.
-
----
-
-### 2.3 Contacto directo 3
-
-📲 WhatsApp: 3425442025
-Puedes contactarlos directamente en este número.
-
+0. ↩️ Volver al menú principal
 ---
 
 ## 3 Farmacia
@@ -229,9 +229,10 @@ Puedes contactarlos directamente en este número.
 • Horario: 08:00 a 16:00 H.
 • Tel.: 4580099 / 5802184
 • Interno: 1122
-• WhatsApp: 📲 3424483057
-• Link directo: [https://wa.me/5493424483057](https://wa.me/5493424483057)
+• WhatsApp: 📲 
+• Link directo: https://wa.me/5493424483057
 
+0. ↩️ Volver al menú principal
 ---
 
 ## 4 Afiliaciones
@@ -240,8 +241,9 @@ Puedes contactarlos directamente en este número.
 • Horario: 08:00 a 16:00 H.
 • Tel.: 4580099 / 5802184
 • WhatsApp: 📲 3426506301
-• Link directo: [https://wa.me/5493426506301](https://wa.me/5493426506301)
+• Link directo: https://wa.me/5493426506301
 
+0. ↩️ Volver al menú principal
 ---
 
 ## 5 Discapacidad
@@ -251,8 +253,9 @@ Puedes contactarlos directamente en este número.
 • Tel.: 4580099 / 5802184
 • Interno: 1104
 • WhatsApp: 📲 3425667161
-• Link directo: [https://wa.me/5493425667161](https://wa.me/5493425667161)
+• Link directo: https://wa.me/5493425667161
 
+0. ↩️ Volver al menú principal
 ---
 
 ## 6 Bocas de expendio
@@ -264,6 +267,7 @@ Puedes contactarlos directamente en este número.
 3. 📌 Ver ambas
 4. ↩️ Volver al menú principal
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 6.1 Recreo Sur
@@ -271,8 +275,9 @@ Puedes contactarlos directamente en este número.
 • Horario: 08:00 a 16:00 H.
 • Dirección: Juan de Garay 4791
 • WhatsApp: 📲 3425013622
-• Link directo: [https://wa.me/5493425013622](https://wa.me/5493425013622)
+• Link directo: https://wa.me/5493425013622
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 6.2 Santo Tomé
@@ -280,8 +285,9 @@ Puedes contactarlos directamente en este número.
 • Horario: 09:00 a 15:00 H.
 • Dirección: República de Irak 3556
 • WhatsApp: 📲 3424673443
-• Link directo: [https://wa.me/5493424673443](https://wa.me/5493424673443)
+• Link directo: https://wa.me/5493424673443
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 6.3 Ver ambas
@@ -291,20 +297,20 @@ Puedes contactarlos directamente en este número.
 🏢 **Recreo Sur**
 • Horario: 08:00 a 16:00 H.
 • Dirección: Juan de Garay 4791
-• Link: [https://wa.me/5493425013622](https://wa.me/5493425013622)
+• Link: https://wa.me/5493425013622
 
 🏢 **Santo Tomé**
 • Horario: 09:00 a 15:00 H.
 • Dirección: República de Irak 3556
-• Link: [https://wa.me/5493424673443](https://wa.me/5493424673443)
+• Link: https://wa.me/5493424673443
 
 **POR GESTIÓN DE AUTORIZACIONES VÍA WHATSAPP**
-📎 Enviar foto completa, clara y legible de:
+📎Enviar foto completa, clara y legible de:
+. Pedido médico
+. Recibo de sueldo del titular de la obra social
+. Carnet de obra social del paciente y/o documentación provisoria
 
-1. Pedido médico
-2. Recibo de sueldo del titular de la obra social
-3. Carnet de obra social del paciente y/o documentación provisoria
-
+0. ↩️ Volver al menú principal
 ---
 
 ## 7 Compra de Orden de Consulta
@@ -317,16 +323,17 @@ Debés solicitar el alta.
 1. 🧾 Tengo Usuario y quiero comprar
 2. 🧾 Quiero ver un video de como crear mi usuario
 3. 🧾 Quiero leer como crear mi usuario
-4. ↩️ Volver al menú principal
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 7.1 Compra de Orden de Consulta
 
 🧾 *Compra de Orden de Consulta*
 Para comprar tu orden de consulta, ingresá acá:
-👉 [https://os.uomsantafe.com.ar](https://os.uomsantafe.com.ar)
+👉 https://os.uomsantafe.com.ar
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 7.2 Video de creación de usuario
@@ -335,6 +342,7 @@ Para comprar tu orden de consulta, ingresá acá:
 Para ver el video sobre cómo crear usuario, ingresá acá:
 👉 https://youtu.be/7WlrZ6zW_qs
 
+0. ↩️ Volver al menú principal
 ---
 
 ### 7.3 Guía de creación de usuario
@@ -349,7 +357,7 @@ Para ver el video sobre cómo crear usuario, ingresá acá:
 
 📝 **Cómo solicitar el alta**
 1️⃣ Ingresá a:
-👉 [https://os.uomsantafe.com.ar/Formularios/SolicitarAlta.aspx](https://os.uomsantafe.com.ar/Formularios/SolicitarAlta.aspx)
+👉 https://os.uomsantafe.com.ar/Formularios/SolicitarAlta.aspx
 2️⃣ Cargá el DNI del titular y tocá "Buscar Titular"
 3️⃣ Verificá los datos y corregí si es necesario
 📧 No olvides cargar un email válido
@@ -361,4 +369,5 @@ Para ver el video sobre cómo crear usuario, ingresá acá:
 👉 Si no lo ves, revisá Spam / Correo no deseado
 🔑 Dentro de los 5 días hábiles recibirás las claves de acceso
 
+0. ↩️ Volver al menú principal
 ---

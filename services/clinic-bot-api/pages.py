@@ -873,6 +873,7 @@ def get_user_panel_page() -> str:
             }
             
             let _qrPollTimer = null;
+            let _connPollTimer = null;
 
             async function toggleWhatsApp() {
                 const btn = document.getElementById('waBtn');
@@ -900,7 +901,7 @@ def get_user_panel_page() -> str:
                     // Mostrar modal de inmediato con spinner
                     _openQrModal();
 
-                    // Polling: intenta cada 1.5s, hasta 30 intentos (~45s)
+                    // Fase 1: cada 1.5s buscar el QR image (~45s)
                     let attempts = 0;
                     _qrPollTimer = setInterval(async () => {
                         attempts++;
@@ -919,7 +920,9 @@ def get_user_panel_page() -> str:
                                 document.getElementById('qrImage').src = url;
                                 document.getElementById('qrImage').style.display = 'block';
                                 document.getElementById('qrLoading').style.display = 'none';
-                                console.log('[QR] Cargado en intento ' + attempts);
+                                console.log('[QR] Mostrado en intento ' + attempts);
+                                // Fase 2: ahora esperar a que el usuario escanee
+                                _startConnectPoll(token);
                             }
                         } catch(e) {}
                     }, 1500);
@@ -928,6 +931,38 @@ def get_user_panel_page() -> str:
                     console.error('toggleWhatsApp error:', error);
                     btn.textContent = '🔴 Conectar WhatsApp';
                 }
+            }
+
+            // Fase 2: polling de /status hasta detectar conexión exitosa
+            function _startConnectPoll(token) {
+                if (_connPollTimer) { clearInterval(_connPollTimer); _connPollTimer = null; }
+                let connAttempts = 0;
+                _connPollTimer = setInterval(async () => {
+                    connAttempts++;
+                    if (connAttempts > 90) { // hasta ~3 minutos
+                        clearInterval(_connPollTimer); _connPollTimer = null;
+                        return;
+                    }
+                    try {
+                        const r = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                        if (!r.ok) return;
+                        const s = await r.json();
+                        if (s.connected) {
+                            clearInterval(_connPollTimer); _connPollTimer = null;
+                            console.log('[QR] ¡Conectado! Cerrando modal...');
+                            _closeQrSuccess();
+                        }
+                    } catch(e) {}
+                }, 2000);
+            }
+
+            function _closeQrSuccess() {
+                closeQrModal();
+                // Mostrar feedback
+                const btn = document.getElementById('waBtn');
+                if (btn) btn.textContent = '🟢 Reconectar WhatsApp';
+                // Refrescar estado del panel
+                if (typeof loadStatus === 'function') loadStatus();
             }
 
             function _openQrModal() {
@@ -939,7 +974,8 @@ def get_user_panel_page() -> str:
             }
 
             function closeQrModal() {
-                if (_qrPollTimer) { clearInterval(_qrPollTimer); _qrPollTimer = null; }
+                if (_qrPollTimer)  { clearInterval(_qrPollTimer);  _qrPollTimer  = null; }
+                if (_connPollTimer){ clearInterval(_connPollTimer); _connPollTimer = null; }
                 document.getElementById('qrModal').classList.remove('show');
                 document.getElementById('qrLoading').style.display = 'flex';
                 document.getElementById('qrImage').style.display = 'none';
@@ -1128,6 +1164,18 @@ def get_user_config_page() -> str:
             .toast.error   { background: rgba(239,68,68,0.18); border: 1px solid rgba(244,63,94,0.4); color: #fca5a5; }
             .toast.info    { background: rgba(59,130,246,0.18); border: 1px solid rgba(59,130,246,0.4); color: #93c5fd; }
 
+            /* HOLIDAYS TWO-COLUMN LAYOUT */
+            .hol-layout {
+                display: flex; gap: 24px; align-items: flex-start;
+            }
+            .hol-cal-col { flex: 0 0 auto; width: 440px; max-width: 100%; }
+            .hol-list-col { flex: 1 1 0; min-width: 240px; }
+            .hol-list-col #holidaysList { max-height: 480px; overflow-y: auto; }
+            @media (max-width: 900px) {
+                .hol-layout { flex-direction: column; }
+                .hol-cal-col { width: 100%; }
+            }
+
             /* CALENDAR */
             .cal-wrap {
                 background: rgba(30,41,59,0.5);
@@ -1274,50 +1322,53 @@ def get_user_config_page() -> str:
 
             <!-- ═══════════════  FERIADOS  ═══════════════ -->
             <div id="holidays" class="section active">
-                <div class="card">
-                    <h2>📅 Calendario de Feriados</h2>
-                    <p style="color:#64748b;font-size:0.88em;margin-bottom:16px;">
-                        Hacé clic en un día para marcarlo como feriado. Los días marcados en
-                        <strong style="color:#60a5fa;">azul</strong> ya están guardados;
-                        en <strong style="color:#fcd34d;">amarillo</strong> están pendientes de guardar;
-                        en <strong style="color:#f87171;">rojo tachado</strong> serán eliminados.
-                        Sábados y domingos se muestran en <strong style="color:#f472b6;">rosa</strong>.
-                    </p>
+                <div class="hol-layout">
+                    <!-- Columna izquierda: Calendario -->
+                    <div class="card hol-cal-col">
+                        <h2>📅 Calendario de Feriados</h2>
+                        <p style="color:#64748b;font-size:0.88em;margin-bottom:16px;">
+                            Hacé clic en un día para marcarlo como feriado. Los días marcados en
+                            <strong style="color:#60a5fa;">azul</strong> ya están guardados;
+                            en <strong style="color:#fcd34d;">amarillo</strong> están pendientes de guardar;
+                            en <strong style="color:#f87171;">rojo tachado</strong> serán eliminados.
+                            Sábados y domingos se muestran en <strong style="color:#f472b6;">rosa</strong>.
+                        </p>
 
-                    <div id="pendingBadge" class="pending-badge hidden">
-                        ⚠️ <span id="pendingText">0 cambios pendientes</span>
-                    </div>
+                        <div id="pendingBadge" class="pending-badge hidden">
+                            ⚠️ <span id="pendingText">0 cambios pendientes</span>
+                        </div>
 
-                    <div class="cal-wrap">
-                        <div class="cal-header">
-                            <div class="cal-nav">
-                                <button class="cal-btn" onclick="calPrev()">◀ Ant</button>
-                                <button class="cal-btn" onclick="calToday()">Hoy</button>
-                                <button class="cal-btn" onclick="calNext()">Sig ▶</button>
+                        <div class="cal-wrap">
+                            <div class="cal-header">
+                                <div class="cal-nav">
+                                    <button class="cal-btn" onclick="calPrev()">◀ Ant</button>
+                                    <button class="cal-btn" onclick="calToday()">Hoy</button>
+                                    <button class="cal-btn" onclick="calNext()">Sig ▶</button>
+                                </div>
+                                <div class="cal-title" id="calTitle">—</div>
                             </div>
-                            <div class="cal-title" id="calTitle">—</div>
+                            <div class="cal-grid" id="calGrid"></div>
+                            <div class="cal-legend">
+                                <span><div class="leg-dot" style="background:linear-gradient(135deg,#3b82f6,#06b6d4);"></div> Feriado guardado</span>
+                                <span><div class="leg-dot" style="background:linear-gradient(135deg,#f59e0b,#d97706);"></div> Por guardar</span>
+                                <span><div class="leg-dot" style="background:rgba(239,68,68,0.3);border:1px solid #f87171;"></div> Por eliminar</span>
+                                <span><div class="leg-dot" style="background:transparent;outline:2px solid rgba(99,102,241,0.8);outline-offset:1px;"></div> Hoy</span>
+                                <span><div class="leg-dot" style="background:rgba(15,23,42,0.5);border:1px solid rgba(226,232,240,0.1);"></div> <span style="color:#f472b6">Fin de semana</span></span>
+                            </div>
                         </div>
-                        <div class="cal-grid" id="calGrid"></div>
-                        <div class="cal-legend">
-                            <span><div class="leg-dot" style="background:linear-gradient(135deg,#3b82f6,#06b6d4);"></div> Feriado guardado</span>
-                            <span><div class="leg-dot" style="background:linear-gradient(135deg,#f59e0b,#d97706);"></div> Por guardar</span>
-                            <span><div class="leg-dot" style="background:rgba(239,68,68,0.3);border:1px solid #f87171;"></div> Por eliminar</span>
-                            <span><div class="leg-dot" style="background:transparent;outline:2px solid rgba(99,102,241,0.8);outline-offset:1px;"></div> Hoy</span>
-                            <span><div class="leg-dot" style="background:rgba(15,23,42,0.5);border:1px solid rgba(226,232,240,0.1);"></div> <span style="color:#f472b6">Fin de semana</span></span>
+
+                        <!-- Guardar / Cancelar -->
+                        <div class="card-footer">
+                            <button class="btn btn-secondary" onclick="cancelHolidays()">✖ Cancelar cambios</button>
+                            <button class="btn btn-primary" id="saveHBtn" onclick="saveHolidays()">💾 Guardar Feriados</button>
                         </div>
                     </div>
 
-                    <!-- Guardar / Cancelar -->
-                    <div class="card-footer">
-                        <button class="btn btn-secondary" onclick="cancelHolidays()">✖ Cancelar cambios</button>
-                        <button class="btn btn-primary" id="saveHBtn" onclick="saveHolidays()">💾 Guardar Feriados</button>
+                    <!-- Columna derecha: Lista resumen -->
+                    <div class="card hol-list-col">
+                        <h2>📋 Feriados Guardados</h2>
+                        <div id="holidaysList"><div class="empty-state">Cargando...</div></div>
                     </div>
-                </div>
-
-                <!-- Lista resumen -->
-                <div class="card">
-                    <h2>📋 Feriados Guardados</h2>
-                    <div id="holidaysList"><div class="empty-state">Cargando...</div></div>
                 </div>
             </div>
 
@@ -2683,6 +2734,8 @@ def get_dashboard_page() -> str:
 
             let _qrPollTimer = null;
 
+            let _connPollTimer = null;
+
             async function toggleWhatsApp() {
                 try {
                     const res = await fetch('/status', {
@@ -2716,7 +2769,7 @@ def get_dashboard_page() -> str:
 
                     _openQrModal();
 
-                    // Polling: cada 1.5s, hasta 30 intentos
+                    // Fase 1: cada 1.5s buscar el QR image (~45s)
                     let attempts = 0;
                     _qrPollTimer = setInterval(async () => {
                         attempts++;
@@ -2735,7 +2788,9 @@ def get_dashboard_page() -> str:
                                 document.getElementById('qrImage').src = url;
                                 document.getElementById('qrImage').style.display = 'block';
                                 document.getElementById('qrLoading').style.display = 'none';
-                                console.log('[QR] Cargado en intento ' + attempts);
+                                console.log('[QR] Mostrado en intento ' + attempts);
+                                // Fase 2: esperar a que el usuario escanee
+                                _startConnectPoll();
                             }
                         } catch(e) {}
                     }, 1500);
@@ -2743,6 +2798,36 @@ def get_dashboard_page() -> str:
                 } catch (error) {
                     console.error('toggleWhatsApp error:', error);
                 }
+            }
+
+            // Fase 2: polling de /status hasta detectar conexión exitosa
+            function _startConnectPoll() {
+                if (_connPollTimer) { clearInterval(_connPollTimer); _connPollTimer = null; }
+                let connAttempts = 0;
+                _connPollTimer = setInterval(async () => {
+                    connAttempts++;
+                    if (connAttempts > 90) { // hasta ~3 minutos
+                        clearInterval(_connPollTimer); _connPollTimer = null;
+                        return;
+                    }
+                    try {
+                        const r = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                        if (!r.ok) return;
+                        const s = await r.json();
+                        if (s.connected) {
+                            clearInterval(_connPollTimer); _connPollTimer = null;
+                            console.log('[QR] ¡Conectado! Cerrando modal...');
+                            _closeQrSuccess();
+                        }
+                    } catch(e) {}
+                }, 2000);
+            }
+
+            function _closeQrSuccess() {
+                closeQrModal();
+                const btn = document.getElementById('waBtn');
+                if (btn) btn.textContent = '🟢 Reconectar WhatsApp';
+                if (typeof refresh === 'function') refresh();
             }
 
             function _openQrModal() {
@@ -2754,7 +2839,8 @@ def get_dashboard_page() -> str:
             }
 
             function closeQrModal() {
-                if (_qrPollTimer) { clearInterval(_qrPollTimer); _qrPollTimer = null; }
+                if (_qrPollTimer)  { clearInterval(_qrPollTimer);  _qrPollTimer  = null; }
+                if (_connPollTimer){ clearInterval(_connPollTimer); _connPollTimer = null; }
                 document.getElementById('qrModal').style.display = 'none';
                 document.getElementById('qrLoading').style.display = 'flex';
                 document.getElementById('qrImage').style.display = 'none';
