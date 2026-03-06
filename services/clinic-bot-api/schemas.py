@@ -63,6 +63,7 @@ class BotConfigUpdate(BaseModel):
     ollama_url: Optional[str] = None
     ollama_model: Optional[str] = None
     admin_idle_timeout_sec: Optional[int] = None
+    debug_mode: Optional[bool] = None
 
 class BotConfigResponse(BaseModel):
     id: int
@@ -78,6 +79,7 @@ class BotConfigResponse(BaseModel):
     country_codes: Optional[str]
     area_filter_enabled: bool
     area_codes: Optional[str]
+    debug_mode: bool = False
     updated_at: Optional[datetime] = None
     
     class Config:

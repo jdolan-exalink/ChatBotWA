@@ -102,6 +102,7 @@ migrations = [
     (\"waiting_agent_message\", \"ALTER TABLE bot_config ADD COLUMN waiting_agent_message TEXT DEFAULT 'Estamos buscando un operador disponible. Por favor aguarda...'\"),
     (\"in_agent_message\",      \"ALTER TABLE bot_config ADD COLUMN in_agent_message TEXT DEFAULT 'Un operador esta atendiendo tu solicitud.'\"),
     (\"closed_message\",        \"ALTER TABLE bot_config ADD COLUMN closed_message TEXT DEFAULT 'Gracias por contactarte. Tu caso esta cerrado.'\"),
+    (\"debug_mode\",             \"ALTER TABLE bot_config ADD COLUMN debug_mode BOOLEAN DEFAULT 0\"),
 ]
 
 with engine.connect() as conn:

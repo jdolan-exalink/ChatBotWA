@@ -69,7 +69,10 @@ class BotConfig(Base):
     
     # Mensaje cuando se cierra el ticket
     closed_message = Column(Text, default="Gracias por contactarte. Tu caso está cerrado. Si necesitas ayuda, escribe nuevamente.")
-    
+
+    # ============ LOGGING ============
+    debug_mode = Column(Boolean, default=False)  # True=logs detallados, False=solo chats y errores
+
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     def __repr__(self):

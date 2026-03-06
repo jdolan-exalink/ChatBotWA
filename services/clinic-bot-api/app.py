@@ -61,9 +61,25 @@ _chats_date   = None
 _last_status  = {"connected": None, "last_alert_at": 0}
 
 # ──────────────────────────────────────────────────────────────
+#  LOGGING
+#  Modo operativo (debug_mode=False): solo [CHAT] y [ERROR]
+#  Modo debug   (debug_mode=True):  todos los logs detallados
+# ──────────────────────────────────────────────────────────────
+_debug_mode: bool = False  # sincronizado desde BotConfig.debug_mode
+
+def _log(msg: str) -> None:
+    """Log de debug: solo imprime cuando debug_mode está activo."""
+    if _debug_mode:
+        print(msg)
+
+def _logc(msg: str) -> None:
+    """Log crítico: siempre imprime (chats + errores, ambos modos)."""
+    print(msg)
+
+# ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.1.4")
+app = FastAPI(title="WA-BOT", version="2.1.5")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
@@ -89,14 +105,14 @@ async def _init_defaults():
                 hashed_password=hash_password("admin123"),
                 full_name="Administrador", is_admin=True, is_active=True
             ))
-            print("[INIT] Admin creado: admin / admin123")
+            _log("[INIT] Admin creado: admin / admin123")
         if not db.query(User).filter(User.username == "usuario").first():
             db.add(User(
                 username="usuario", email="usuario@clinic.local",
                 hashed_password=hash_password("usuario123"),
                 full_name="Usuario", is_admin=False, is_active=True
             ))
-            print("[INIT] Usuario creado: usuario / usuario123")
+            _log("[INIT] Usuario creado: usuario / usuario123")
         if not db.query(BotConfig).first():
             db.add(BotConfig(
                 solution_name=SOLUTION_NAME, menu_title=SOLUTION_NAME,
@@ -105,10 +121,11 @@ async def _init_defaults():
                 ollama_url=OLLAMA_URL, ollama_model=OLLAMA_MODEL,
                 admin_idle_timeout_sec=900
             ))
-            print("[INIT] Config por defecto creada")
+            _log("[INIT] Config por defecto creada")
         db.commit()
+        _sync_debug_mode(db)   # carga debug_mode al arrancar
     except Exception as e:
-        print(f"[INIT] Error: {e}")
+        _logc(f"[ERROR] init: {e}")
         db.rollback()
     finally:
         db.close()
@@ -216,9 +233,9 @@ async def _waha_qr() -> bytes | None:
 async def _send_wha(chat_id: str, text: str):
     """Envía texto por WhatsApp. Solo llamar desde flujo BOT, nunca en human mode."""
     if not text or not text.strip():
-        print(f"[SEND] Bloqueado - texto vacío para {chat_id}")
+        _log(f"[SEND] Bloqueado - texto vacío para {chat_id}")
         return
-    print(f"[SEND] → {chat_id}: {text[:80]}")
+    _logc(f"[CHAT] → {chat_id}: {text[:80]}")
     for path, payload in [
         ("/api/sendText",                 {"session": WAHA_SESSION, "chatId": chat_id, "text": text}),
         (f"/api/{WAHA_SESSION}/sendText", {"chatId": chat_id, "text": text}),
@@ -227,11 +244,11 @@ async def _send_wha(chat_id: str, text: str):
         try:
             r = await _waha_post(path, payload)
             if r.status_code < 400:
-                print(f"[SEND] OK via {path}")
+                _log(f"[SEND] OK via {path}")
                 return
         except Exception as e:
-            print(f"[SEND] Error en {path}: {e}")
-    print(f"[SEND] FALLIDO para {chat_id}")
+            _logc(f"[ERROR] SEND en {path}: {e}")
+    _logc(f"[ERROR] SEND FALLIDO para {chat_id}")
 
 # ──────────────────────────────────────────────────────────────
 #  HELPERS - EMAIL
@@ -254,7 +271,7 @@ async def _send_alert_email(subject: str, body: str):
             await c.post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
                          headers={"Authorization": f"Bearer {access}"}, json={"raw": raw})
     except Exception as e:
-        print(f"[EMAIL] Error: {e}")
+        _logc(f"[ERROR] email: {e}")
 
 # ──────────────────────────────────────────────────────────────
 #  HELPERS - CONFIG
@@ -266,6 +283,15 @@ def _get_cfg(db: Session) -> BotConfig:
                         opening_time="08:00", closing_time="16:00")
         db.add(cfg); db.commit()
     return cfg
+
+def _sync_debug_mode(db: Session) -> None:
+    """Lee debug_mode desde DB y actualiza el global en memoria."""
+    global _debug_mode
+    try:
+        cfg = _get_cfg(db)
+        _debug_mode = bool(getattr(cfg, "debug_mode", False))
+    except Exception:
+        pass
 
 def _is_off_hours(db: Session) -> bool:
     import pytz
@@ -286,7 +312,7 @@ def _is_off_hours(db: Session) -> bool:
     else:
         o, c = cfg.opening_time or "08:00", cfg.closing_time or "16:00"
     off = t < o or t > c
-    print(f"[HOURS] {now.strftime('%A %H:%M')} | {o}-{c} | fuera={off}")
+    _log(f"[HOURS] {now.strftime('%A %H:%M')} | {o}-{c} | fuera={off}")
     return off
 
 # ──────────────────────────────────────────────────────────────
@@ -322,7 +348,7 @@ def _is_human_mode(db: Session, chat_id: str) -> bool:
         row.handoff_active = False
         row.current_state = "BOT_MENU"
         db.commit()
-        print(f"[HUMAN] Expirado para {chat_id} → bot")
+        _logc(f"[HUMAN] Expirado para {chat_id} → bot")
     return active
 
 def _start_human_mode(db: Session, chat_id: str) -> str:
@@ -343,7 +369,7 @@ def _start_human_mode(db: Session, chat_id: str) -> str:
     row.ticket_id          = ticket
     row.last_message_at    = datetime.utcnow()
     db.commit()
-    print(f"[HUMAN] Activado {chat_id} | ticket={ticket} | expire={row.human_mode_expire}")
+    _logc(f"[HUMAN] Activado {chat_id} | ticket={ticket} | expire={row.human_mode_expire}")
     return ticket
 
 def _exit_human_mode(db: Session, chat_id: str):
@@ -358,7 +384,7 @@ def _exit_human_mode(db: Session, chat_id: str):
         row.current_state     = "BOT_MENU"
         row.last_message_at   = datetime.utcnow()
         db.commit()
-        print(f"[HUMAN] Desactivado {chat_id}")
+        _logc(f"[HUMAN] Desactivado {chat_id}")
 
 # ──────────────────────────────────────────────────────────────
 #  MENU  (navegación jerárquica Markdown)
@@ -422,7 +448,7 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
         raw_txt = ""
     text = raw_txt.strip()
 
-    print(f"[WH] chat={chat_id!r} text={text!r}")
+    print(f"[CHAT] ← {chat_id!r}: {text!r}")
 
     # 2. Filtros de ruido ────────────────────────────────────────
     if msg.get("fromMe"):
@@ -454,7 +480,7 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     #  WAHA-DOC §14: opción 98 permite salir.
     #
     in_human = _is_human_mode(db, chat_id)
-    print(f"[WH] human_mode={in_human}")
+    _log(f"[WH] human_mode={in_human}")
 
     if in_human:
         if text == "98":
@@ -466,12 +492,12 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
                 "Escribe *0* para ver el menú principal.")
         else:
             # WAHA-DOC §9: NO responder, NO sendSeen
-            print(f"[WH] HUMAN_MODE activo → ignorando '{text}'")
+            _log(f"[WH] HUMAN_MODE activo → ignorando '{text}'")
         return {"ok": True, "status": "human_mode"}
 
     # 6. Opción 98 fuera de human mode → silencio ────────────────
     if text == "98":
-        print(f"[WH] 98 sin human_mode activo → ignorar")
+        _log(f"[WH] 98 sin human_mode activo → ignorar")
         return {"ok": True, "i": "98_outside_human"}
 
     # 7. Opción 99: activar modo humano ──────────────────────────
@@ -653,10 +679,11 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     for f in ["solution_name","menu_title","opening_time","closing_time","sat_opening_time",
               "sat_closing_time","off_hours_enabled","off_hours_message","country_filter_enabled",
               "country_codes","area_filter_enabled","area_codes","ollama_url","ollama_model",
-              "admin_idle_timeout_sec"]:
+              "admin_idle_timeout_sec","debug_mode"]:
         v = getattr(data, f, None)
         if v is not None: setattr(cfg, f, v)
     db.commit(); db.refresh(cfg)
+    _sync_debug_mode(db)   # actualiza el global en memoria
     return BotConfigResponse.from_orm(cfg)
 
 @app.put("/api/config/menu")
@@ -758,7 +785,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.1.4", "name": "WA-BOT"}
+    return {"version": "2.1.5", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -815,9 +842,9 @@ async def _waha_delete_and_recreate() -> bool:
                 f"{WAHA_URL}/api/sessions/{WAHA_SESSION}",
                 headers=_waha_headers()
             )
-            print(f"[CONNECT] DELETE session: {rd.status_code}")
+            _log(f"[CONNECT] DELETE session: {rd.status_code}")
         except Exception as e:
-            print(f"[CONNECT] DELETE error (ok to ignore): {e}")
+            _log(f"[CONNECT] DELETE error (ok to ignore): {e}")
 
         await asyncio.sleep(2)  # let WAHA clean up before recreating
 
@@ -827,12 +854,12 @@ async def _waha_delete_and_recreate() -> bool:
                 headers=_waha_headers(),
                 json={"name": WAHA_SESSION, "start": True}
             )
-            print(f"[CONNECT] create session: {r.status_code}")
+            _log(f"[CONNECT] create session: {r.status_code}")
             if r.status_code < 400:
                 await asyncio.sleep(3)  # give WAHA time to boot QR
                 return True
         except Exception as e:
-            print(f"[CONNECT] create error: {e}")
+            _logc(f"[ERROR] CONNECT create: {e}")
 
         # Fallback: restart
         try:
@@ -840,12 +867,12 @@ async def _waha_delete_and_recreate() -> bool:
                 f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
                 headers=_waha_headers(), json={}
             )
-            print(f"[CONNECT] restart fallback: {r.status_code}")
+            _log(f"[CONNECT] restart fallback: {r.status_code}")
             if r.status_code < 400:
                 await asyncio.sleep(3)
                 return True
         except Exception as e:
-            print(f"[CONNECT] restart fallback error: {e}")
+            _logc(f"[ERROR] CONNECT restart fallback: {e}")
     return False
 
 
@@ -853,7 +880,7 @@ async def _waha_delete_and_recreate() -> bool:
 async def bot_connect(cu=Depends(get_current_user)):
     info = await _waha_session_info()
     status_str = str(info.get("status", "")).upper()
-    print(f"[CONNECT] session status: {status_str}")
+    _log(f"[CONNECT] session status: {status_str}")
 
     # STARTING → WAHA is booting, wait a moment and check for QR
     if status_str == "STARTING":
@@ -865,10 +892,10 @@ async def bot_connect(cu=Depends(get_current_user)):
     if status_str == "SCAN_QR_CODE":
         qr_bytes = await _waha_qr()
         if qr_bytes:
-            print(f"[CONNECT] QR already available, reusing")
+            _log(f"[CONNECT] QR already available, reusing")
             return {"ok": True, "status": status_str}
         # QR expired → force new session
-        print(f"[CONNECT] SCAN_QR_CODE but QR expired → recreating session")
+        _logc(f"[CONNECT] SCAN_QR_CODE pero QR expirado → recreando sesión")
         ok = await _waha_delete_and_recreate()
         return {"ok": ok, "status": "recreated"}
 
@@ -880,10 +907,10 @@ async def bot_connect(cu=Depends(get_current_user)):
                     f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
                     headers=_waha_headers(), json={}
                 )
-                print(f"[CONNECT] restart (working): {r.status_code}")
+                _log(f"[CONNECT] restart (working): {r.status_code}")
                 return {"ok": r.status_code < 400}
             except Exception as e:
-                print(f"[CONNECT] restart error: {e}")
+                _logc(f"[ERROR] CONNECT restart: {e}")
                 return {"ok": False}
 
     # FAILED or any other state → DELETE + recreate fresh (generates QR)
@@ -899,10 +926,10 @@ async def bot_logout(cu=Depends(get_current_user)):
                 f"{WAHA_URL}/api/sessions/{WAHA_SESSION}",
                 headers=_waha_headers()
             )
-            print(f"[LOGOUT] DELETE session: {r.status_code}")
+            _log(f"[LOGOUT] DELETE session: {r.status_code}")
             return {"ok": r.status_code < 400}
         except Exception as e:
-            print(f"[LOGOUT] error: {e}")
+            _logc(f"[ERROR] LOGOUT: {e}")
     return {"ok": False}
 
 # ──────────────────────────────────────────────────────────────
