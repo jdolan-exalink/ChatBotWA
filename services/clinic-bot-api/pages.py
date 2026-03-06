@@ -570,6 +570,31 @@ def get_user_panel_page() -> str:
                 color: #64748b;
                 font-size: 0.85em;
             }
+
+            /* Spinner QR */
+            .qr-loading {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 30px 0;
+            }
+            .spinner {
+                width: 56px;
+                height: 56px;
+                border: 5px solid rgba(59, 130, 246, 0.2);
+                border-top-color: #3b82f6;
+                border-radius: 50%;
+                animation: spin 0.9s linear infinite;
+            }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            .spinner-text {
+                color: #94a3b8;
+                margin-top: 16px;
+                font-size: 0.9em;
+                text-align: center;
+                line-height: 1.5;
+            }
+            .btn-disabled { opacity: 0.6; cursor: not-allowed !important; }
         </style>
     </head>
     <body>
@@ -577,6 +602,7 @@ def get_user_panel_page() -> str:
             <div class="header">
                 <h1>💬 Mi Panel</h1>
                 <div class="nav-buttons">
+                    <button class="nav-btn" onclick="window.location.href='/user-config'">⚙️ Configuración</button>
                     <button class="logout-btn" onclick="logout()">Desconectar</button>
                 </div>
             </div>
@@ -610,26 +636,6 @@ def get_user_panel_page() -> str:
             </div>
 
             <div class="card">
-                <h2>🔐 Cambiar Contraseña</h2>
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500;">Contraseña Actual</label>
-                        <input type="password" id="oldPassword" placeholder="Tu contraseña actual" style="width: 100%; padding: 12px; background: rgba(226, 232, 240, 0.1); border: 1px solid rgba(226, 232, 240, 0.2); border-radius: 8px; color: #f1f5f9; font-size: 0.95em;">
-                    </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500;">Contraseña Nueva</label>
-                        <input type="password" id="newPassword" placeholder="Nueva contraseña" style="width: 100%; padding: 12px; background: rgba(226, 232, 240, 0.1); border: 1px solid rgba(226, 232, 240, 0.2); border-radius: 8px; color: #f1f5f9; font-size: 0.95em;">
-                    </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500;">Confirmar Contraseña</label>
-                        <input type="password" id="confirmPassword" placeholder="Confirma la contraseña" style="width: 100%; padding: 12px; background: rgba(226, 232, 240, 0.1); border: 1px solid rgba(226, 232, 240, 0.2); border-radius: 8px; color: #f1f5f9; font-size: 0.95em;">
-                    </div>
-                    <button class="btn-connect" onclick="changePassword()" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); margin-top: 8px;">💾 Guardar Contraseña</button>
-                    <div id="passwordStatus" style="text-align: center; margin-top: 8px; font-size: 0.9em; color: #cbd5e1;"></div>
-                </div>
-            </div>
-            
-            <div class="card">
                 <h2>WhatsApp</h2>
                 <button class="btn-connect" id="waBtn" onclick="toggleWhatsApp()">🔴 Conectar WhatsApp</button>
             </div>
@@ -643,10 +649,15 @@ def get_user_panel_page() -> str:
         <!-- Modal QR -->
         <div class="modal" id="qrModal">
             <div class="modal-content">
-                <h3>Escanea el QR</h3>
-                <p style="color: #cbd5e1; margin-bottom: 20px;">Escanea este código QR desde tu teléfono para conectar WhatsApp</p>
-                <img id="qrImage" class="qr-image" src="" alt="QR Code">
-                <button class="modal-close" onclick="closeQrModal()">Cerrar</button>
+                <h3>📱 Conectar WhatsApp</h3>
+                <p style="color: #cbd5e1; margin-bottom: 16px;">Escanea el código QR desde tu WhatsApp</p>
+                <div class="qr-loading" id="qrLoading">
+                    <div class="spinner"></div>
+                    <p class="spinner-text">Generando código QR...<br><small>Por favor espera unos segundos</small></p>
+                </div>
+                <img id="qrImage" class="qr-image" src="" alt="QR Code" style="display:none;">
+                <div id="qrError" style="display:none; color:#ef4444; padding:20px 0;">❌ QR no disponible.<br>Cierra e intenta de nuevo.</div>
+                <button class="modal-close" onclick="closeQrModal()">✖ Cerrar</button>
             </div>
         </div>
         
@@ -773,28 +784,34 @@ def get_user_panel_page() -> str:
             }
             
             async function toggleBot() {
+                const btn = document.getElementById('toggleBtn');
+                if (!btn || btn.disabled) return;
+                btn.disabled = true;
+                btn.classList.add('btn-disabled');
+                const origText = btn.textContent;
+                btn.textContent = '⏳ Cambiando...';
                 try {
                     const token = localStorage.getItem('token');
                     const res = await fetch('/status', {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
                     const status = await res.json();
-                    const isPaused = status.paused;
-                    
-                    const endpoint = isPaused ? '/bot/resume' : '/bot/pause';
+                    const endpoint = status.paused ? '/bot/resume' : '/bot/pause';
                     const response = await fetch(endpoint, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
-                    
                     if (response.ok) {
-                        loadStatus();
+                        await loadStatus();
                     } else {
-                        alert('Error al cambiar estado del bot');
+                        btn.textContent = origText;
                     }
                 } catch (error) {
-                    console.error('Error:', error);
-                    alert('Error al cambiar estado del bot');
+                    console.error('toggleBot error:', error);
+                    btn.textContent = origText;
+                } finally {
+                    btn.disabled = false;
+                    btn.classList.remove('btn-disabled');
                 }
             }
             
@@ -855,98 +872,85 @@ def get_user_panel_page() -> str:
                 }
             }
             
+            let _qrPollTimer = null;
+
             async function toggleWhatsApp() {
+                const btn = document.getElementById('waBtn');
+                const token = localStorage.getItem('token');
                 try {
-                    const token = localStorage.getItem('token');
-                    const res = await fetch('/status', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
                     const status = await res.json();
-                    const connected = status.connected;
-                    
-                    if (!connected) {
-                        // Primero iniciar la conexión
-                        try {
-                            const connectRes = await fetch('/bot/connect', {
-                                method: 'POST',
-                                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-                            });
-                            
-                            if (!connectRes.ok) {
-                                alert('Error al iniciar la conexión. Intenta de nuevo.');
-                                return;
-                            }
-                        } catch (e) {
-                            console.error('Error conectando:', e);
-                            alert('Error al conectar. Intenta de nuevo.');
+
+                    if (status.connected) {
+                        // Reconectar
+                        btn.textContent = '⏳ Reconectando...';
+                        await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                        btn.textContent = '🟢 Reconectar WhatsApp';
+                        alert('Reconexión iniciada');
+                        loadStatus();
+                        return;
+                    }
+
+                    // Iniciar conexión
+                    btn.textContent = '⏳ Conectando...';
+                    try {
+                        await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                    } catch(e) { console.warn('connect:', e); }
+
+                    // Mostrar modal de inmediato con spinner
+                    _openQrModal();
+
+                    // Polling: intenta cada 1.5s, hasta 30 intentos (~45s)
+                    let attempts = 0;
+                    _qrPollTimer = setInterval(async () => {
+                        attempts++;
+                        if (attempts > 30) {
+                            clearInterval(_qrPollTimer); _qrPollTimer = null;
+                            document.getElementById('qrLoading').style.display = 'none';
+                            document.getElementById('qrError').style.display = 'block';
                             return;
                         }
-                        
-                        // Mostrar modal de carga
-                        document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="50" text-anchor="middle" font-size="14" fill="%2300d4ff" dy=".3em">Cargando QR...</text></svg>';
-                        document.getElementById('qrModal').classList.add('show');
-                        
-                        // Esperar a que WAHA genere el QR (8 segundos)
-                        await new Promise(r => setTimeout(r, 8000));
-                        
-                        // Intentar cargar el QR con reintentos
-                        let qrLoaded = false;
-                        for (let i = 0; i < 15; i++) {
-                            try {
-                                const qrRes = await fetch('/qr?ts=' + Date.now());
-                                if (qrRes.ok) {
-                                    const blob = await qrRes.blob();
-                                    const url = URL.createObjectURL(blob);
-                                    document.getElementById('qrImage').src = url;
-                                    qrLoaded = true;
-                                    console.log('QR cargado en intento ' + (i+1));
-                                    return;
-                                } else {
-                                    console.log('Intento ' + (i+1) + ' - Status: ' + qrRes.status);
-                                }
-                            } catch (e) {
-                                console.error('Intento ' + (i+1) + ' - Error loading QR:', e);
-                            }
-                            if (i < 14) await new Promise(r => setTimeout(r, 2000));
-                        }
-                        
-                        // Si el QR no está disponible después de todos los intentos
-                        if (!qrLoaded) {
-                            document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="40" text-anchor="middle" font-size="12" fill="%23ff6b6b" dy=".3em">QR no disponible</text><text x="50" y="60" text-anchor="middle" font-size="10" fill="%23888" dy=".3em">Intenta de nuevo</text></svg>';
-                            console.log('QR no disponible después de 15 intentos');
-                        }
-                    } else {
-                        // Intenta reconectar
                         try {
-                            const response = await fetch('/bot/connect', {
-                                method: 'POST',
-                                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-                            });
-                            if (response.ok) {
-                                alert('Reconexión iniciada');
-                                loadStatus();
+                            const qrRes = await fetch('/qr?ts=' + Date.now());
+                            if (qrRes.ok) {
+                                clearInterval(_qrPollTimer); _qrPollTimer = null;
+                                const blob = await qrRes.blob();
+                                const url = URL.createObjectURL(blob);
+                                document.getElementById('qrImage').src = url;
+                                document.getElementById('qrImage').style.display = 'block';
+                                document.getElementById('qrLoading').style.display = 'none';
+                                console.log('[QR] Cargado en intento ' + attempts);
                             }
-                        } catch (e) {
-                            console.error('Error reconectando:', e);
-                        }
-                    }
+                        } catch(e) {}
+                    }, 1500);
+
                 } catch (error) {
-                    console.error('Error:', error);
+                    console.error('toggleWhatsApp error:', error);
+                    btn.textContent = '🔴 Conectar WhatsApp';
                 }
             }
-            
-            function closeQrModal() {
-                document.getElementById('qrModal').classList.remove('show');
+
+            function _openQrModal() {
+                document.getElementById('qrLoading').style.display = 'flex';
+                document.getElementById('qrImage').style.display = 'none';
+                document.getElementById('qrImage').src = '';
+                document.getElementById('qrError').style.display = 'none';
+                document.getElementById('qrModal').classList.add('show');
             }
-            
+
+            function closeQrModal() {
+                if (_qrPollTimer) { clearInterval(_qrPollTimer); _qrPollTimer = null; }
+                document.getElementById('qrModal').classList.remove('show');
+                document.getElementById('qrLoading').style.display = 'flex';
+                document.getElementById('qrImage').style.display = 'none';
+                document.getElementById('qrImage').src = '';
+                document.getElementById('qrError').style.display = 'none';
+            }
+
             function logout() {
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 window.location.href = '/login';
-            }
-            
-            function closeQrModal() {
-                document.getElementById('qrModal').classList.remove('show');
             }
             
             // Cargar versión del servidor
@@ -972,6 +976,770 @@ def get_user_panel_page() -> str:
     </body>
     </html>
     """
+def get_user_config_page() -> str:
+    """Página de configuración para usuarios (feriados, bloqueados, contraseña)"""
+    return """
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Configuración - ChatBot WA</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                min-height: 100vh;
+                color: #e2e8f0;
+            }
+            .layout { display: flex; min-height: 100vh; }
+
+            /* SIDEBAR */
+            .sidebar {
+                width: 220px;
+                background: rgba(15, 23, 42, 0.97);
+                border-right: 1px solid rgba(226,232,240,0.1);
+                padding: 28px 0;
+                position: fixed; top:0; left:0; height:100vh;
+                display: flex; flex-direction: column; gap: 4px;
+                z-index: 10;
+            }
+            .sidebar-brand {
+                padding: 0 20px 24px;
+                border-bottom: 1px solid rgba(226,232,240,0.08);
+                margin-bottom: 12px;
+            }
+            .sidebar-brand h2 {
+                font-size: 1.15em;
+                font-weight: 700;
+                background: linear-gradient(135deg, #3b82f6, #06b6d4);
+                -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+            .sidebar-brand p { color: #64748b; font-size: 0.8em; margin-top: 2px; }
+            .nav-item {
+                display: flex; align-items: center; gap: 10px;
+                padding: 11px 20px;
+                color: #94a3b8; cursor: pointer;
+                font-size: 0.95em; font-weight: 500;
+                border-left: 3px solid transparent;
+                transition: all 0.2s;
+            }
+            .nav-item:hover { color: #e2e8f0; background: rgba(59,130,246,0.07); }
+            .nav-item.active { color: #60a5fa; border-left-color: #3b82f6; background: rgba(59,130,246,0.12); }
+            .nav-back {
+                margin-top: auto; padding: 20px;
+                border-top: 1px solid rgba(226,232,240,0.08);
+            }
+            .btn-back {
+                width: 100%; padding: 10px;
+                background: rgba(239,68,68,0.1);
+                border: 1px solid rgba(244,63,94,0.4);
+                color: #fca5a5; border-radius: 8px;
+                cursor: pointer; font-size: 0.9em; font-weight: 500;
+                transition: background 0.2s;
+            }
+            .btn-back:hover { background: rgba(239,68,68,0.2); }
+
+            /* MAIN */
+            .main { margin-left: 220px; padding: 36px 32px; flex: 1; }
+            .page-header { margin-bottom: 28px; }
+            .page-header h1 {
+                font-size: 1.7em; font-weight: 700;
+                background: linear-gradient(135deg, #3b82f6, #06b6d4);
+                -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+            .page-header p { color: #64748b; font-size: 0.9em; margin-top: 4px; }
+
+            /* SECTIONS */
+            .section { display: none; }
+            .section.active { display: block; }
+
+            /* CARD */
+            .card {
+                background: rgba(18,24,40,0.85);
+                border: 1px solid rgba(226,232,240,0.08);
+                border-radius: 16px; padding: 28px;
+                margin-bottom: 24px;
+            }
+            .card h2 { font-size: 1.1em; color: #f1f5f9; margin-bottom: 20px; font-weight: 600; }
+            .card-footer {
+                display: flex; gap: 12px; justify-content: flex-end;
+                margin-top: 20px; padding-top: 20px;
+                border-top: 1px solid rgba(226,232,240,0.08);
+            }
+
+            /* BUTTONS */
+            .btn {
+                padding: 10px 22px; border: none; border-radius: 8px;
+                font-size: 0.9em; font-weight: 600; cursor: pointer;
+                transition: all 0.2s;
+            }
+            .btn-primary {
+                background: linear-gradient(135deg, #3b82f6, #06b6d4);
+                color: white;
+            }
+            .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(59,130,246,0.35); }
+            .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+            .btn-secondary {
+                background: rgba(226,232,240,0.08);
+                border: 1px solid rgba(226,232,240,0.15);
+                color: #94a3b8;
+            }
+            .btn-secondary:hover { background: rgba(226,232,240,0.13); }
+            .btn-danger {
+                background: rgba(239,68,68,0.12);
+                border: 1px solid rgba(244,63,94,0.4);
+                color: #f87171;
+            }
+            .btn-danger:hover { background: rgba(239,68,68,0.22); }
+            .btn-sm { padding: 5px 12px; font-size: 0.82em; }
+            .btn-icon { padding: 5px 9px; font-size: 0.85em; }
+
+            /* FORM */
+            .form-group { margin-bottom: 16px; }
+            label { display: block; color: #cbd5e1; font-size: 0.88em; font-weight: 500; margin-bottom: 6px; }
+            input[type="text"], input[type="email"], input[type="password"], input[type="date"], select, textarea {
+                width: 100%; padding: 10px 13px;
+                background: rgba(30,41,59,0.6);
+                border: 1px solid rgba(226,232,240,0.12);
+                border-radius: 8px; color: #f1f5f9; font-size: 0.93em;
+                transition: border-color 0.2s;
+            }
+            input:focus, select:focus, textarea:focus {
+                outline: none; border-color: rgba(59,130,246,0.5);
+            }
+            .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+            @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
+
+            /* TOAST */
+            .toast {
+                position: fixed; bottom: 28px; right: 28px;
+                padding: 14px 20px; border-radius: 10px;
+                font-size: 0.9em; font-weight: 500;
+                transform: translateY(80px); opacity: 0;
+                transition: all 0.3s; z-index: 999;
+                max-width: 340px;
+            }
+            .toast.show { transform: translateY(0); opacity: 1; }
+            .toast.success { background: rgba(16,185,129,0.18); border: 1px solid rgba(16,185,129,0.4); color: #6ee7b7; }
+            .toast.error   { background: rgba(239,68,68,0.18); border: 1px solid rgba(244,63,94,0.4); color: #fca5a5; }
+            .toast.info    { background: rgba(59,130,246,0.18); border: 1px solid rgba(59,130,246,0.4); color: #93c5fd; }
+
+            /* CALENDAR */
+            .cal-wrap {
+                background: rgba(30,41,59,0.5);
+                border: 1px solid rgba(226,232,240,0.1);
+                border-radius: 12px; padding: 20px; margin-bottom: 4px;
+            }
+            .cal-header {
+                display: flex; align-items: center; justify-content: space-between;
+                margin-bottom: 18px;
+            }
+            .cal-title { font-size: 1.1em; font-weight: 600; color: #f1f5f9; }
+            .cal-nav { display: flex; gap: 6px; }
+            .cal-btn {
+                padding: 5px 13px; background: rgba(59,130,246,0.12);
+                border: 1px solid rgba(59,130,246,0.25);
+                color: #93c5fd; border-radius: 7px; cursor: pointer;
+                font-size: 0.88em; font-weight: 600; transition: background 0.2s;
+            }
+            .cal-btn:hover { background: rgba(59,130,246,0.25); }
+            .cal-grid {
+                display: grid; grid-template-columns: repeat(7, 1fr);
+                gap: 7px;
+            }
+            .cal-hdr {
+                text-align: center; font-size: 0.78em; font-weight: 700;
+                color: #64748b; padding: 5px 0;
+            }
+            .cal-hdr.wknd { color: #f472b6; }
+            .cal-cell {
+                aspect-ratio: 1; display: flex; align-items: center;
+                justify-content: center; border-radius: 8px;
+                background: rgba(15,23,42,0.5);
+                border: 1px solid rgba(226,232,240,0.1);
+                font-size: 0.88em; font-weight: 600; color: #cbd5e1;
+                cursor: pointer; transition: all 0.18s;
+            }
+            .cal-cell.empty { background: transparent; border-color: transparent; cursor: default; }
+            .cal-cell:not(.empty):not(.selected):not(.pending):hover {
+                background: rgba(59,130,246,0.2);
+                border-color: rgba(59,130,246,0.35);
+                color: #93c5fd;
+            }
+            .cal-cell.wknd { color: #f472b6; }
+            .cal-cell.wknd:not(.selected):not(.pending):hover { background: rgba(244,114,182,0.15); border-color: rgba(244,114,182,0.3); }
+            /* Saved holiday (in DB) = blue gradient */
+            .cal-cell.selected {
+                background: linear-gradient(135deg, #3b82f6, #06b6d4);
+                border-color: rgba(59,130,246,0.6);
+                color: #fff; font-weight: 700;
+            }
+            /* Pending new (not yet saved) = amber */
+            .cal-cell.pending {
+                background: linear-gradient(135deg, #f59e0b, #d97706);
+                border-color: rgba(245,158,11,0.6);
+                color: #fff; font-weight: 700;
+            }
+            /* To be removed (in DB but deselected) = red strikethrough */
+            .cal-cell.removing {
+                background: rgba(239,68,68,0.18);
+                border-color: rgba(244,63,94,0.45);
+                color: #f87171; text-decoration: line-through;
+            }
+            .cal-cell.today {
+                outline: 2px solid rgba(99,102,241,0.8);
+                outline-offset: 2px;
+            }
+            .cal-legend {
+                display: flex; flex-wrap: wrap; gap: 12px;
+                margin-top: 14px; padding-top: 14px;
+                border-top: 1px solid rgba(226,232,240,0.08);
+                font-size: 0.8em; color: #64748b;
+            }
+            .cal-legend span { display: flex; align-items: center; gap: 5px; }
+            .leg-dot {
+                width: 13px; height: 13px; border-radius: 4px; display: inline-block;
+            }
+            .pending-badge {
+                display: inline-flex; align-items: center; gap: 6px;
+                padding: 7px 14px;
+                background: rgba(245,158,11,0.15);
+                border: 1px solid rgba(245,158,11,0.4);
+                border-radius: 8px; font-size: 0.87em; color: #fcd34d;
+                margin-bottom: 16px;
+            }
+            .pending-badge.hidden { display: none; }
+            .holiday-row {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 10px 14px; background: rgba(59,130,246,0.06);
+                border: 1px solid rgba(59,130,246,0.15);
+                border-radius: 9px; margin-bottom: 8px;
+            }
+            .holiday-info { display: flex; flex-direction: column; gap: 2px; }
+            .holiday-date { font-size: 0.85em; color: #60a5fa; font-weight: 600; }
+            .holiday-name { font-size: 0.93em; color: #f1f5f9; }
+            .empty-state { text-align: center; padding: 32px; color: #475569; font-size: 0.9em; }
+
+            /* BLOCKLIST */
+            .block-row {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 11px 14px; background: rgba(30,41,59,0.4);
+                border: 1px solid rgba(226,232,240,0.08);
+                border-radius: 9px; margin-bottom: 8px;
+            }
+            .block-info { display: flex; flex-direction: column; gap: 2px; }
+            .block-phone { font-size: 0.93em; color: #f1f5f9; font-weight: 600; }
+            .block-reason { font-size: 0.82em; color: #64748b; }
+            .block-actions { display: flex; gap: 6px; }
+            .add-form {
+                background: rgba(30,41,59,0.5); border: 1px solid rgba(226,232,240,0.1);
+                border-radius: 12px; padding: 20px; margin-bottom: 20px;
+            }
+            .add-form h3 { font-size: 0.95em; color: #cbd5e1; margin-bottom: 14px; }
+
+            @media (max-width: 768px) {
+                .sidebar { width: 100%; height: auto; position: relative; flex-direction: row; flex-wrap: wrap; padding: 12px; }
+                .sidebar-brand { padding-bottom: 0; border-bottom: none; margin-bottom: 0; }
+                .nav-back { margin-top: 0; padding: 0; border: none; }
+                .main { margin-left: 0; padding: 20px 16px; }
+                .nav-item { padding: 8px 12px; border-left: none; border-bottom: 3px solid transparent; }
+                .nav-item.active { border-bottom-color: #3b82f6; border-left-color: transparent; }
+            }
+        </style>
+    </head>
+    <body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <h2>⚙️ Configuración</h2>
+                <p>Panel de Usuario</p>
+            </div>
+            <div class="nav-item active" onclick="switchSection('holidays', this)">📅 Feriados</div>
+            <div class="nav-item" onclick="switchSection('blocklist', this)">🚫 Bloqueados</div>
+            <div class="nav-item" onclick="switchSection('password', this)">🔐 Contraseña</div>
+            <div class="nav-back">
+                <button class="btn-back" onclick="window.location.href='/user-panel'">← Volver al Panel</button>
+            </div>
+        </aside>
+
+        <main class="main">
+            <div class="page-header">
+                <h1>⚙️ Configuración</h1>
+                <p>Administrá feriados, lista de bloqueados y tu contraseña</p>
+            </div>
+
+            <!-- ═══════════════  FERIADOS  ═══════════════ -->
+            <div id="holidays" class="section active">
+                <div class="card">
+                    <h2>📅 Calendario de Feriados</h2>
+                    <p style="color:#64748b;font-size:0.88em;margin-bottom:16px;">
+                        Hacé clic en un día para marcarlo como feriado. Los días marcados en
+                        <strong style="color:#60a5fa;">azul</strong> ya están guardados;
+                        en <strong style="color:#fcd34d;">amarillo</strong> están pendientes de guardar;
+                        en <strong style="color:#f87171;">rojo tachado</strong> serán eliminados.
+                        Sábados y domingos se muestran en <strong style="color:#f472b6;">rosa</strong>.
+                    </p>
+
+                    <div id="pendingBadge" class="pending-badge hidden">
+                        ⚠️ <span id="pendingText">0 cambios pendientes</span>
+                    </div>
+
+                    <div class="cal-wrap">
+                        <div class="cal-header">
+                            <div class="cal-nav">
+                                <button class="cal-btn" onclick="calPrev()">◀ Ant</button>
+                                <button class="cal-btn" onclick="calToday()">Hoy</button>
+                                <button class="cal-btn" onclick="calNext()">Sig ▶</button>
+                            </div>
+                            <div class="cal-title" id="calTitle">—</div>
+                        </div>
+                        <div class="cal-grid" id="calGrid"></div>
+                        <div class="cal-legend">
+                            <span><div class="leg-dot" style="background:linear-gradient(135deg,#3b82f6,#06b6d4);"></div> Feriado guardado</span>
+                            <span><div class="leg-dot" style="background:linear-gradient(135deg,#f59e0b,#d97706);"></div> Por guardar</span>
+                            <span><div class="leg-dot" style="background:rgba(239,68,68,0.3);border:1px solid #f87171;"></div> Por eliminar</span>
+                            <span><div class="leg-dot" style="background:transparent;outline:2px solid rgba(99,102,241,0.8);outline-offset:1px;"></div> Hoy</span>
+                            <span><div class="leg-dot" style="background:rgba(15,23,42,0.5);border:1px solid rgba(226,232,240,0.1);"></div> <span style="color:#f472b6">Fin de semana</span></span>
+                        </div>
+                    </div>
+
+                    <!-- Guardar / Cancelar -->
+                    <div class="card-footer">
+                        <button class="btn btn-secondary" onclick="cancelHolidays()">✖ Cancelar cambios</button>
+                        <button class="btn btn-primary" id="saveHBtn" onclick="saveHolidays()">💾 Guardar Feriados</button>
+                    </div>
+                </div>
+
+                <!-- Lista resumen -->
+                <div class="card">
+                    <h2>📋 Feriados Guardados</h2>
+                    <div id="holidaysList"><div class="empty-state">Cargando...</div></div>
+                </div>
+            </div>
+
+            <!-- ═══════════════  BLOQUEADOS  ═══════════════ -->
+            <div id="blocklist" class="section">
+                <!-- Agregar -->
+                <div class="card">
+                    <h2>🚫 Agregar a Lista de Bloqueados</h2>
+                    <div class="add-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Número de teléfono (ej: 5491112345678)</label>
+                                <input type="text" id="blPhone" placeholder="5491112345678">
+                            </div>
+                            <div class="form-group">
+                                <label>Motivo (opcional)</label>
+                                <input type="text" id="blReason" placeholder="Spam, molestia, etc.">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-secondary" onclick="clearBlockForm()">✖ Cancelar</button>
+                        <button class="btn btn-primary" id="saveBlBtn" onclick="saveBlock()">🚫 Bloquear Número</button>
+                    </div>
+                </div>
+
+                <!-- Lista -->
+                <div class="card">
+                    <h2>📋 Números Bloqueados</h2>
+                    <div id="blocklistItems"><div class="empty-state">Cargando...</div></div>
+                </div>
+            </div>
+
+            <!-- ═══════════════  CONTRASEÑA  ═══════════════ -->
+            <div id="password" class="section">
+                <div class="card">
+                    <h2>🔐 Cambiar Contraseña</h2>
+                    <div class="form-group">
+                        <label>Contraseña Actual</label>
+                        <input type="password" id="oldPw" placeholder="Tu contraseña actual">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Contraseña Nueva</label>
+                            <input type="password" id="newPw" placeholder="Mínimo 6 caracteres">
+                        </div>
+                        <div class="form-group">
+                            <label>Confirmar Contraseña</label>
+                            <input type="password" id="confirmPw" placeholder="Repetí la nueva contraseña">
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-secondary" onclick="clearPwForm()">✖ Cancelar</button>
+                        <button class="btn btn-primary" id="savePwBtn" onclick="savePassword()">💾 Guardar Contraseña</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const token = localStorage.getItem('token');
+
+        // ── Auth check ──────────────────────────────────────────
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!token) { window.location.href = '/login'; return; }
+            switchSection('holidays', document.querySelector('.nav-item.active'));
+        });
+
+        // ── Secciones ───────────────────────────────────────────
+        function switchSection(id, el) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if (el) el.classList.add('active');
+            if (id === 'holidays') { loadHolidays(); renderCalendar(); }
+            if (id === 'blocklist') loadBlocklist();
+        }
+
+        // ── Toast ───────────────────────────────────────────────
+        let _toastTimer;
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('toast');
+            clearTimeout(_toastTimer);
+            t.textContent = msg;
+            t.className = 'toast ' + type + ' show';
+            _toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+        }
+
+        // ══════════════════════════════════════════════════════
+        //  CALENDARIO  —  click-to-toggle con diff-save
+        // ══════════════════════════════════════════════════════
+        let calDate      = new Date();
+        let _savedHols   = [];        // [{id, date, name}] — cargado del servidor
+        let _savedSet    = new Set(); // fechas actualmente en BD
+        let _selSet      = new Set(); // fechas actualmente seleccionadas en UI
+
+        const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        const WDAYS  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+        function calPrev()  { calDate.setMonth(calDate.getMonth()-1); renderCalendar(); }
+        function calNext()  { calDate.setMonth(calDate.getMonth()+1); renderCalendar(); }
+        function calToday() { calDate = new Date(); renderCalendar(); }
+
+        function fmtDate(d) {
+            return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        }
+        function fmtParts(y,m,d) {
+            return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+        }
+        function fmtHuman(s) {
+            if(!s) return '';
+            const [y,m,d]=s.split('-'); return d+'/'+m+'/'+y;
+        }
+
+        function renderCalendar() {
+            const yr = calDate.getFullYear();
+            const mo = calDate.getMonth();
+            document.getElementById('calTitle').textContent = MONTHS[mo] + ' ' + yr;
+
+            const todayStr = fmtDate(new Date());
+            const grid = document.getElementById('calGrid');
+            grid.innerHTML = '';
+
+            // Headers
+            WDAYS.forEach((d,i) => {
+                const h = document.createElement('div');
+                h.className = 'cal-hdr' + (i===0||i===6?' wknd':'');
+                h.textContent = d;
+                grid.appendChild(h);
+            });
+
+            const firstDow = new Date(yr, mo, 1).getDay();
+            const daysInMo = new Date(yr, mo+1, 0).getDate();
+
+            for(let i=0; i<firstDow; i++) {
+                const e=document.createElement('div'); e.className='cal-cell empty'; grid.appendChild(e);
+            }
+
+            for(let d=1; d<=daysInMo; d++) {
+                const ds    = fmtParts(yr, mo+1, d);
+                const dow   = new Date(yr,mo,d).getDay();
+                const isWkd = dow===0||dow===6;
+                const inDB  = _savedSet.has(ds);
+                const inSel = _selSet.has(ds);
+                const isToday = ds === todayStr;
+
+                const cell = document.createElement('div');
+                let cls = 'cal-cell';
+                if(isWkd) cls += ' wknd';
+                if(isToday) cls += ' today';
+
+                // State classes
+                if(inDB && inSel)      cls += ' selected';  // saved & still selected
+                else if(!inDB && inSel) cls += ' pending';   // new, not yet saved
+                else if(inDB && !inSel) cls += ' removing';  // was saved, now deselected
+                // else: normal (neither saved nor selected)
+
+                cell.className = cls;
+                cell.textContent = d;
+
+                // Tooltips
+                if(inDB && inSel) cell.title = (_savedHols.find(h=>h.date===ds)?.name||'Feriado guardado');
+                else if(!inDB && inSel) cell.title = 'Nuevo feriado — pendiente de guardar';
+                else if(inDB && !inSel) cell.title = 'Se eliminará al guardar';
+                else if(isWkd) cell.title = dow===6?'Sábado':'Domingo';
+
+                // All days (including weekends) are clickable to toggle
+                cell.onclick = () => {
+                    if(_selSet.has(ds)) _selSet.delete(ds);
+                    else _selSet.add(ds);
+                    renderCalendar();
+                    updatePendingBadge();
+                };
+                grid.appendChild(cell);
+            }
+        }
+
+        function updatePendingBadge() {
+            const toAdd = [..._selSet].filter(d=>!_savedSet.has(d)).length;
+            const toDel = [..._savedSet].filter(d=>!_selSet.has(d)).length;
+            const total = toAdd + toDel;
+            const badge = document.getElementById('pendingBadge');
+            const text  = document.getElementById('pendingText');
+            if(total>0) {
+                badge.classList.remove('hidden');
+                const parts=[];
+                if(toAdd>0) parts.push(`+${toAdd} por agregar`);
+                if(toDel>0) parts.push(`-${toDel} por eliminar`);
+                text.textContent = parts.join('  ·  ');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        // ── FERIADOS CRUD ───────────────────────────────────────
+        async function loadHolidays() {
+            try {
+                const res = await fetch('/api/holidays', {headers:{'Authorization':`Bearer ${token}`}});
+                if(!res.ok) throw new Error('HTTP '+res.status);
+                _savedHols = await res.json();
+                _savedHols.sort((a,b)=>a.date.localeCompare(b.date));
+                _savedSet = new Set(_savedHols.map(h=>h.date));
+                _selSet   = new Set(_savedSet); // start with same selection as saved
+                updatePendingBadge();
+                renderCalendar();
+                renderHolidayList();
+            } catch(e) {
+                document.getElementById('holidaysList').innerHTML='<div class="empty-state">❌ Error al cargar feriados</div>';
+            }
+        }
+
+        function renderHolidayList() {
+            const el = document.getElementById('holidaysList');
+            if(!_savedHols.length) {
+                el.innerHTML='<div class="empty-state">📭 No hay feriados guardados</div>'; return;
+            }
+            el.innerHTML = _savedHols.map(h => `
+                <div class="holiday-row">
+                    <div class="holiday-info">
+                        <span class="holiday-date">📅 ${fmtHuman(h.date)}</span>
+                        <span class="holiday-name">${h.name||'Feriado'}</span>
+                    </div>
+                    <button class="btn btn-danger btn-sm" onclick="quickDelete(${h.id},'${h.date}')">🗑️</button>
+                </div>
+            `).join('');
+        }
+
+        function cancelHolidays() {
+            _selSet = new Set(_savedSet);
+            renderCalendar();
+            updatePendingBadge();
+            showToast('↺ Cambios descartados', 'info');
+        }
+
+        async function saveHolidays() {
+            const toAdd = [..._selSet].filter(d=>!_savedSet.has(d));
+            const toDel = [..._savedSet].filter(d=>!_selSet.has(d));
+
+            if(toAdd.length===0 && toDel.length===0) {
+                showToast('Sin cambios pendientes', 'info'); return;
+            }
+
+            const btn = document.getElementById('saveHBtn');
+            btn.disabled=true; btn.textContent='⏳ Guardando...';
+            let errors=0;
+            try {
+                // DELETE removed holidays
+                for(const date of toDel) {
+                    const h = _savedHols.find(h=>h.date===date);
+                    if(!h) continue;
+                    const r = await fetch('/api/holidays/'+h.id, {
+                        method:'DELETE', headers:{'Authorization':`Bearer ${token}`}
+                    });
+                    if(!r.ok) errors++;
+                }
+                // POST new holidays
+                for(const date of toAdd) {
+                    const r = await fetch('/api/holidays', {
+                        method:'POST',
+                        headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
+                        body: JSON.stringify({date, name:'Feriado'})
+                    });
+                    if(!r.ok) errors++;
+                }
+                await loadHolidays();
+                if(errors>0) showToast(`⚠️ Guardado con ${errors} error(es)`, 'error');
+                else showToast('✅ Feriados actualizados correctamente');
+            } catch(e) {
+                showToast('❌ Error de conexión', 'error');
+            } finally {
+                btn.disabled=false; btn.textContent='💾 Guardar Feriados';
+            }
+        }
+
+        async function quickDelete(id, date) {
+            // Remove from selSet and savedSet immediately (visual + API)
+            _selSet.delete(date);
+            const r = await fetch('/api/holidays/'+id, {
+                method:'DELETE', headers:{'Authorization':`Bearer ${token}`}
+            });
+            if(r.ok) {
+                showToast('🗑️ Feriado eliminado');
+                await loadHolidays();
+            } else {
+                showToast('❌ Error al eliminar', 'error');
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        //  BLOCKLIST — CRUD
+        // ══════════════════════════════════════════════════════
+        let _blocklist = [];
+
+        async function loadBlocklist() {
+            try {
+                const res = await fetch('/api/blocklist', { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                _blocklist = await res.json();
+                renderBlocklist();
+            } catch(e) {
+                document.getElementById('blocklistItems').innerHTML = '<div class="empty-state">❌ Error al cargar la lista</div>';
+            }
+        }
+
+        function renderBlocklist() {
+            const el = document.getElementById('blocklistItems');
+            if (!_blocklist.length) {
+                el.innerHTML = '<div class="empty-state">✅ No hay números bloqueados</div>';
+                return;
+            }
+            el.innerHTML = _blocklist.map(b => `
+                <div class="block-row">
+                    <div class="block-info">
+                        <span class="block-phone">📵 ${b.phone_number}</span>
+                        ${b.reason ? `<span class="block-reason">${b.reason}</span>` : ''}
+                    </div>
+                    <div class="block-actions">
+                        <button class="btn btn-danger btn-icon" onclick="unblock(${b.id}, '${b.phone_number}')">🗑️ Desbloquear</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function saveBlock() {
+            const phone = document.getElementById('blPhone').value.trim();
+            const reason = document.getElementById('blReason').value.trim();
+            if (!phone) { showToast('Ingresá un número de teléfono', 'error'); return; }
+
+            const btn = document.getElementById('saveBlBtn');
+            btn.disabled = true; btn.textContent = '⏳ Bloqueando...';
+            try {
+                const res = await fetch('/api/blocklist', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone_number: phone, reason })
+                });
+                if (res.ok) {
+                    showToast('🚫 Número bloqueado');
+                    clearBlockForm();
+                    await loadBlocklist();
+                } else {
+                    const err = await res.json();
+                    showToast('❌ ' + (err.detail || 'Error al bloquear'), 'error');
+                }
+            } catch(e) {
+                showToast('❌ Error de conexión', 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = '🚫 Bloquear Número';
+            }
+        }
+
+        async function unblock(id, phone) {
+            if (!confirm('¿Desbloquear ' + phone + '?')) return;
+            try {
+                const res = await fetch('/api/blocklist/' + id, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    showToast('✅ Número desbloqueado');
+                    await loadBlocklist();
+                } else {
+                    showToast('❌ Error al desbloquear', 'error');
+                }
+            } catch(e) {
+                showToast('❌ Error de conexión', 'error');
+            }
+        }
+
+        function clearBlockForm() {
+            document.getElementById('blPhone').value = '';
+            document.getElementById('blReason').value = '';
+        }
+
+        // ══════════════════════════════════════════════════════
+        //  CONTRASEÑA
+        // ══════════════════════════════════════════════════════
+        async function savePassword() {
+            const oldPw    = document.getElementById('oldPw').value;
+            const newPw    = document.getElementById('newPw').value;
+            const confirmPw = document.getElementById('confirmPw').value;
+
+            if (!oldPw || !newPw || !confirmPw) { showToast('Completá todos los campos', 'error'); return; }
+            if (newPw !== confirmPw) { showToast('Las contraseñas no coinciden', 'error'); return; }
+            if (newPw.length < 6) { showToast('Mínimo 6 caracteres', 'error'); return; }
+
+            const btn = document.getElementById('savePwBtn');
+            btn.disabled = true; btn.textContent = '⏳ Guardando...';
+            try {
+                const res = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ old_password: oldPw, new_password: newPw })
+                });
+                if (res.ok) {
+                    showToast('✅ Contraseña actualizada correctamente');
+                    clearPwForm();
+                } else {
+                    const err = await res.json();
+                    showToast('❌ ' + (err.detail || 'Contraseña actual incorrecta'), 'error');
+                }
+            } catch(e) {
+                showToast('❌ Error de conexión', 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = '💾 Guardar Contraseña';
+            }
+        }
+
+        function clearPwForm() {
+            document.getElementById('oldPw').value = '';
+            document.getElementById('newPw').value = '';
+            document.getElementById('confirmPw').value = '';
+        }
+    </script>
+    </body>
+    </html>
+    """
+
 def get_dashboard_page() -> str:
     """Dashboard admin completamente rediseñado"""
     return """
@@ -1347,6 +2115,38 @@ def get_dashboard_page() -> str:
                     margin-right: 16px;
                 }
             }
+
+            /* Spinner QR */
+            .qr-loading {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 30px 0;
+            }
+            .spinner {
+                width: 56px;
+                height: 56px;
+                border: 5px solid rgba(59, 130, 246, 0.2);
+                border-top-color: #3b82f6;
+                border-radius: 50%;
+                animation: spin 0.9s linear infinite;
+            }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            .spinner-text {
+                color: #94a3b8;
+                margin-top: 16px;
+                font-size: 0.9em;
+                text-align: center;
+                line-height: 1.5;
+            }
+            .btn-pause {
+                background: linear-gradient(135deg, #f59e0b, #d97706);
+                color: white;
+            }
+            .btn-pause:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
+            }
         </style>
     </head>
     <body>
@@ -1403,6 +2203,7 @@ def get_dashboard_page() -> str:
                         </div>
                     </div>
                     <button class="btn btn-primary" onclick="refresh()">🔄 Actualizar Estado</button>
+                    <button class="btn" id="pauseBtn" onclick="toggleBot()" style="margin-left:10px;">⏸️ Pausar Bot</button>
                 </div>
                 
                 <div class="card">
@@ -1685,10 +2486,11 @@ def get_dashboard_page() -> str:
                                 <tr style="background: rgba(30, 41, 59, 0.5); border-bottom: 1px solid rgba(226, 232, 240, 0.1);">
                                     <th style="padding: 12px; text-align: left; color: #cbd5e1;">Número</th>
                                     <th style="padding: 12px; text-align: left; color: #cbd5e1;">Razón</th>
+                                    <th style="padding: 12px; text-align: right; color: #cbd5e1;">Acción</th>
                                 </tr>
                             </thead>
                             <tbody id="blocklistTable">
-                                <tr><td colspan="2" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
+                                <tr><td colspan="3" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1699,10 +2501,15 @@ def get_dashboard_page() -> str:
         <!-- Modal QR -->
         <div class="modal" id="qrModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 1000;">
             <div style="background: rgba(18, 24, 40, 0.95); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 20px; padding: 40px; max-width: 400px; width: 90%; text-align: center;">
-                <h3 style="color: #f1f5f9; margin-bottom: 20px;">Escanea el QR</h3>
-                <p style="color: #cbd5e1; margin-bottom: 20px;">Escanea este código QR desde tu teléfono para conectar WhatsApp</p>
-                <img id="qrImage" style="margin: 20px 0; max-width: 100%; border-radius: 12px; border: 2px solid rgba(226, 232, 240, 0.1);" src="" alt="QR Code">
-                <button class="btn btn-secondary" onclick="closeQrModal()" style="margin-top: 20px;">Cerrar</button>
+                <h3 style="color: #f1f5f9; margin-bottom: 16px;">📱 Conectar WhatsApp</h3>
+                <p style="color: #cbd5e1; margin-bottom: 16px;">Escanea el código QR desde tu WhatsApp</p>
+                <div class="qr-loading" id="qrLoading">
+                    <div class="spinner"></div>
+                    <p class="spinner-text">Generando código QR...<br><small>Por favor espera unos segundos</small></p>
+                </div>
+                <img id="qrImage" style="display:none; margin: 20px 0; max-width: 100%; border-radius: 12px; border: 2px solid rgba(226, 232, 240, 0.1);" src="" alt="QR Code">
+                <div id="qrError" style="display:none; color:#ef4444; padding:20px 0;">❌ QR no disponible.<br>Cierra e intenta de nuevo.</div>
+                <button class="btn btn-secondary" onclick="closeQrModal()" style="margin-top: 20px;">✖ Cerrar</button>
             </div>
         </div>
         
@@ -1826,6 +2633,17 @@ def get_dashboard_page() -> str:
                     document.getElementById('waStatus').textContent = status.connected ? 'Conectado' : 'Desconectado';
                     document.getElementById('botIcon').textContent = status.paused ? '⏸️' : '▶️';
                     document.getElementById('botStatus').textContent = status.paused ? 'Pausado' : 'Activo';
+                    // Actualizar botón de pausa
+                    const pauseBtn = document.getElementById('pauseBtn');
+                    if (pauseBtn) {
+                        if (status.paused) {
+                            pauseBtn.textContent = '▶️ Activar Bot';
+                            pauseBtn.className = 'btn btn-primary';
+                        } else {
+                            pauseBtn.textContent = '⏸️ Pausar Bot';
+                            pauseBtn.className = 'btn btn-pause';
+                        }
+                    }
                     document.getElementById('chatsToday').textContent = status.chats_today || '0';
                     document.getElementById('hoursIcon').textContent = status.off_hours ? '🕐' : '✅';
                     document.getElementById('hoursStatus').textContent = status.off_hours ? 'Fuera' : 'Normal';
@@ -1842,96 +2660,108 @@ def get_dashboard_page() -> str:
                     console.error('Error:', error);
                 }
             }
-            
+
+            async function toggleBot() {
+                const btn = document.getElementById('pauseBtn');
+                if (!btn || btn.disabled) return;
+                btn.disabled = true;
+                const orig = btn.textContent;
+                btn.textContent = '⏳ Cambiando...';
+                try {
+                    const res = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                    const status = await res.json();
+                    const endpoint = status.paused ? '/bot/resume' : '/bot/pause';
+                    await fetch(endpoint, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                    await refresh();
+                } catch(e) {
+                    console.error('toggleBot:', e);
+                    btn.textContent = orig;
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            let _qrPollTimer = null;
+
             async function toggleWhatsApp() {
                 try {
                     const res = await fetch('/status', {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
-                    
+
                     if (!res.ok) {
-                        if (res.status === 403) {
-                            window.location.href = '/login';
-                            return;
-                        }
+                        if (res.status === 403) { window.location.href = '/login'; return; }
                         throw new Error(`HTTP ${res.status}`);
                     }
-                    
+
                     const status = await res.json();
-                    const connected = status.connected;
-                    
-                    if (!connected) {
+
+                    if (status.connected) {
+                        // Reconectar
+                        const btn = document.getElementById('waBtn');
+                        btn.textContent = '⏳ Reconectando...';
                         try {
-                            const connectRes = await fetch('/bot/connect', {
-                                method: 'POST',
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            });
-                            
-                            if (!connectRes.ok) {
-                                alert('Error al iniciar la conexión. Intenta de nuevo.');
-                                return;
-                            }
-                        } catch (e) {
-                            console.error('Error conectando:', e);
-                            alert('Error al conectar. Intenta de nuevo.');
+                            await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                        } catch(e) {}
+                        btn.textContent = '🟢 Reconectar WhatsApp';
+                        alert('Reconexión iniciada');
+                        refresh();
+                        return;
+                    }
+
+                    // No conectado - iniciar + mostrar modal de inmediato
+                    try {
+                        await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                    } catch(e) { console.warn('connect:', e); }
+
+                    _openQrModal();
+
+                    // Polling: cada 1.5s, hasta 30 intentos
+                    let attempts = 0;
+                    _qrPollTimer = setInterval(async () => {
+                        attempts++;
+                        if (attempts > 30) {
+                            clearInterval(_qrPollTimer); _qrPollTimer = null;
+                            document.getElementById('qrLoading').style.display = 'none';
+                            document.getElementById('qrError').style.display = 'block';
                             return;
                         }
-                        
-                        // Mostrar modal de carga
-                        document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="50" text-anchor="middle" font-size="14" fill="%2300d4ff" dy=".3em">Cargando QR...</text></svg>';
-                        document.getElementById('qrModal').style.display = 'flex';
-                        
-                        // Esperar a que WAHA genere el QR (8 segundos)
-                        await new Promise(r => setTimeout(r, 8000));
-                        
-                        let qrLoaded = false;
-                        for (let i = 0; i < 15; i++) {
-                            try {
-                                const qrRes = await fetch('/qr?ts=' + Date.now());
-                                if (qrRes.ok) {
-                                    const blob = await qrRes.blob();
-                                    const url = URL.createObjectURL(blob);
-                                    document.getElementById('qrImage').src = url;
-                                    qrLoaded = true;
-                                    console.log('QR cargado en intento ' + (i+1));
-                                    return;
-                                } else {
-                                    console.log('Intento ' + (i+1) + ' - Status: ' + qrRes.status);
-                                }
-                            } catch (e) {
-                                console.error('Intento ' + (i+1) + ' - Error loading QR:', e);
-                            }
-                            if (i < 14) await new Promise(r => setTimeout(r, 2000));
-                        }
-                        
-                        // Si el QR no está disponible después de todos los intentos
-                        if (!qrLoaded) {
-                            document.getElementById('qrImage').src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%231a1a2e" width="100" height="100"/><text x="50" y="40" text-anchor="middle" font-size="12" fill="%23ff6b6b" dy=".3em">QR no disponible</text><text x="50" y="60" text-anchor="middle" font-size="10" fill="%23888" dy=".3em">Intenta de nuevo</text></svg>';
-                            console.log('QR no disponible después de 15 intentos');
-                        }
-                    } else {
                         try {
-                            const response = await fetch('/bot/connect', {
-                                method: 'POST',
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            });
-                            if (response.ok) {
-                                alert('Reconexión iniciada');
-                                refresh();
+                            const qrRes = await fetch('/qr?ts=' + Date.now());
+                            if (qrRes.ok) {
+                                clearInterval(_qrPollTimer); _qrPollTimer = null;
+                                const blob = await qrRes.blob();
+                                const url = URL.createObjectURL(blob);
+                                document.getElementById('qrImage').src = url;
+                                document.getElementById('qrImage').style.display = 'block';
+                                document.getElementById('qrLoading').style.display = 'none';
+                                console.log('[QR] Cargado en intento ' + attempts);
                             }
-                        } catch (e) {
-                            console.error('Error:', e);
-                        }
-                    }
+                        } catch(e) {}
+                    }, 1500);
+
                 } catch (error) {
-                    console.error('Error:', error);
+                    console.error('toggleWhatsApp error:', error);
                 }
             }
-            
-            function closeQrModal() {
-                document.getElementById('qrModal').style.display = 'none';
+
+            function _openQrModal() {
+                document.getElementById('qrLoading').style.display = 'flex';
+                document.getElementById('qrImage').style.display = 'none';
+                document.getElementById('qrImage').src = '';
+                document.getElementById('qrError').style.display = 'none';
+                document.getElementById('qrModal').style.display = 'flex';
             }
-            
+
+            function closeQrModal() {
+                if (_qrPollTimer) { clearInterval(_qrPollTimer); _qrPollTimer = null; }
+                document.getElementById('qrModal').style.display = 'none';
+                document.getElementById('qrLoading').style.display = 'flex';
+                document.getElementById('qrImage').style.display = 'none';
+                document.getElementById('qrImage').src = '';
+                document.getElementById('qrError').style.display = 'none';
+            }
+
             async function loadUsers() {
                 try {
                     const res = await fetch(`${API_URL}/admin/users`, {
@@ -2279,23 +3109,62 @@ def get_dashboard_page() -> str:
                     const res = await fetch(`${API_URL}/blocklist`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
                     const blocked = await res.json();
                     
                     const tbody = document.querySelector('#blocklistTable');
-                    tbody.innerHTML = blocked.map(b => `
-                        <tr style="border-bottom: 1px solid rgba(226, 232, 240, 0.05);">
-                            <td style="padding: 12px; color: #cbd5e1;">${b.phone_number}</td>
-                            <td style="padding: 12px; color: #cbd5e1;">${b.reason}</td>
-                        </tr>
-                    `).join('');
+                    if (blocked.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #94a3b8;">No hay números bloqueados</td></tr>';
+                    } else {
+                        tbody.innerHTML = blocked.map(b => `
+                            <tr style="border-bottom: 1px solid rgba(226, 232, 240, 0.05);">
+                                <td style="padding: 12px; color: #cbd5e1;">${b.phone_number}</td>
+                                <td style="padding: 12px; color: #cbd5e1;">${b.reason}</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <button onclick="deleteBlock(${b.id})" style="background: #dc2626; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em; transition: background 0.3s;">
+                                        Desbloquear
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
                 } catch (error) {
                     console.error('Error:', error);
+                    document.getElementById('blocklistMessage').innerHTML = '<div style="background: rgba(220, 38, 38, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #dc2626;">❌ Error al cargar lista de bloqueados</div>';
                 }
             }
             
             async function blockNumber(e) {
                 e.preventDefault();
+                const phoneInput = document.getElementById('blockNumber');
+                const reasonInput = document.getElementById('blockReason');
+                const messageEl = document.getElementById('blocklistMessage');
+                
+                // Validación
+                const phone = phoneInput.value.trim();
+                const reason = reasonInput.value.trim();
+                
+                if (!phone) {
+                    messageEl.innerHTML = '<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">⚠️ Ingresa un número de teléfono</div>';
+                    return;
+                }
+                
+                // Validar formato básico (debe tener + al inicio)
+                if (!phone.startsWith('+')) {
+                    messageEl.innerHTML = '<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">⚠️ El número debe comenzar con +</div>';
+                    return;
+                }
+                
+                if (!reason) {
+                    messageEl.innerHTML = '<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">⚠️ Ingresa una razón para el bloqueo</div>';
+                    return;
+                }
+                
                 try {
+                    messageEl.innerHTML = '<div style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 12px; border-radius: 8px; border-left: 4px solid #3b82f6;">⏳ Agregando número a blocklist...</div>';
+                    
                     const res = await fetch(`${API_URL}/blocklist`, {
                         method: 'POST',
                         headers: {
@@ -2303,18 +3172,51 @@ def get_dashboard_page() -> str:
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            phone_number: document.getElementById('blockNumber').value,
-                            reason: document.getElementById('blockReason').value
+                            phone_number: phone,
+                            reason: reason
                         })
                     });
                     
                     if (res.ok) {
-                        document.getElementById('blockNumber').value = '';
-                        document.getElementById('blockReason').value = '';
-                        loadBlocklist();
+                        const result = await res.json();
+                        phoneInput.value = '';
+                        reasonInput.value = '';
+                        messageEl.innerHTML = '<div style="background: rgba(34, 197, 94, 0.2); color: #86efac; padding: 12px; border-radius: 8px; border-left: 4px solid #22c55e;">✅ Número bloqueado exitosamente</div>';
+                        setTimeout(() => loadBlocklist(), 500);
+                    } else {
+                        const error = await res.json();
+                        messageEl.innerHTML = `<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">❌ Error: ${error.detail || 'No se pudo bloquear el número'}</div>`;
                     }
                 } catch (error) {
                     console.error('Error:', error);
+                    messageEl.innerHTML = `<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">❌ Error al agregar a blocklist: ${error.message}</div>`;
+                }
+            }
+            
+            async function deleteBlock(blockId) {
+                if (!confirm('¿Estás seguro de que deseas desbloquear este número?')) {
+                    return;
+                }
+                
+                try {
+                    const messageEl = document.getElementById('blocklistMessage');
+                    messageEl.innerHTML = '<div style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 12px; border-radius: 8px; border-left: 4px solid #3b82f6;">⏳ Desbloqueando número...</div>';
+                    
+                    const res = await fetch(`${API_URL}/blocklist/${blockId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    if (res.ok) {
+                        messageEl.innerHTML = '<div style="background: rgba(34, 197, 94, 0.2); color: #86efac; padding: 12px; border-radius: 8px; border-left: 4px solid #22c55e;">✅ Número desbloqueado exitosamente</div>';
+                        setTimeout(() => loadBlocklist(), 500);
+                    } else {
+                        const error = await res.json();
+                        messageEl.innerHTML = `<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">❌ Error: ${error.detail || 'No se pudo desbloquear'}</div>`;
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    document.getElementById('blocklistMessage').innerHTML = `<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">❌ Error al desbloquear: ${error.message}</div>`;
                 }
             }
             

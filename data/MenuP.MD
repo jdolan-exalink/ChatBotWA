@@ -8,6 +8,8 @@ Para continuar, respondé con el número de opción:
 5️⃣ Discapacidad
 6️⃣ Bocas de expendio
 7️⃣ Compra de Orden de Consulta
+
+🔴 **99 - Chatear con un Operador**
 ↩️ En cualquier momento podés escribir **0** para volver al menú principal.
 
 ---

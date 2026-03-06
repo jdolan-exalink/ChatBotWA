@@ -12,6 +12,7 @@
 Sistema completo y profesional para gestionar un bot de WhatsApp en una clínica, consultorio, farmacia o negocio de salud. Incluye:
 
 ✅ Chatbot inteligente con menú dinámico  
+✅ **Opción rápida: "99 - Chatear con Operador" para transferencia inmediata**  
 ✅ Gestión completa de usuarios y administradores  
 ✅ Control de horarios y feriados  
 ✅ Sistema antispam  
