@@ -187,11 +187,28 @@ async def _waha_session_info() -> dict:
     return {"name": WAHA_SESSION, "status": "unknown"}
 
 async def _waha_qr() -> bytes | None:
-    for p in [f"/api/{WAHA_SESSION}/auth/qr?format=image", f"/api/sessions/{WAHA_SESSION}/qr"]:
+    """Tries multiple WAHA QR endpoints. Returns PNG bytes or None."""
+    paths = [
+        f"/api/{WAHA_SESSION}/auth/qr?format=image",
+        f"/api/sessions/{WAHA_SESSION}/auth/qr?format=image",
+        f"/api/{WAHA_SESSION}/auth/qr",
+        f"/api/sessions/{WAHA_SESSION}/qr",
+    ]
+    for p in paths:
         try:
             r = await _waha_get(p)
-            if "image" in r.headers.get("content-type", ""):
+            ct = r.headers.get("content-type", "")
+            if "image" in ct:
                 return r.content
+            # Some WAHA versions return JSON with base64 value
+            if "json" in ct:
+                data = r.json()
+                raw = data.get("value") or data.get("data") or data.get("qr")
+                if raw and isinstance(raw, str):
+                    # Strip possible data URL prefix
+                    if "," in raw:
+                        raw = raw.split(",", 1)[1]
+                    return base64.b64decode(raw)
         except Exception:
             pass
     return None
@@ -782,20 +799,74 @@ async def bot_resume(cu=Depends(get_current_user)):
     global _bot_paused; _bot_paused = False
     return {"ok": True, "paused": False}
 
+async def _waha_delete_and_recreate() -> bool:
+    """DELETE session + POST to recreate fresh → forces QR generation."""
+    async with httpx.AsyncClient(timeout=20) as c:
+        try:
+            rd = await c.delete(
+                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}",
+                headers=_waha_headers()
+            )
+            print(f"[CONNECT] DELETE session: {rd.status_code}")
+        except Exception as e:
+            print(f"[CONNECT] DELETE error (ok to ignore): {e}")
+
+        await asyncio.sleep(2)  # let WAHA clean up before recreating
+
+        try:
+            r = await c.post(
+                f"{WAHA_URL}/api/sessions",
+                headers=_waha_headers(),
+                json={"name": WAHA_SESSION, "start": True}
+            )
+            print(f"[CONNECT] create session: {r.status_code}")
+            if r.status_code < 400:
+                await asyncio.sleep(3)  # give WAHA time to boot QR
+                return True
+        except Exception as e:
+            print(f"[CONNECT] create error: {e}")
+
+        # Fallback: restart
+        try:
+            r = await c.post(
+                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
+                headers=_waha_headers(), json={}
+            )
+            print(f"[CONNECT] restart fallback: {r.status_code}")
+            if r.status_code < 400:
+                await asyncio.sleep(3)
+                return True
+        except Exception as e:
+            print(f"[CONNECT] restart fallback error: {e}")
+    return False
+
+
 @app.post("/bot/connect")
 async def bot_connect(cu=Depends(get_current_user)):
-    # Check current session state first
     info = await _waha_session_info()
     status_str = str(info.get("status", "")).upper()
     print(f"[CONNECT] session status: {status_str}")
 
-    # Already generating QR → nothing to do, frontend poller will pick it up
-    if status_str in ("STARTING", "SCAN_QR_CODE"):
+    # STARTING → WAHA is booting, wait a moment and check for QR
+    if status_str == "STARTING":
+        await asyncio.sleep(4)
         return {"ok": True, "status": status_str}
 
-    async with httpx.AsyncClient(timeout=15) as c:
-        # If WORKING → simple restart (keeps stored auth, just reconnects)
-        if status_str == "WORKING":
+    # SCAN_QR_CODE → QR might already be valid, but could be expired.
+    # Check if QR image is actually retrievable; if not, force a new one.
+    if status_str == "SCAN_QR_CODE":
+        qr_bytes = await _waha_qr()
+        if qr_bytes:
+            print(f"[CONNECT] QR already available, reusing")
+            return {"ok": True, "status": status_str}
+        # QR expired → force new session
+        print(f"[CONNECT] SCAN_QR_CODE but QR expired → recreating session")
+        ok = await _waha_delete_and_recreate()
+        return {"ok": ok, "status": "recreated"}
+
+    # WORKING → simple restart (keeps stored auth, just reconnects)
+    if status_str == "WORKING":
+        async with httpx.AsyncClient(timeout=15) as c:
             try:
                 r = await c.post(
                     f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
@@ -807,42 +878,9 @@ async def bot_connect(cu=Depends(get_current_user)):
                 print(f"[CONNECT] restart error: {e}")
                 return {"ok": False}
 
-        # FAILED or any other state → DELETE session + recreate fresh (generates QR)
-        try:
-            rd = await c.delete(
-                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}",
-                headers=_waha_headers()
-            )
-            print(f"[CONNECT] DELETE session: {rd.status_code}")
-        except Exception as e:
-            print(f"[CONNECT] DELETE error (ok to ignore): {e}")
-
-        # Create fresh session (no stored auth → generates QR)
-        try:
-            r = await c.post(
-                f"{WAHA_URL}/api/sessions",
-                headers=_waha_headers(),
-                json={"name": WAHA_SESSION, "start": True}
-            )
-            print(f"[CONNECT] create session: {r.status_code}")
-            if r.status_code < 400:
-                return {"ok": True}
-        except Exception as e:
-            print(f"[CONNECT] create error: {e}")
-
-        # Fallback: try restart
-        try:
-            r = await c.post(
-                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
-                headers=_waha_headers(), json={}
-            )
-            print(f"[CONNECT] restart fallback: {r.status_code}")
-            if r.status_code < 400:
-                return {"ok": True}
-        except Exception as e:
-            print(f"[CONNECT] restart fallback error: {e}")
-
-    return {"ok": False}
+    # FAILED or any other state → DELETE + recreate fresh (generates QR)
+    ok = await _waha_delete_and_recreate()
+    return {"ok": ok}
 
 @app.post("/bot/logout")
 async def bot_logout(cu=Depends(get_current_user)):

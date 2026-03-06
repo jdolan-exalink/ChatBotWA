@@ -650,13 +650,17 @@ def get_user_panel_page() -> str:
         <div class="modal" id="qrModal">
             <div class="modal-content">
                 <h3>📱 Conectar WhatsApp</h3>
-                <p style="color: #cbd5e1; margin-bottom: 16px;">Escanea el código QR desde tu WhatsApp</p>
+                <p style="color: #cbd5e1; margin-bottom: 8px;">Escanea el código QR desde tu WhatsApp</p>
                 <div class="qr-loading" id="qrLoading">
                     <div class="spinner"></div>
-                    <p class="spinner-text">Generando código QR...<br><small>Por favor espera unos segundos</small></p>
+                    <p class="spinner-text" id="qrStatus">Iniciando sesión...<br><small>Por favor espera unos segundos</small></p>
                 </div>
                 <img id="qrImage" class="qr-image" src="" alt="QR Code" style="display:none;">
-                <div id="qrError" style="display:none; color:#ef4444; padding:20px 0;">❌ QR no disponible.<br>Cierra e intenta de nuevo.</div>
+                <p id="qrExpireMsg" style="display:none; color:#94a3b8; font-size:0.8em; margin-top:6px;">⏱️ El QR se renueva automáticamente</p>
+                <div id="qrError" style="display:none; color:#ef4444; padding:16px 0;">
+                    ❌ No se pudo obtener el QR.<br>
+                    <button onclick="_retryQr()" style="margin-top:12px; padding:8px 20px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd; border-radius:8px; cursor:pointer; font-size:0.9em;">🔄 Reintentar</button>
+                </div>
                 <button class="modal-close" onclick="closeQrModal()">✖ Cerrar</button>
             </div>
         </div>
@@ -874,6 +878,65 @@ def get_user_panel_page() -> str:
             
             let _qrPollTimer = null;
             let _connPollTimer = null;
+            let _qrRefreshTimer = null;
+
+            async function _fetchAndShowQr() {
+                try {
+                    const qrRes = await fetch('/qr?ts=' + Date.now());
+                    if (qrRes.ok) {
+                        const blob = await qrRes.blob();
+                        const url = URL.createObjectURL(blob);
+                        document.getElementById('qrImage').src = url;
+                        document.getElementById('qrImage').style.display = 'block';
+                        document.getElementById('qrExpireMsg').style.display = 'block';
+                        document.getElementById('qrLoading').style.display = 'none';
+                        return true;
+                    }
+                } catch(e) {}
+                return false;
+            }
+
+            async function _retryQr() {
+                const token = localStorage.getItem('token');
+                document.getElementById('qrError').style.display = 'none';
+                document.getElementById('qrLoading').style.display = 'flex';
+                document.getElementById('qrStatus').innerHTML = 'Solicitando nuevo QR...<br><small>Por favor espera</small>';
+                try { await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); } catch(e) {}
+                _startQrPhase1(token);
+            }
+
+            function _startQrPhase1(token) {
+                if (_qrPollTimer) { clearInterval(_qrPollTimer); _qrPollTimer = null; }
+                if (_qrRefreshTimer) { clearInterval(_qrRefreshTimer); _qrRefreshTimer = null; }
+                let attempts = 0;
+                _qrPollTimer = setInterval(async () => {
+                    attempts++;
+                    // Update status text so user sees progress
+                    const secs = Math.round(attempts * 1.5);
+                    const st = document.getElementById('qrStatus');
+                    if (st) st.innerHTML = `Esperando QR... (${secs}s)<br><small>Conectando con WhatsApp</small>`;
+
+                    if (attempts > 60) { // 90s max
+                        clearInterval(_qrPollTimer); _qrPollTimer = null;
+                        document.getElementById('qrLoading').style.display = 'none';
+                        document.getElementById('qrError').style.display = 'block';
+                        return;
+                    }
+                    const ok = await _fetchAndShowQr();
+                    if (ok) {
+                        clearInterval(_qrPollTimer); _qrPollTimer = null;
+                        console.log('[QR] Mostrado en intento ' + attempts);
+                        // Fase 2: esperar scan + auto-refresh QR cada 50s
+                        _startConnectPoll(token);
+                        _qrRefreshTimer = setInterval(async () => {
+                            const img = document.getElementById('qrImage');
+                            if (!img || img.style.display === 'none') return;
+                            console.log('[QR] Renovando QR...');
+                            await _fetchAndShowQr();
+                        }, 50000);
+                    }
+                }, 1500);
+            }
 
             async function toggleWhatsApp() {
                 const btn = document.getElementById('waBtn');
@@ -894,38 +957,12 @@ def get_user_panel_page() -> str:
 
                     // Iniciar conexión
                     btn.textContent = '⏳ Conectando...';
+                    _openQrModal();
                     try {
                         await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
                     } catch(e) { console.warn('connect:', e); }
 
-                    // Mostrar modal de inmediato con spinner
-                    _openQrModal();
-
-                    // Fase 1: cada 1.5s buscar el QR image (~45s)
-                    let attempts = 0;
-                    _qrPollTimer = setInterval(async () => {
-                        attempts++;
-                        if (attempts > 30) {
-                            clearInterval(_qrPollTimer); _qrPollTimer = null;
-                            document.getElementById('qrLoading').style.display = 'none';
-                            document.getElementById('qrError').style.display = 'block';
-                            return;
-                        }
-                        try {
-                            const qrRes = await fetch('/qr?ts=' + Date.now());
-                            if (qrRes.ok) {
-                                clearInterval(_qrPollTimer); _qrPollTimer = null;
-                                const blob = await qrRes.blob();
-                                const url = URL.createObjectURL(blob);
-                                document.getElementById('qrImage').src = url;
-                                document.getElementById('qrImage').style.display = 'block';
-                                document.getElementById('qrLoading').style.display = 'none';
-                                console.log('[QR] Mostrado en intento ' + attempts);
-                                // Fase 2: ahora esperar a que el usuario escanee
-                                _startConnectPoll(token);
-                            }
-                        } catch(e) {}
-                    }, 1500);
+                    _startQrPhase1(token);
 
                 } catch (error) {
                     console.error('toggleWhatsApp error:', error);
@@ -969,18 +1006,25 @@ def get_user_panel_page() -> str:
                 document.getElementById('qrLoading').style.display = 'flex';
                 document.getElementById('qrImage').style.display = 'none';
                 document.getElementById('qrImage').src = '';
+                document.getElementById('qrExpireMsg').style.display = 'none';
                 document.getElementById('qrError').style.display = 'none';
+                const st = document.getElementById('qrStatus');
+                if (st) st.innerHTML = 'Iniciando sesión...<br><small>Por favor espera unos segundos</small>';
                 document.getElementById('qrModal').classList.add('show');
             }
 
             function closeQrModal() {
-                if (_qrPollTimer)  { clearInterval(_qrPollTimer);  _qrPollTimer  = null; }
-                if (_connPollTimer){ clearInterval(_connPollTimer); _connPollTimer = null; }
+                if (_qrPollTimer)   { clearInterval(_qrPollTimer);   _qrPollTimer   = null; }
+                if (_connPollTimer) { clearInterval(_connPollTimer); _connPollTimer = null; }
+                if (_qrRefreshTimer){ clearInterval(_qrRefreshTimer); _qrRefreshTimer = null; }
                 document.getElementById('qrModal').classList.remove('show');
                 document.getElementById('qrLoading').style.display = 'flex';
                 document.getElementById('qrImage').style.display = 'none';
                 document.getElementById('qrImage').src = '';
+                document.getElementById('qrExpireMsg').style.display = 'none';
                 document.getElementById('qrError').style.display = 'none';
+                const st = document.getElementById('qrStatus');
+                if (st) st.innerHTML = 'Iniciando sesión...<br><small>Por favor espera unos segundos</small>';
             }
 
             function logout() {
@@ -2553,13 +2597,17 @@ def get_dashboard_page() -> str:
         <div class="modal" id="qrModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 1000;">
             <div style="background: rgba(18, 24, 40, 0.95); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 20px; padding: 40px; max-width: 400px; width: 90%; text-align: center;">
                 <h3 style="color: #f1f5f9; margin-bottom: 16px;">📱 Conectar WhatsApp</h3>
-                <p style="color: #cbd5e1; margin-bottom: 16px;">Escanea el código QR desde tu WhatsApp</p>
+                <p style="color: #cbd5e1; margin-bottom: 8px;">Escanea el código QR desde tu WhatsApp</p>
                 <div class="qr-loading" id="qrLoading">
                     <div class="spinner"></div>
-                    <p class="spinner-text">Generando código QR...<br><small>Por favor espera unos segundos</small></p>
+                    <p class="spinner-text" id="qrStatus">Iniciando sesión...<br><small>Por favor espera unos segundos</small></p>
                 </div>
                 <img id="qrImage" style="display:none; margin: 20px 0; max-width: 100%; border-radius: 12px; border: 2px solid rgba(226, 232, 240, 0.1);" src="" alt="QR Code">
-                <div id="qrError" style="display:none; color:#ef4444; padding:20px 0;">❌ QR no disponible.<br>Cierra e intenta de nuevo.</div>
+                <p id="qrExpireMsg" style="display:none; color:#94a3b8; font-size:0.8em; margin-top:6px;">⏱️ El QR se renueva automáticamente</p>
+                <div id="qrError" style="display:none; color:#ef4444; padding:16px 0;">
+                    ❌ No se pudo obtener el QR.<br>
+                    <button onclick="_retryQr()" style="margin-top:12px; padding:8px 20px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd; border-radius:8px; cursor:pointer; font-size:0.9em;">🔄 Reintentar</button>
+                </div>
                 <button class="btn btn-secondary" onclick="closeQrModal()" style="margin-top: 20px;">✖ Cerrar</button>
             </div>
         </div>
@@ -2735,6 +2783,65 @@ def get_dashboard_page() -> str:
             let _qrPollTimer = null;
 
             let _connPollTimer = null;
+            let _qrRefreshTimer = null;
+
+            async function _fetchAndShowQr() {
+                try {
+                    const qrRes = await fetch('/qr?ts=' + Date.now());
+                    if (qrRes.ok) {
+                        const blob = await qrRes.blob();
+                        const url = URL.createObjectURL(blob);
+                        document.getElementById('qrImage').src = url;
+                        document.getElementById('qrImage').style.display = 'block';
+                        document.getElementById('qrExpireMsg').style.display = 'block';
+                        document.getElementById('qrLoading').style.display = 'none';
+                        return true;
+                    }
+                } catch(e) {}
+                return false;
+            }
+
+            async function _retryQr() {
+                document.getElementById('qrError').style.display = 'none';
+                document.getElementById('qrLoading').style.display = 'flex';
+                const st = document.getElementById('qrStatus');
+                if (st) st.innerHTML = 'Solicitando nuevo QR...<br><small>Por favor espera</small>';
+                try { await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); } catch(e) {}
+                _startQrPhase1();
+            }
+
+            function _startQrPhase1() {
+                if (_qrPollTimer)    { clearInterval(_qrPollTimer);    _qrPollTimer    = null; }
+                if (_qrRefreshTimer) { clearInterval(_qrRefreshTimer); _qrRefreshTimer = null; }
+                let attempts = 0;
+                _qrPollTimer = setInterval(async () => {
+                    attempts++;
+                    const secs = Math.round(attempts * 1.5);
+                    const st = document.getElementById('qrStatus');
+                    if (st) st.innerHTML = `Esperando QR... (${secs}s)<br><small>Conectando con WhatsApp</small>`;
+
+                    if (attempts > 60) { // 90s max
+                        clearInterval(_qrPollTimer); _qrPollTimer = null;
+                        document.getElementById('qrLoading').style.display = 'none';
+                        document.getElementById('qrError').style.display = 'block';
+                        return;
+                    }
+                    const ok = await _fetchAndShowQr();
+                    if (ok) {
+                        clearInterval(_qrPollTimer); _qrPollTimer = null;
+                        console.log('[QR] Mostrado en intento ' + attempts);
+                        // Fase 2: esperar a que el usuario escanee
+                        _startConnectPoll();
+                        // Auto-refresh QR cada 50s (expira en ~60s)
+                        _qrRefreshTimer = setInterval(async () => {
+                            const img = document.getElementById('qrImage');
+                            if (!img || img.style.display === 'none') return;
+                            console.log('[QR] Renovando QR...');
+                            await _fetchAndShowQr();
+                        }, 50000);
+                    }
+                }, 1500);
+            }
 
             async function toggleWhatsApp() {
                 try {
@@ -2762,38 +2869,13 @@ def get_dashboard_page() -> str:
                         return;
                     }
 
-                    // No conectado - iniciar + mostrar modal de inmediato
+                    // No conectado - abrir modal y lanzar connect
+                    _openQrModal();
                     try {
                         await fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
                     } catch(e) { console.warn('connect:', e); }
 
-                    _openQrModal();
-
-                    // Fase 1: cada 1.5s buscar el QR image (~45s)
-                    let attempts = 0;
-                    _qrPollTimer = setInterval(async () => {
-                        attempts++;
-                        if (attempts > 30) {
-                            clearInterval(_qrPollTimer); _qrPollTimer = null;
-                            document.getElementById('qrLoading').style.display = 'none';
-                            document.getElementById('qrError').style.display = 'block';
-                            return;
-                        }
-                        try {
-                            const qrRes = await fetch('/qr?ts=' + Date.now());
-                            if (qrRes.ok) {
-                                clearInterval(_qrPollTimer); _qrPollTimer = null;
-                                const blob = await qrRes.blob();
-                                const url = URL.createObjectURL(blob);
-                                document.getElementById('qrImage').src = url;
-                                document.getElementById('qrImage').style.display = 'block';
-                                document.getElementById('qrLoading').style.display = 'none';
-                                console.log('[QR] Mostrado en intento ' + attempts);
-                                // Fase 2: esperar a que el usuario escanee
-                                _startConnectPoll();
-                            }
-                        } catch(e) {}
-                    }, 1500);
+                    _startQrPhase1();
 
                 } catch (error) {
                     console.error('toggleWhatsApp error:', error);
@@ -2834,18 +2916,25 @@ def get_dashboard_page() -> str:
                 document.getElementById('qrLoading').style.display = 'flex';
                 document.getElementById('qrImage').style.display = 'none';
                 document.getElementById('qrImage').src = '';
+                document.getElementById('qrExpireMsg').style.display = 'none';
                 document.getElementById('qrError').style.display = 'none';
+                const st = document.getElementById('qrStatus');
+                if (st) st.innerHTML = 'Iniciando sesión...<br><small>Por favor espera unos segundos</small>';
                 document.getElementById('qrModal').style.display = 'flex';
             }
 
             function closeQrModal() {
-                if (_qrPollTimer)  { clearInterval(_qrPollTimer);  _qrPollTimer  = null; }
-                if (_connPollTimer){ clearInterval(_connPollTimer); _connPollTimer = null; }
+                if (_qrPollTimer)    { clearInterval(_qrPollTimer);    _qrPollTimer    = null; }
+                if (_connPollTimer)  { clearInterval(_connPollTimer);  _connPollTimer  = null; }
+                if (_qrRefreshTimer) { clearInterval(_qrRefreshTimer); _qrRefreshTimer = null; }
                 document.getElementById('qrModal').style.display = 'none';
                 document.getElementById('qrLoading').style.display = 'flex';
                 document.getElementById('qrImage').style.display = 'none';
                 document.getElementById('qrImage').src = '';
+                document.getElementById('qrExpireMsg').style.display = 'none';
                 document.getElementById('qrError').style.display = 'none';
+                const st = document.getElementById('qrStatus');
+                if (st) st.innerHTML = 'Iniciando sesión...<br><small>Por favor espera unos segundos</small>';
             }
 
             async function loadUsers() {
