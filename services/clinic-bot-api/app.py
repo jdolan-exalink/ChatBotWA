@@ -63,7 +63,7 @@ _last_status  = {"connected": None, "last_alert_at": 0}
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.0.0")
+app = FastAPI(title="WA-BOT", version="2.1.2")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
@@ -741,7 +741,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.0.0", "name": "WA-BOT"}
+    return {"version": "2.1.2", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
