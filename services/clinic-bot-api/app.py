@@ -784,31 +784,79 @@ async def bot_resume(cu=Depends(get_current_user)):
 
 @app.post("/bot/connect")
 async def bot_connect(cu=Depends(get_current_user)):
-    async with httpx.AsyncClient(timeout=20) as c:
-        for method, url, pl in [
-            ("POST", f"{WAHA_URL}/api/sessions",                    {"name": WAHA_SESSION, "start": True}),
-            ("POST", f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/start",   {}),
-            ("POST", f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart", {}),
-        ]:
+    # Check current session state first
+    info = await _waha_session_info()
+    status_str = str(info.get("status", "")).upper()
+    print(f"[CONNECT] session status: {status_str}")
+
+    # Already generating QR → nothing to do, frontend poller will pick it up
+    if status_str in ("STARTING", "SCAN_QR_CODE"):
+        return {"ok": True, "status": status_str}
+
+    async with httpx.AsyncClient(timeout=15) as c:
+        # If WORKING → simple restart (keeps stored auth, just reconnects)
+        if status_str == "WORKING":
             try:
-                r = await c.request(method, url, headers=_waha_headers(), json=pl)
-                if r.status_code < 400: return {"ok": True}
-            except Exception:
-                pass
+                r = await c.post(
+                    f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
+                    headers=_waha_headers(), json={}
+                )
+                print(f"[CONNECT] restart (working): {r.status_code}")
+                return {"ok": r.status_code < 400}
+            except Exception as e:
+                print(f"[CONNECT] restart error: {e}")
+                return {"ok": False}
+
+        # FAILED or any other state → DELETE session + recreate fresh (generates QR)
+        try:
+            rd = await c.delete(
+                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}",
+                headers=_waha_headers()
+            )
+            print(f"[CONNECT] DELETE session: {rd.status_code}")
+        except Exception as e:
+            print(f"[CONNECT] DELETE error (ok to ignore): {e}")
+
+        # Create fresh session (no stored auth → generates QR)
+        try:
+            r = await c.post(
+                f"{WAHA_URL}/api/sessions",
+                headers=_waha_headers(),
+                json={"name": WAHA_SESSION, "start": True}
+            )
+            print(f"[CONNECT] create session: {r.status_code}")
+            if r.status_code < 400:
+                return {"ok": True}
+        except Exception as e:
+            print(f"[CONNECT] create error: {e}")
+
+        # Fallback: try restart
+        try:
+            r = await c.post(
+                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/restart",
+                headers=_waha_headers(), json={}
+            )
+            print(f"[CONNECT] restart fallback: {r.status_code}")
+            if r.status_code < 400:
+                return {"ok": True}
+        except Exception as e:
+            print(f"[CONNECT] restart fallback error: {e}")
+
     return {"ok": False}
 
 @app.post("/bot/logout")
 async def bot_logout(cu=Depends(get_current_user)):
-    async with httpx.AsyncClient(timeout=20) as c:
-        for method, url, pl in [
-            ("POST", f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/stop",   {}),
-            ("POST", f"{WAHA_URL}/api/sessions/{WAHA_SESSION}/logout",  {}),
-        ]:
-            try:
-                r = await c.request(method, url, headers=_waha_headers(), json=pl)
-                if r.status_code < 400: return {"ok": True}
-            except Exception:
-                pass
+    """Logout: DELETE session from WAHA (clears auth) then recreate stopped."""
+    async with httpx.AsyncClient(timeout=15) as c:
+        try:
+            r = await c.delete(
+                f"{WAHA_URL}/api/sessions/{WAHA_SESSION}",
+                headers=_waha_headers()
+            )
+            print(f"[LOGOUT] DELETE session: {r.status_code}")
+            return {"ok": r.status_code < 400}
+        except Exception as e:
+            print(f"[LOGOUT] error: {e}")
     return {"ok": False}
 
 # ──────────────────────────────────────────────────────────────
