@@ -114,7 +114,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.1.8")
+app = FastAPI(title="WA-BOT", version="2.1.9")
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -430,13 +430,17 @@ def _is_off_hours_cached(db: Session) -> bool:
     _off_hours_cache = (now_ts, result)
     return result
 
+def _normalize_phone(phone: str) -> str:
+    """Normaliza un número de teléfono a dígitos puros (sin +, @c.us, espacios)."""
+    return phone.split("@")[0].lstrip("+").replace(" ", "").strip()
+
 def _get_blocklist(db: Session) -> set:
     """Blocklist cacheada. Se carga una vez y se actualiza en add/delete."""
     global _blocklist_set, _blocklist_loaded
     if not _blocklist_loaded:
         try:
             rows = db.query(WhatsAppBlockList).all()
-            _blocklist_set = {r.phone_number for r in rows}
+            _blocklist_set = {_normalize_phone(r.phone_number) for r in rows}
             _blocklist_loaded = True
         except Exception:
             pass
@@ -632,7 +636,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
 
         # 8. Filtros de acceso
         cfg = _get_cfg_cached(db)
-        if chat_id in _get_blocklist(db):
+        if _normalize_phone(chat_id) in _get_blocklist(db):
             return ""
         if cfg.country_filter_enabled and cfg.country_codes:
             codes = [c.strip() for c in cfg.country_codes.split(",")]
@@ -932,18 +936,20 @@ async def list_blocklist(cu=Depends(get_current_user), db: Session = Depends(get
 async def add_blocklist(req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
     body = await req.json(); phone = body.get("phone_number")
     if not phone: raise HTTPException(400, "phone_number requerido")
-    if db.query(WhatsAppBlockList).filter(WhatsAppBlockList.phone_number == phone).first():
+    normalized = _normalize_phone(phone)
+    if not normalized: raise HTTPException(400, "phone_number inválido")
+    if db.query(WhatsAppBlockList).filter(WhatsAppBlockList.phone_number == normalized).first():
         raise HTTPException(400, "Ya bloqueado")
-    b = WhatsAppBlockList(phone_number=phone, reason=body.get("reason", ""))
+    b = WhatsAppBlockList(phone_number=normalized, reason=body.get("reason", ""))
     db.add(b); db.commit(); db.refresh(b)
-    _blocklist_set.add(phone)   # actualiza caché en memoria
+    _blocklist_set.add(normalized)   # actualiza caché en memoria
     return {"ok": True, "id": b.id}
 
 @app.delete("/api/blocklist/{bid}")
 async def del_blocklist(bid: int, cu=Depends(get_current_user), db: Session = Depends(get_db)):
     b = db.query(WhatsAppBlockList).filter(WhatsAppBlockList.id == bid).first()
     if not b: raise HTTPException(404, "No encontrado")
-    phone_to_remove = b.phone_number
+    phone_to_remove = _normalize_phone(b.phone_number)
     db.delete(b); db.commit()
     _blocklist_set.discard(phone_to_remove)   # actualiza caché en memoria
     return {"ok": True}
@@ -957,7 +963,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.1.8", "name": "WA-BOT"}
+    return {"version": "2.1.9", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):

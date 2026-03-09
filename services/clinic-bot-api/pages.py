@@ -231,7 +231,7 @@ def get_login_page() -> str:
                         DOLAN SS - 2026
                     </p>
                     <p style="color: #64748b; font-size: 0.7em; text-align: center; margin-top: 4px;">
-                        Ver: <span id="versionDisplay">2.1.8</span>
+                        Ver: <span id="versionDisplay">2.1.9</span>
                     </p>
                 </div>
             </div>
@@ -668,7 +668,7 @@ def get_user_panel_page() -> str:
             
             <div class="panel-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="userPanelVersion">v2.1.8</div>
+                <div class="version" id="userPanelVersion">v2.1.9</div>
             </div>
         </div>
         
@@ -2339,7 +2339,7 @@ def get_dashboard_page() -> str:
             
             <div class="sidebar-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="dashboardVersion">v2.1.8</div>
+                <div class="version" id="dashboardVersion">v2.1.9</div>
             </div>
         </div>
         
@@ -2656,7 +2656,7 @@ def get_dashboard_page() -> str:
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Número de WhatsApp</label>
-                                <input type="text" id="blockNumber" placeholder="+5491234567890">
+                                <input type="text" id="blockNumber" placeholder="5491234567890 o +5491234567890">
                             </div>
                             <div class="form-group">
                                 <label>Razón</label>
@@ -3434,9 +3434,10 @@ def get_dashboard_page() -> str:
                     return;
                 }
                 
-                // Validar formato básico (debe tener + al inicio)
-                if (!phone.startsWith('+')) {
-                    messageEl.innerHTML = '<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">⚠️ El número debe comenzar con +</div>';
+                // Solo verificar que sean caracteres numéricos válidos (con o sin +, @c.us, espacios)
+                const digits = phone.replace(/[^0-9]/g, '');
+                if (digits.length < 7) {
+                    messageEl.innerHTML = '<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">⚠️ El número parece inválido</div>';
                     return;
                 }
                 
