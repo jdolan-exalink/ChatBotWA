@@ -114,7 +114,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.1.5")
+app = FastAPI(title="WA-BOT", version="2.1.8")
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -129,6 +129,15 @@ app.add_middleware(
 async def startup():
     init_db()
     _get_waha_client()              # pre-inicializar el cliente HTTP
+    # Warm-up del backend bcrypt: la primera llamada a passlib con bcrypt>=4.x
+    # puede fallar silenciosamente. Este dummy-call fuerza la inicialización
+    # del handler antes de que llegue el primer login real.
+    try:
+        from security import hash_password, verify_password
+        _dummy_hash = hash_password("warmup")
+        verify_password("warmup", _dummy_hash)
+    except Exception:
+        pass
     asyncio.create_task(_init_defaults())
     asyncio.create_task(_monitor_loop())
 
@@ -175,23 +184,54 @@ async def _init_defaults():
         db.close()
 
 async def _monitor_loop():
+    reconnect_attempts = 0
     while True:
         try:
             info = await _waha_session_info()
+            status_str = str(info.get("status", "")).upper()
             s = str(info).lower()
             connected = any(x in s for x in ["working", "connected", "authenticated"]) and "qr" not in s
             prev = _last_status["connected"]
             _last_status["connected"] = connected
-            if prev is True and not connected:
-                now = int(time.time())
-                if now - _last_status["last_alert_at"] > 300:
-                    _last_status["last_alert_at"] = now
-                    await _send_alert_email(
-                        "[ALERTA] WhatsApp desconectado",
-                        "El bot se desconectó. Reescanear QR desde el panel web."
-                    )
-        except Exception:
-            pass
+
+            if not connected and status_str not in ("STARTING", "SCAN_QR_CODE"):
+                # Intentar restart automático (no borra auth, evita tener que reescanear QR)
+                if reconnect_attempts < 3:
+                    reconnect_attempts += 1
+                    _log(f"[MONITOR] Sesión caída (status={status_str}), intentando restart automático #{reconnect_attempts}")
+                    try:
+                        c = _get_waha_client()
+                        r = await c.post(
+                            f"/api/sessions/{WAHA_SESSION}/restart",
+                            headers=_waha_headers(), json={}
+                        )
+                        _log(f"[MONITOR] restart → {r.status_code}")
+                        if r.status_code >= 400:
+                            # Si restart falla, intentar start
+                            r2 = await c.post(
+                                f"/api/sessions/{WAHA_SESSION}/start",
+                                headers=_waha_headers(), json={}
+                            )
+                            _log(f"[MONITOR] start → {r2.status_code}")
+                    except Exception as e:
+                        _log(f"[MONITOR] error en reconexión: {e}")
+                else:
+                    # Después de 3 intentos fallidos, mandar alerta
+                    now = int(time.time())
+                    if now - _last_status["last_alert_at"] > 300:
+                        _last_status["last_alert_at"] = now
+                        await _send_alert_email(
+                            "[ALERTA] WhatsApp desconectado",
+                            f"El bot se desconectó y no pudo reconectarse automáticamente (status={status_str}). "
+                            "Reescanear QR desde el panel web."
+                        )
+            elif connected:
+                if prev is not True:
+                    _log(f"[MONITOR] Sesión reconectada OK (status={status_str})")
+                reconnect_attempts = 0  # resetear contador al reconectar
+
+        except Exception as e:
+            _log(f"[MONITOR] error en loop: {e}")
         await asyncio.sleep(30)
 
 # ──────────────────────────────────────────────────────────────
@@ -917,7 +957,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.1.7", "name": "WA-BOT"}
+    return {"version": "2.1.8", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
