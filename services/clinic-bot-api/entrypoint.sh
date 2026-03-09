@@ -103,6 +103,10 @@ migrations = [
     (\"in_agent_message\",      \"ALTER TABLE bot_config ADD COLUMN in_agent_message TEXT DEFAULT 'Un operador esta atendiendo tu solicitud.'\"),
     (\"closed_message\",        \"ALTER TABLE bot_config ADD COLUMN closed_message TEXT DEFAULT 'Gracias por contactarte. Tu caso esta cerrado.'\"),
     (\"debug_mode\",             \"ALTER TABLE bot_config ADD COLUMN debug_mode BOOLEAN DEFAULT 0\"),
+    (\"sat_opening_time\",      \"ALTER TABLE bot_config ADD COLUMN sat_opening_time VARCHAR(5) DEFAULT '10:00'\"),
+    (\"sat_closing_time\",      \"ALTER TABLE bot_config ADD COLUMN sat_closing_time VARCHAR(5) DEFAULT '14:00'\"),
+    (\"sat_enabled\",           \"ALTER TABLE bot_config ADD COLUMN sat_enabled BOOLEAN DEFAULT 1\"),
+    (\"sun_enabled\",           \"ALTER TABLE bot_config ADD COLUMN sun_enabled BOOLEAN DEFAULT 0\"),
 ]
 
 with engine.connect() as conn:

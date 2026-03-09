@@ -114,7 +114,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.1.9")
+app = FastAPI(title="WA-BOT", version="2.2.0")
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -169,6 +169,8 @@ async def _init_defaults():
             db.add(BotConfig(
                 solution_name=SOLUTION_NAME, menu_title=SOLUTION_NAME,
                 opening_time="08:00", closing_time="16:00",
+                sat_opening_time="10:00", sat_closing_time="14:00",
+                sat_enabled=True, sun_enabled=False,
                 off_hours_enabled=True,
                 ollama_url=OLLAMA_URL, ollama_model=OLLAMA_MODEL,
                 admin_idle_timeout_sec=900
@@ -410,10 +412,18 @@ def _is_off_hours(db: Session) -> bool:
     if db.query(Holiday).filter(Holiday.date == now.strftime("%Y-%m-%d")).first():
         return True
     t = now.strftime("%H:%M")
-    dow = now.weekday()
-    if dow >= 5:
+    dow = now.weekday()  # 0=Lunes ... 5=Sábado, 6=Domingo
+    if dow == 6:          # Domingo
+        if not getattr(cfg, 'sun_enabled', False):
+            _log(f"[HOURS] Domingo — cerrado todo el día")
+            return True
         o, c = cfg.sat_opening_time or "10:00", cfg.sat_closing_time or "14:00"
-    else:
+    elif dow == 5:        # Sábado
+        if not getattr(cfg, 'sat_enabled', True):
+            _log(f"[HOURS] Sábado — cerrado todo el día")
+            return True
+        o, c = cfg.sat_opening_time or "10:00", cfg.sat_closing_time or "14:00"
+    else:                 # Lunes a Viernes
         o, c = cfg.opening_time or "08:00", cfg.closing_time or "16:00"
     off = t < o or t > c
     _log(f"[HOURS] {now.strftime('%A %H:%M')} | {o}-{c} | fuera={off}")
@@ -848,9 +858,9 @@ async def get_config(db: Session = Depends(get_db)):
 async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db: Session = Depends(get_db)):
     cfg = _get_cfg(db)
     for f in ["solution_name","menu_title","opening_time","closing_time","sat_opening_time",
-              "sat_closing_time","off_hours_enabled","off_hours_message","country_filter_enabled",
-              "country_codes","area_filter_enabled","area_codes","ollama_url","ollama_model",
-              "admin_idle_timeout_sec","debug_mode"]:
+              "sat_closing_time","sat_enabled","sun_enabled","off_hours_enabled","off_hours_message",
+              "country_filter_enabled","country_codes","area_filter_enabled","area_codes",
+              "ollama_url","ollama_model","admin_idle_timeout_sec","debug_mode"]:
         v = getattr(data, f, None)
         if v is not None: setattr(cfg, f, v)
     db.commit(); db.refresh(cfg)
@@ -963,7 +973,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.1.9", "name": "WA-BOT"}
+    return {"version": "2.2.0", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):

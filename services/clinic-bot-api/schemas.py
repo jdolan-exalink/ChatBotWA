@@ -54,6 +54,8 @@ class BotConfigUpdate(BaseModel):
     closing_time: Optional[str] = None  # HH:MM (Lunes-Viernes)
     sat_opening_time: Optional[str] = None  # HH:MM Sábado
     sat_closing_time: Optional[str] = None  # HH:MM Sábado
+    sat_enabled: Optional[bool] = None       # False = sábado siempre cerrado
+    sun_enabled: Optional[bool] = None       # False = domingo siempre cerrado
     off_hours_enabled: Optional[bool] = None
     off_hours_message: Optional[str] = None
     country_filter_enabled: Optional[bool] = None
@@ -74,6 +76,8 @@ class BotConfigResponse(BaseModel):
     closing_time: Optional[str]
     sat_opening_time: Optional[str]
     sat_closing_time: Optional[str]
+    sat_enabled: bool = True
+    sun_enabled: bool = False
     off_hours_enabled: bool
     country_filter_enabled: bool
     country_codes: Optional[str]

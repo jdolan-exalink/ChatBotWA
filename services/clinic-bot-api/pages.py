@@ -231,7 +231,7 @@ def get_login_page() -> str:
                         DOLAN SS - 2026
                     </p>
                     <p style="color: #64748b; font-size: 0.7em; text-align: center; margin-top: 4px;">
-                        Ver: <span id="versionDisplay">2.1.9</span>
+                        Ver: <span id="versionDisplay">2.2.0</span>
                     </p>
                 </div>
             </div>
@@ -668,7 +668,7 @@ def get_user_panel_page() -> str:
             
             <div class="panel-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="userPanelVersion">v2.1.9</div>
+                <div class="version" id="userPanelVersion">v2.2.0</div>
             </div>
         </div>
         
@@ -2339,7 +2339,7 @@ def get_dashboard_page() -> str:
             
             <div class="sidebar-footer">
                 <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="dashboardVersion">v2.1.9</div>
+                <div class="version" id="dashboardVersion">v2.2.0</div>
             </div>
         </div>
         
@@ -2510,16 +2510,33 @@ def get_dashboard_page() -> str:
                         </div>
                         
                         <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                            <h3 style="color: #f1f5f9; margin-bottom: 16px;">📅 Horarios Sábado</h3>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Hora de Apertura</label>
-                                    <input type="time" id="satOpeningTime">
+                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">📅 Horarios Sábado</h3>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 14px;">
+                                <input type="checkbox" id="satEnabled" style="width:16px;height:16px;" onchange="toggleSatFields()">
+                                <span style="color:#f1f5f9;">Sábado con atención</span>
+                            </label>
+                            <div id="satFields">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Hora de Apertura</label>
+                                        <input type="time" id="satOpeningTime">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Hora de Cierre</label>
+                                        <input type="time" id="satClosingTime">
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>Hora de Cierre</label>
-                                    <input type="time" id="satClosingTime">
-                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">📅 Horarios Domingo</h3>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 14px;">
+                                <input type="checkbox" id="sunEnabled" style="width:16px;height:16px;" onchange="toggleSunFields()">
+                                <span style="color:#f1f5f9;">Domingo con atención</span>
+                            </label>
+                            <div id="sunFields" style="display:none;">
+                                <p style="color:#94a3b8;font-size:0.85em;margin-bottom:8px;">Usa los mismos horarios que el sábado cuando está habilitado.</p>
                             </div>
                         </div>
                         
@@ -3082,6 +3099,16 @@ def get_dashboard_page() -> str:
                 }
             }
             
+            function toggleSatFields() {
+                const enabled = document.getElementById('satEnabled').checked;
+                document.getElementById('satFields').style.display = enabled ? '' : 'none';
+            }
+
+            function toggleSunFields() {
+                const enabled = document.getElementById('sunEnabled').checked;
+                document.getElementById('sunFields').style.display = enabled ? '' : 'none';
+            }
+
             async function loadConfig() {
                 try {
                     const res = await fetch(`${API_URL}/config`, {
@@ -3095,6 +3122,12 @@ def get_dashboard_page() -> str:
                     document.getElementById('closingTime').value = config.closing_time || '18:00';
                     document.getElementById('satOpeningTime').value = config.sat_opening_time || '10:00';
                     document.getElementById('satClosingTime').value = config.sat_closing_time || '14:00';
+                    const satEnabled = config.sat_enabled !== false;
+                    document.getElementById('satEnabled').checked = satEnabled;
+                    document.getElementById('satFields').style.display = satEnabled ? '' : 'none';
+                    const sunEnabled = !!config.sun_enabled;
+                    document.getElementById('sunEnabled').checked = sunEnabled;
+                    document.getElementById('sunFields').style.display = sunEnabled ? '' : 'none';
                     document.getElementById('debugMode').checked = !!config.debug_mode;
                 } catch (error) {
                     console.error('Error loading config:', error);
@@ -3115,6 +3148,10 @@ def get_dashboard_page() -> str:
                             menu_title: document.getElementById('menuTitle').value,
                             opening_time: document.getElementById('openingTime').value,
                             closing_time: document.getElementById('closingTime').value,
+                            sat_opening_time: document.getElementById('satOpeningTime').value,
+                            sat_closing_time: document.getElementById('satClosingTime').value,
+                            sat_enabled: document.getElementById('satEnabled').checked,
+                            sun_enabled: document.getElementById('sunEnabled').checked,
                             debug_mode: document.getElementById('debugMode').checked
                         })
                     });
