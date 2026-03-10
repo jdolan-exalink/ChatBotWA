@@ -908,6 +908,8 @@ def get_user_panel_page() -> str:
             let _qrPollTimer = null;
             let _connPollTimer = null;
             let _qrRefreshTimer = null;
+            let _qrLastUpdateAt = 0;
+            let _lastConnectKickAt = 0;
 
             async function _fetchAndShowQr() {
                 try {
@@ -919,7 +921,23 @@ def get_user_panel_page() -> str:
                         document.getElementById('qrImage').style.display = 'block';
                         document.getElementById('qrExpireMsg').style.display = 'block';
                         document.getElementById('qrLoading').style.display = 'none';
+                        _qrLastUpdateAt = Date.now();
+                        const st = document.getElementById('qrStatus');
+                        if (st) st.innerHTML = 'QR listo para escanear<br><small>Se renueva automaticamente</small>';
                         return true;
+                    }
+                    // 404 = sesión ya conectada o QR no disponible — verificar estado
+                    if (qrRes.status === 404 || qrRes.status === 503) {
+                        const token = localStorage.getItem('token');
+                        const st = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                        if (st.ok) {
+                            const s = await st.json();
+                            if (s.connected) {
+                                console.log('[QR] Sesión ya conectada, cerrando modal');
+                                _closeQrSuccess();
+                                return true;
+                            }
+                        }
                     }
                 } catch(e) {}
                 return false;
@@ -948,7 +966,7 @@ def get_user_panel_page() -> str:
                     const st = document.getElementById('qrStatus');
                     if (st) st.innerHTML = `Esperando QR... (${secs}s)<br><small>Conectando con WhatsApp</small>`;
 
-                    if (attempts > 112) { // 90s max
+                    if (attempts > 450) { // ~6 min max
                         clearInterval(_qrPollTimer); _qrPollTimer = null;
                         document.getElementById('qrLoading').style.display = 'none';
                         document.getElementById('qrError').style.display = 'block';
@@ -964,8 +982,17 @@ def get_user_panel_page() -> str:
                             const img = document.getElementById('qrImage');
                             if (!img || img.style.display === 'none') return;
                             console.log('[QR] Renovando QR...');
-                            await _fetchAndShowQr();
-                        }, 50000);
+                            const ok = await _fetchAndShowQr();
+                            if (!ok || (Date.now() - _qrLastUpdateAt) > 45000) {
+                                const st = document.getElementById('qrStatus');
+                                if (st) st.innerHTML = 'Renovando QR...<br><small>No cierres esta ventana</small>';
+                                if ((Date.now() - _lastConnectKickAt) > 90000) {
+                                    _lastConnectKickAt = Date.now();
+                                    fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                                        .catch(e => console.warn('[WA] refresh connect:', e));
+                                }
+                            }
+                        }, 30000);
                     }
                 }, 800);
             }
@@ -1006,7 +1033,7 @@ def get_user_panel_page() -> str:
                 let connAttempts = 0;
                 _connPollTimer = setInterval(async () => {
                     connAttempts++;
-                    if (connAttempts > 90) { // hasta ~3 minutos
+                    if (connAttempts > 300) { // hasta ~10 minutos
                         clearInterval(_connPollTimer); _connPollTimer = null;
                         return;
                     }
@@ -2921,6 +2948,8 @@ def get_dashboard_page() -> str:
 
             let _connPollTimer = null;
             let _qrRefreshTimer = null;
+            let _qrLastUpdateAt = 0;
+            let _lastConnectKickAt = 0;
 
             async function _fetchAndShowQr() {
                 try {
@@ -2932,7 +2961,22 @@ def get_dashboard_page() -> str:
                         document.getElementById('qrImage').style.display = 'block';
                         document.getElementById('qrExpireMsg').style.display = 'block';
                         document.getElementById('qrLoading').style.display = 'none';
+                        _qrLastUpdateAt = Date.now();
+                        const st = document.getElementById('qrStatus');
+                        if (st) st.innerHTML = 'QR listo para escanear<br><small>Se renueva automaticamente</small>';
                         return true;
+                    }
+                    // 404 = sesión ya conectada o QR no disponible — verificar estado
+                    if (qrRes.status === 404 || qrRes.status === 503) {
+                        const st = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                        if (st.ok) {
+                            const s = await st.json();
+                            if (s.connected) {
+                                console.log('[QR] Sesión ya conectada, cerrando modal');
+                                _closeQrSuccess();
+                                return true;
+                            }
+                        }
                     }
                 } catch(e) {}
                 return false;
@@ -2958,7 +3002,7 @@ def get_dashboard_page() -> str:
                     const st = document.getElementById('qrStatus');
                     if (st) st.innerHTML = `Esperando QR... (${secs}s)<br><small>Conectando con WhatsApp</small>`;
 
-                    if (attempts > 60) { // 90s max
+                    if (attempts > 240) { // ~6 min max
                         clearInterval(_qrPollTimer); _qrPollTimer = null;
                         document.getElementById('qrLoading').style.display = 'none';
                         document.getElementById('qrError').style.display = 'block';
@@ -2970,13 +3014,22 @@ def get_dashboard_page() -> str:
                         console.log('[QR] Mostrado en intento ' + attempts);
                         // Fase 2: esperar a que el usuario escanee
                         _startConnectPoll();
-                        // Auto-refresh QR cada 50s (expira en ~60s)
+                        // Renovar QR en intervalos cortos para evitar expiracion silenciosa
                         _qrRefreshTimer = setInterval(async () => {
                             const img = document.getElementById('qrImage');
                             if (!img || img.style.display === 'none') return;
                             console.log('[QR] Renovando QR...');
-                            await _fetchAndShowQr();
-                        }, 50000);
+                            const ok = await _fetchAndShowQr();
+                            if (!ok || (Date.now() - _qrLastUpdateAt) > 45000) {
+                                const st = document.getElementById('qrStatus');
+                                if (st) st.innerHTML = 'Renovando QR...<br><small>No cierres esta ventana</small>';
+                                if ((Date.now() - _lastConnectKickAt) > 90000) {
+                                    _lastConnectKickAt = Date.now();
+                                    fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+                                        .catch(e => console.warn('[WA] refresh connect:', e));
+                                }
+                            }
+                        }, 30000);
                     }
                 }, 1500);
             }
@@ -3016,7 +3069,7 @@ def get_dashboard_page() -> str:
                 let connAttempts = 0;
                 _connPollTimer = setInterval(async () => {
                     connAttempts++;
-                    if (connAttempts > 90) { // hasta ~3 minutos
+                    if (connAttempts > 300) { // hasta ~10 minutos
                         clearInterval(_connPollTimer); _connPollTimer = null;
                         return;
                     }
