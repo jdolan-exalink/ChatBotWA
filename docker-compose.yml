@@ -3,7 +3,7 @@ services:
     image: devlikeapro/waha:latest
     container_name: clinic-waha
     restart: unless-stopped
-    shm_size: '512mb'
+    shm_size: '1gb'
     ports:
       - "3100:3000"
     environment:
