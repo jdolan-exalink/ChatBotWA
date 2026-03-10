@@ -83,6 +83,11 @@ _waha_client: httpx.AsyncClient | None = None
 _waha_reconnect_attempts = 0          # contador de reconexión
 _waha_last_reconnect_time = 0         # timestamp última reconexión
 _waha_force_reconnect = False         # flag para forzar reconexión
+_waha_session_op_lock = asyncio.Lock()  # serializa restart/stop/start/delete+create
+_waha_last_session_op_at = 0.0          # timestamp último cambio de sesión
+_waha_last_connect_request_at = 0.0     # debounce de /bot/connect
+_WAHA_SESSION_OP_COOLDOWN_SEC = 8.0
+_WAHA_CONNECT_DEBOUNCE_SEC = 3.0
 
 def _get_waha_client() -> httpx.AsyncClient:
     """Retorna el cliente global; lo crea si no existe aún.
@@ -116,6 +121,60 @@ def _reset_waha_client():
     _waha_force_reconnect = False
     _logc("[HTTP] Cliente HTTP marcado para recreación")
 
+
+def _waha_session_op_recent() -> bool:
+    return (time.time() - _waha_last_session_op_at) < _WAHA_SESSION_OP_COOLDOWN_SEC
+
+
+async def _waha_restart_session(reason: str = "unknown") -> bool:
+    """Restart protegido para evitar operaciones concurrentes sobre WAHA."""
+    global _waha_last_session_op_at
+    if _waha_session_op_lock.locked():
+        _log(f"[CONNECT] restart omitido ({reason}): operación en curso")
+        return True
+    if _waha_session_op_recent():
+        _log(f"[CONNECT] restart omitido ({reason}): cooldown activo")
+        return True
+
+    async with _waha_session_op_lock:
+        _waha_last_session_op_at = time.time()
+        try:
+            c = _get_waha_client()
+            r = await c.post(
+                f"/api/sessions/{WAHA_SESSION}/restart",
+                headers=_waha_headers(), json={},
+                timeout=httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
+            )
+            _log(f"[CONNECT] restart ({reason}) -> {r.status_code}")
+            return r.status_code < 400
+        except Exception as e:
+            _logc(f"[ERROR] restart ({reason}): {e}")
+            return False
+
+
+async def _waha_stop_start_session(reason: str = "unknown") -> bool:
+    """Stop+start protegido para recuperación agresiva sin carreras."""
+    global _waha_last_session_op_at
+    if _waha_session_op_lock.locked():
+        _log(f"[CONNECT] stop+start omitido ({reason}): operación en curso")
+        return True
+    if _waha_session_op_recent():
+        _log(f"[CONNECT] stop+start omitido ({reason}): cooldown activo")
+        return True
+
+    async with _waha_session_op_lock:
+        _waha_last_session_op_at = time.time()
+        try:
+            c = _get_waha_client()
+            await c.post(f"/api/sessions/{WAHA_SESSION}/stop", headers=_waha_headers(), json={})
+            await asyncio.sleep(2)
+            r = await c.post(f"/api/sessions/{WAHA_SESSION}/start", headers=_waha_headers(), json={})
+            _log(f"[CONNECT] stop+start ({reason}) -> {r.status_code}")
+            return r.status_code < 400
+        except Exception as e:
+            _logc(f"[ERROR] stop+start ({reason}): {e}")
+            return False
+
 # ──────────────────────────────────────────────────────────────
 #  LOGGING
 #  Modo operativo (debug_mode=False): solo [CHAT] y [ERROR]
@@ -135,7 +194,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.2.4")
+app = FastAPI(title="WA-BOT", version="2.2.5")
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -250,6 +309,12 @@ async def _monitor_loop():
                 # Sesión caída → intentar reconexión
                 now = int(time.time())
 
+                # Evitar tormenta de operaciones de sesión en paralelo
+                if _waha_session_op_lock.locked() or _waha_session_op_recent():
+                    _log("[MONITOR] Operación de sesión en curso/cooldown, se difiere reconexión")
+                    await asyncio.sleep(10)
+                    continue
+
                 # Calcular delay según intentos
                 delay_idx = min(_waha_reconnect_attempts, len(reconnect_delays) - 1)
                 delay = reconnect_delays[delay_idx]
@@ -269,41 +334,15 @@ async def _monitor_loop():
 
                 # Intento 1-2: restart simple (mantiene auth)
                 if _waha_reconnect_attempts <= 2:
-                    try:
-                        c = _get_waha_client()
-                        r = await c.post(
-                            f"/api/sessions/{WAHA_SESSION}/restart",
-                            headers=_waha_headers(), json={},
-                            timeout=httpx.Timeout(connect=10.0, read=15.0, write=15.0, pool=10.0)
-                        )
-                        _log(f"[MONITOR] restart → {r.status_code}")
-                        if r.status_code < 400:
-                            recon_ok = True
-                            _logc("[MONITOR] Restart exitoso, esperando reconexión...")
-                    except Exception as e:
-                        _logc(f"[MONITOR] Error en restart: {e}")
+                    recon_ok = await _waha_restart_session("monitor")
+                    if recon_ok:
+                        _logc("[MONITOR] Restart exitoso, esperando reconexión...")
 
                 # Intento 3-4: stop + start (más agresivo)
                 if not recon_ok and 2 < _waha_reconnect_attempts <= 4:
-                    try:
-                        c = _get_waha_client()
-                        # Stop primero
-                        await c.post(
-                            f"/api/sessions/{WAHA_SESSION}/stop",
-                            headers=_waha_headers(), json={}
-                        )
-                        await asyncio.sleep(2)
-                        # Start después
-                        r = await c.post(
-                            f"/api/sessions/{WAHA_SESSION}/start",
-                            headers=_waha_headers(), json={}
-                        )
-                        _log(f"[MONITOR] stop+start → {r.status_code}")
-                        if r.status_code < 400:
-                            recon_ok = True
-                            _logc("[MONITOR] Stop+Start exitoso, esperando reconexión...")
-                    except Exception as e:
-                        _logc(f"[MONITOR] Error en stop+start: {e}")
+                    recon_ok = await _waha_stop_start_session("monitor")
+                    if recon_ok:
+                        _logc("[MONITOR] Stop+Start exitoso, esperando reconexión...")
 
                 # Intento 5+: recreate completo (borra auth, genera QR)
                 if not recon_ok and _waha_reconnect_attempts > 4:
@@ -402,31 +441,63 @@ async def _waha_session_info() -> dict:
             pass
     return {"name": WAHA_SESSION, "status": "unknown"}
 
+
+def _extract_qr_from_any(data: dict) -> bytes | None:
+    """Extrae QR base64 desde distintos esquemas JSON de WAHA."""
+    if not isinstance(data, dict):
+        return None
+
+    for key in ("qrcode", "qr", "base64", "code", "value", "data"):
+        raw = data.get(key)
+        if isinstance(raw, str) and raw:
+            try:
+                if raw.startswith("data:image") and "," in raw:
+                    raw = raw.split(",", 1)[1]
+                return base64.b64decode(raw)
+            except Exception:
+                pass
+
+    for parent in ("qrcode", "qrCode", "qr", "data"):
+        node = data.get(parent)
+        if isinstance(node, dict):
+            for key in ("base64", "qr", "code", "value", "data"):
+                raw = node.get(key)
+                if isinstance(raw, str) and raw:
+                    try:
+                        if raw.startswith("data:image") and "," in raw:
+                            raw = raw.split(",", 1)[1]
+                        return base64.b64decode(raw)
+                    except Exception:
+                        pass
+    return None
+
 async def _waha_qr() -> bytes | None:
-    """Prueba las 4 rutas de QR en PARALELO con timeout generoso. Retorna PNG bytes o None."""
+    """Obtiene el QR de WAHA. Solo funciona cuando la sesión está en SCAN_QR_CODE.
+    Retorna PNG bytes o None. Usa únicamente rutas confirmadas para esta versión de WAHA."""
     client = _get_waha_client()
+    # Compatibilidad entre versiones de WAHA (free/webjs) y respuestas JSON.
     paths = [
         f"/api/{WAHA_SESSION}/auth/qr?format=image",
-        f"/api/sessions/{WAHA_SESSION}/auth/qr?format=image",
         f"/api/{WAHA_SESSION}/auth/qr",
+        f"/api/{WAHA_SESSION}/auth/qr?format=RAW",
         f"/api/sessions/{WAHA_SESSION}/qr",
+        f"/api/{WAHA_SESSION}/qr",
     ]
 
     async def _try(p: str) -> bytes | None:
         try:
             r = await client.get(p, headers=_waha_headers(),
                                  timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0))
+            if r.status_code >= 400:
+                return None
+
             ct = r.headers.get("content-type", "")
             if "image" in ct and r.content:
                 _logc(f"[QR] Obtenido desde {p} (image, {len(r.content)} bytes)")
                 return r.content
             if "json" in ct:
-                data = r.json()
-                raw = data.get("value") or data.get("data") or data.get("qr") or data.get("qrcode")
-                if raw and isinstance(raw, str):
-                    if "," in raw:
-                        raw = raw.split(",", 1)[1]
-                    decoded = base64.b64decode(raw)
+                decoded = _extract_qr_from_any(r.json())
+                if decoded:
                     _logc(f"[QR] Obtenido desde {p} (base64, {len(decoded)} bytes)")
                     return decoded
         except httpx.TimeoutException:
@@ -1166,26 +1237,31 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.2.4", "name": "WA-BOT"}
+    return {"version": "2.2.5", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
     info = await _waha_session_info()
     s = str(info).lower()
-    eng = info.get("engine", {})
-    eng_state = str(eng.get("state", "")).lower() if isinstance(eng, dict) else ""
-    connected = eng_state == "connected" and info.get("me") is not None and "qr" not in s
+    eng = info.get("engine", {}) if isinstance(info.get("engine"), dict) else {}
     session_status = str(info.get("status", "")).upper()
+    eng_state = str(eng.get("state") or "").upper()
 
-    # QR disponible cuando:
-    # 1. No está conectado Y (status es SCAN_QR_CODE o STARTING)
-    # 2. O cuando eng_state indica que necesita QR
+    # Lógica de conexión alineada con el monitor loop.
+    # WEBJS no siempre reporta engine.state; usamos el campo 'status' de la sesión.
+    connected = (
+        session_status in ("WORKING", "CONNECTED", "AUTHENTICATED") or
+        eng_state == "CONNECTED"
+    ) and "scan_qr_code" not in s
+
+    # QR disponible solo cuando la sesión espera escaneo
     needs_qr = not connected and session_status in ("SCAN_QR_CODE", "STARTING", "FAILED")
     qr = await _waha_qr() if needs_qr else None
 
-    # Logging para debug
     if not connected:
         _logc(f"[STATUS] Desconectado (status={session_status}, eng_state={eng_state}), QR disponible={qr is not None}")
+    else:
+        _log(f"[STATUS] Conectado (status={session_status})")
 
     cfg = _get_cfg(db)
     return {
@@ -1257,39 +1333,46 @@ async def waha_status(cu=Depends(get_current_user)):
 
 @app.get("/qr")
 async def qr_image():
-    """Obtiene QR de WAHA. Si no hay QR disponible, intenta generar uno nuevo."""
-    # Intento 1: Obtener QR existente
-    b = await _waha_qr()
-    if b:
-        return Response(content=b, media_type="image/png")
+    """Obtiene el QR de WAHA para escanear.
 
-    # Intento 2: Forzar generación de QR (restart de sesión)
-    _logc("[QR] No hay QR disponible, intentando generar nuevo...")
-    try:
-        c = _get_waha_client()
-        # Intentar restart primero (mantiene auth)
-        r = await c.post(
-            f"/api/sessions/{WAHA_SESSION}/restart",
-            headers=_waha_headers(), json={}
-        )
-        _log(f"[QR] restart → {r.status_code}")
-    except Exception as e:
-        _log(f"[QR] Error en restart: {e}")
+    Solo devuelve QR cuando la sesión está esperando escaneo (SCAN_QR_CODE).
+    Si la sesión ya está conectada (WORKING), devuelve 404 sin tocar nada.
+    Si no hay QR pero la sesión está en estado válido, intenta recrearla.
+    """
+    # Verificar estado actual antes de intentar cualquier cosa
+    info = await _waha_session_info()
+    session_status = str(info.get("status", "")).upper()
+    eng = info.get("engine", {}) if isinstance(info.get("engine"), dict) else {}
+    eng_state = str(eng.get("state") or "").upper()
 
-    # Esperar un momento para que WAHA genere el QR
-    await asyncio.sleep(3)
+    already_connected = (
+        session_status in ("WORKING", "CONNECTED", "AUTHENTICATED") or
+        eng_state == "CONNECTED"
+    )
 
-    # Intento 3: Obtener QR después del restart
-    b = await _waha_qr()
-    if b:
-        _logc("[QR] QR generado exitosamente después de restart")
-        return Response(content=b, media_type="image/png")
+    # Si ya está conectado no hay QR — responder 404 sin tocar la sesión
+    if already_connected:
+        _log(f"[QR] Sesión ya conectada (status={session_status}), sin QR")
+        raise HTTPException(404, "Sesión ya conectada, no hay QR disponible")
 
-    # Intento 4: Recreación completa (borra auth, genera QR nuevo)
-    _logc("[QR] Restart no generó QR, intentando recreación completa...")
+    # Intento 1: Obtener QR existente (con breve retry para WAHA inestable)
+    for _ in range(3):
+        b = await _waha_qr()
+        if b:
+            return Response(content=b, media_type="image/png")
+        await asyncio.sleep(1)
+
+    # Solo intentar recrear si la sesión está en estado problemático
+    if session_status in ("SCAN_QR_CODE", "STARTING"):
+        # El QR aún no está disponible pero WAHA está iniciando — esperar
+        _log(f"[QR] WAHA en {session_status}, QR aún no disponible")
+        raise HTTPException(503, "QR aún no disponible, reintentá en unos segundos")
+
+    # Sesión en estado FAILED u otro estado problemático → recrear
+    _logc(f"[QR] Sesión en estado {session_status}, intentando recreación...")
     ok = await _waha_delete_and_recreate()
     if ok:
-        await asyncio.sleep(5)  # Esperar a que WAHA cree la sesión
+        await asyncio.sleep(5)
         b = await _waha_qr()
         if b:
             _logc("[QR] QR generado exitosamente después de recreate")
@@ -1311,59 +1394,79 @@ async def bot_resume(cu=Depends(get_current_user)):
     global _bot_paused; _bot_paused = False
     return {"ok": True, "paused": False}
 
-async def _waha_delete_and_recreate() -> bool:
+async def _waha_delete_and_recreate(force: bool = False) -> bool:
     """DELETE session + POST to recreate fresh → forces QR generation."""
-    c = _get_waha_client()
-    try:
-        rd = await c.delete(
-            f"/api/sessions/{WAHA_SESSION}",
-            headers=_waha_headers()
-        )
-        _log(f"[CONNECT] DELETE session: {rd.status_code}")
-    except Exception as e:
-        _log(f"[CONNECT] DELETE error (ok to ignore): {e}")
+    global _waha_last_session_op_at
 
-    await asyncio.sleep(1)  # let WAHA clean up before recreating
+    if _waha_session_op_lock.locked():
+        _log("[CONNECT] recreate omitido: operación en curso")
+        return True
+    if not force and _waha_session_op_recent():
+        _log("[CONNECT] recreate omitido: cooldown activo")
+        return True
 
-    try:
-        r = await c.post(
-            f"/api/sessions",
-            headers=_waha_headers(),
-            json={
-                "name": WAHA_SESSION,
-                "start": True,
-                "config": {
-                    "ignore": {
-                        "status": True,
-                        "broadcast": False,
-                        "groups": False,
-                        "channels": False
+    async with _waha_session_op_lock:
+        _waha_last_session_op_at = time.time()
+        c = _get_waha_client()
+        try:
+            rd = await c.delete(
+                f"/api/sessions/{WAHA_SESSION}",
+                headers=_waha_headers()
+            )
+            _log(f"[CONNECT] DELETE session: {rd.status_code}")
+        except Exception as e:
+            _log(f"[CONNECT] DELETE error (ok to ignore): {e}")
+
+        await asyncio.sleep(1)  # let WAHA clean up before recreating
+
+        try:
+            r = await c.post(
+                f"/api/sessions",
+                headers=_waha_headers(),
+                json={
+                    "name": WAHA_SESSION,
+                    "start": True,
+                    "config": {
+                        "ignore": {
+                            "status": True,
+                            "broadcast": False,
+                            "groups": False,
+                            "channels": False
+                        }
                     }
                 }
-            }
-        )
-        _log(f"[CONNECT] create session: {r.status_code}")
-        if r.status_code < 400:
-            return True  # el frontend hace polling, no necesitamos esperar aquí
-    except Exception as e:
-        _logc(f"[ERROR] CONNECT create: {e}")
+            )
+            _log(f"[CONNECT] create session: {r.status_code}")
+            if r.status_code < 400:
+                return True  # el frontend hace polling, no necesitamos esperar aquí
+        except Exception as e:
+            _logc(f"[ERROR] CONNECT create: {e}")
 
-    # Fallback: restart
-    try:
-        r = await c.post(
-            f"/api/sessions/{WAHA_SESSION}/restart",
-            headers=_waha_headers(), json={}
-        )
-        _log(f"[CONNECT] restart fallback: {r.status_code}")
-        if r.status_code < 400:
-            return True
-    except Exception as e:
-        _logc(f"[ERROR] CONNECT restart fallback: {e}")
-    return False
+        # Fallback: restart (dentro del mismo lock)
+        try:
+            r = await c.post(
+                f"/api/sessions/{WAHA_SESSION}/restart",
+                headers=_waha_headers(), json={}
+            )
+            _log(f"[CONNECT] restart fallback: {r.status_code}")
+            return r.status_code < 400
+        except Exception as e:
+            _logc(f"[ERROR] CONNECT restart fallback: {e}")
+            return False
 
 
 @app.post("/bot/connect")
 async def bot_connect(cu=Depends(get_current_user)):
+    global _waha_last_connect_request_at
+
+    now = time.time()
+    if now - _waha_last_connect_request_at < _WAHA_CONNECT_DEBOUNCE_SEC:
+        return {"ok": True, "status": "debounced"}
+    _waha_last_connect_request_at = now
+
+    if _waha_session_op_lock.locked():
+        return {"ok": True, "status": "busy"}
+
     info = await _waha_session_info()
     status_str = str(info.get("status", "")).upper()
     _log(f"[CONNECT] session status: {status_str}")
@@ -1386,17 +1489,8 @@ async def bot_connect(cu=Depends(get_current_user)):
 
     # WORKING → simple restart (keeps stored auth, just reconnects)
     if status_str == "WORKING":
-        try:
-            c = _get_waha_client()
-            r = await c.post(
-                f"/api/sessions/{WAHA_SESSION}/restart",
-                headers=_waha_headers(), json={}
-            )
-            _log(f"[CONNECT] restart (working): {r.status_code}")
-            return {"ok": r.status_code < 400}
-        except Exception as e:
-            _logc(f"[ERROR] CONNECT restart: {e}")
-            return {"ok": False}
+        ok = await _waha_restart_session("bot-connect-working")
+        return {"ok": ok}
 
     # FAILED or any other state → DELETE + recreate fresh (generates QR)
     ok = await _waha_delete_and_recreate()
