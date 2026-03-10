@@ -1,13 +1,10 @@
-¡Hola! 🤖📲 Bienvenido/a a UOM Sec. Santa Fe
+¡Hola! 🤖📲 Bienvenido/a a Soporte UOM Sec. Santa Fe
 Para continuar, respondé con el número de opción:
 
-1️⃣ Turnos
-2️⃣ Asuntos laborales
-3️⃣ Farmacia
-4️⃣ Afiliaciones
-5️⃣ Discapacidad
-6️⃣ Bocas de expendio
-7️⃣ Compra de Orden de Consulta
+1️⃣ Problemas de sistemas
+2️⃣ Problemas de telefonia
+3️⃣ Problemas de conexion
+
 🧑‍💻 **99 - Chatear con un Operador**
 
 ↩️ En cualquier momento podés escribir **0** para volver al menú principal.
@@ -17,18 +14,10 @@ Para continuar, respondé con el número de opción:
 Seleccionaste *TURNOS*.
 Indicá la especialidad:
 
-1. 🩺 Clínica Médica
-2. 🦴 Traumatología
-3. 🫀 Cardiología
-4. 🤰 Ginecología y Obstetricia
-5. 😁 Odontología
-6. 🔪 Cirugía General
-7. 🥗 Nutrición
-8. 👶 Pediatría
-9. 🧠 Psicología
-10. 🧩 Terapia Ocupacional
-11. 💡 Psicopedagogía
-12. 🩻 Ecografías
+1. 🩺 problemas de windows o office
+2. 🦴 problemas de sistema de obra social
+3. 🫀 problemas de mail
+4. 🤰 otros problemas
 
 0. ↩️ Volver al menú principal
 ---
@@ -36,174 +25,36 @@ Indicá la especialidad:
 ### 1.1 Clínica Médica
 Profesionales disponibles:
 
-1. 👩‍⚕️ **Dra. Gómez Vanesa**
-   • Atención: Martes de 09:00 a 11:00 H.
-   • Atención: Jueves de 14:00 a 15:00 H.
-   • Modalidad: orden de llegada.
-
-2. 👨‍⚕️ **Dr. Aramayo Alejandro**
-   • Atención: Miércoles de 09:30 a 12:30 H.
-   • Modalidad: orden de llegada.
-   • Lunes y Viernes: consultar horario.
-
-3. 👩‍⚕️ **Dra. Sánchez Teresa**
-   • Atención: Lunes, Jueves y Viernes de 11:00 a 13:30 H.
-   • Turnos: en el día al 5802184 / 4580099 (Interno: 1)
-   ⚠️ Importante: no se otorgan turnos por WhatsApp.
+dejame el problema que a la brevedad te vamos a contactar
 
 0. ↩️ Volver al menú principal
 ---
 
 ### 1.2 Traumatología
 
-Profesional disponible:
-👨‍⚕️ **Dr. Meoli Daniel**
-• Atención: Lunes 10:00 H.
-• Modalidad: orden de llegada.
-⚠️ Importante: asistir con agendado previo.
-⚠️ Primera consulta solo con derivación autorizada.
+dejame el problema que a la brevedad te vamos a contactar
 
 0. ↩️ Volver al menú principal
 ---
 
 ### 1.3 Cardiología
 
-Profesional disponible:
-👨‍⚕️ **Dr. Viñuela Leonardo**
-• Atención: Jueves 13:30 H.
-• Modalidad: orden de llegada.
-⚠️ Importante: asistir con agendado previo, por límite de pacientes.
+dejame el problema que a la brevedad te vamos a contactar
 
 0. ↩️ Volver al menú principal
 ---
 
 ### 1.4 Ginecología y Obstetricia
 
-Profesionales disponibles:
-
-1. 👨‍⚕️ **Dr. Bosquiazzo Leandro**
-   • Atención: Lunes 13:30 H.
-   • Modalidad: orden de llegada.
-   ⚠️ Importante: asistir con agendado previo.
-
-2. 👩‍⚕️ **Dra. Sencar Shirli**
-   • Atención: Martes 10:00 H. (cada 15 días)
-   • Modalidad: orden de llegada.
-   ⚠️ Importante: asistir con agendado previo, por límite de pacientes.
+dejame el problema que a la brevedad te vamos a contactar
 
 0. ↩️ Volver al menú principal
 ---
 
-### 1.5 Odontología
 
-Profesionales disponibles:
+## 2 Problemas de telefonia
 
-1. 👩‍⚕️ **Od. Herrera Ma. José**
-   • Atención: Martes y Jueves
-   • Turnos: desde las 14:00 H.
-   • Tel.: 5802184 / 4580099 (Interno: 1)
-   ⚠️ No se otorgan turnos por WhatsApp.
-
-2. 👩‍⚕️ **Od. Mondini Evangelina**
-   • Atención: Lunes, Miércoles y Viernes
-   • Turnos: desde las 14:00 H.
-   • Tel.: 5802184 / 4580099 (Interno: 1)
-   ⚠️ No se otorgan turnos por WhatsApp.
-
-0. ↩️ Volver al menú principal
----
-
-### 1.6 Cirugía General
-
-Profesional disponible:
-👨‍⚕️ **Dr. Francia Federico**
-• Atención: Viernes (dos veces al mes)
-• Modalidad: orden de llegada.
-⚠️ Importante: asistir con agendado previo.
-⚠️ Primera consulta solo con derivación autorizada.
-
-0. ↩️ Volver al menú principal
----
-
-### 1.7 Nutrición
-
-Profesional disponible:
-👩‍⚕️ **Lic. Escandell Macarena**
-• Atención: Miércoles
-• Turnos: solicitar con anticipación.
-⚠️ Primera consulta solo con derivación autorizada.
-
-0. ↩️ Volver al menú principal
----
-
-### 1.8 Pediatría
-
-Profesional disponible:
-👨‍⚕️ **Dr. Taborda Guillermo**
-• Atención: Lunes, Miércoles y Viernes de 11:30 a 12:30 H.
-• Modalidad: orden de llegada.
-
-0. ↩️ Volver al menú principal
----
-
-### 1.9 Psicología
-
-Profesionales disponibles:
-
-1. 👩‍⚕️ **Lic. Figoli Lucila**
-   • Atención: Lunes y Viernes
-   • Turnos: con anticipación.
-   ⚠️ Primera consulta solo con derivación autorizada.
-
-2. 👩‍⚕️ **Lic. Caffaratti Melisa**
-   • Atención: Miércoles
-   • Turnos: con anticipación.
-   ⚠️ Primera consulta solo con derivación autorizada.
-
-3. 👩‍⚕️ **Bertoni Ma. Eugenia**
-   • Atención: Lunes y Martes
-   • Turnos: con anticipación.
-   ⚠️ Primera consulta solo con derivación autorizada.
-
-0. ↩️ Volver al menú principal
----
-
-### 1.10 Terapia Ocupacional
-
-Profesionales disponibles:
-
-1. 👩‍⚕️ **Lic. Reina Lucila**
-   • Atención: día y horario a convenir.
-   ⚠️ Primera consulta solo con derivación autorizada.
-
-2. 👩‍⚕️ **Lic. Sarramona Carolina**
-   • Atención: día y horario a convenir.
-   ⚠️ Primera consulta solo con derivación autorizada.
-
-0. ↩️ Volver al menú principal
----
-
-### 1.11 Psicopedagogía
-
-👩‍⚕️ **Vecchietti Marcela**
-• Atención: Jueves (horarios a convenir).
-⚠️ Primera consulta solo con derivación autorizada.
-
-0. ↩️ Volver al menú principal
----
-
-### 1.12 Ecografías
-
-👨‍⚕️ **Dr. Marchese Fernando**
-• Atención: Miércoles
-• Turnos: con anticipación.
-
-0. ↩️ Volver al menú principal
----
-
-## 2 Asuntos laborales
-
-🧾 *Asuntos Laborales*
+🧾 *Asuntos de telefonia*
 • Horario: 08:00 a 16:00 H.
 • Tel.: 4580099 / 5802184
 • Consultas por WhatsApp:
@@ -214,160 +65,16 @@ Profesionales disponibles:
   WhatsApp: 📲 
   • Link directo: https://wa.me/5493424062609
 
-  WhatsApp: 📲 
-  • Link directo: https://wa.me/5493425442025
-
-  WhatsApp: 📲 
- • Link directo: https://wa.me/5493426483807
-
 0. ↩️ Volver al menú principal
 ---
 
-## 3 Farmacia
+## 3 Problemas de conexion
 
-💊 *Farmacia*
-• Horario: 08:00 a 16:00 H.
+💊 *problemas de conexion*
+• Horario: 08:00 a 18:00 H.
 • Tel.: 4580099 / 5802184
-• Interno: 1122
 • WhatsApp: 📲 
 • Link directo: https://wa.me/5493424483057
-
-0. ↩️ Volver al menú principal
----
-
-## 4 Afiliaciones
-
-🪪 *Afiliaciones*
-• Horario: 08:00 a 16:00 H.
-• Tel.: 4580099 / 5802184
-• WhatsApp: 📲 3426506301
-• Link directo: https://wa.me/5493426506301
-
-0. ↩️ Volver al menú principal
----
-
-## 5 Discapacidad
-
-♿ *Discapacidad*
-• Horario: 08:00 a 13:30 H.
-• Tel.: 4580099 / 5802184
-• Interno: 1104
-• WhatsApp: 📲 3425667161
-• Link directo: https://wa.me/5493425667161
-
-0. ↩️ Volver al menú principal
----
-
-## 6 Bocas de expendio
-
-📍 *Bocas de expendio*
-
-1. 🏢 Recreo Sur
-2. 🏢 Santo Tomé
-3. 📌 Ver ambas
-4. ↩️ Volver al menú principal
-
-0. ↩️ Volver al menú principal
----
-
-### 6.1 Recreo Sur
-
-• Horario: 08:00 a 16:00 H.
-• Dirección: Juan de Garay 4791
-• WhatsApp: 📲 3425013622
-• Link directo: https://wa.me/5493425013622
-
-0. ↩️ Volver al menú principal
----
-
-### 6.2 Santo Tomé
-
-• Horario: 09:00 a 15:00 H.
-• Dirección: República de Irak 3556
-• WhatsApp: 📲 3424673443
-• Link directo: https://wa.me/5493424673443
-
-0. ↩️ Volver al menú principal
----
-
-### 6.3 Ver ambas
-
-**Bocas disponibles:**
-
-🏢 **Recreo Sur**
-• Horario: 08:00 a 16:00 H.
-• Dirección: Juan de Garay 4791
-• Link: https://wa.me/5493425013622
-
-🏢 **Santo Tomé**
-• Horario: 09:00 a 15:00 H.
-• Dirección: República de Irak 3556
-• Link: https://wa.me/5493424673443
-
-**POR GESTIÓN DE AUTORIZACIONES VÍA WHATSAPP**
-📎Enviar foto completa, clara y legible de:
-. Pedido médico
-. Recibo de sueldo del titular de la obra social
-. Carnet de obra social del paciente y/o documentación provisoria
-
-0. ↩️ Volver al menú principal
----
-
-## 7 Compra de Orden de Consulta
-
-🔐 **¿No tenés usuario y contraseña?**
-Debés solicitar el alta.
-✅ Este trámite se hace una sola vez
-✅ Es obligatorio estar afiliado a UOM – Seccional Santa Fe
-
-1. 🧾 Tengo Usuario y quiero comprar
-2. 🧾 Quiero ver un video de como crear mi usuario
-3. 🧾 Quiero leer como crear mi usuario
-
-0. ↩️ Volver al menú principal
----
-
-### 7.1 Compra de Orden de Consulta
-
-🧾 *Compra de Orden de Consulta*
-Para comprar tu orden de consulta, ingresá acá:
-👉 https://os.uomsantafe.com.ar
-
-0. ↩️ Volver al menú principal
----
-
-### 7.2 Video de creación de usuario
-
-🧾 *Ver video de como crear usuario*
-Para ver el video sobre cómo crear usuario, ingresá acá:
-👉 https://youtu.be/7WlrZ6zW_qs
-
-0. ↩️ Volver al menú principal
----
-
-### 7.3 Guía de creación de usuario
-
-📋 **Antes de empezar, necesitás:**
-✔ DNI del titular
-✔ Nombre de la empresa donde trabaja
-✔ Teléfono de contacto
-✔ Email válido y al que tengas acceso
-✔ Foto del último recibo de sueldo
-(⚠️ Importante: las claves llegan por email)
-
-📝 **Cómo solicitar el alta**
-1️⃣ Ingresá a:
-👉 https://os.uomsantafe.com.ar/Formularios/SolicitarAlta.aspx
-2️⃣ Cargá el DNI del titular y tocá "Buscar Titular"
-3️⃣ Verificá los datos y corregí si es necesario
-📧 No olvides cargar un email válido
-4️⃣ Adjuntá la foto del último recibo de sueldo
-5️⃣ Tocá "Solicitar Alta"
-
-✅ **¿Qué pasa después?**
-📩 Vas a recibir un mail de confirmación
-👉 Si no lo ves, revisá Spam / Correo no deseado
-🔑 Dentro de los 5 días hábiles recibirás las claves de acceso
 
 0. ↩️ Volver al menú principal
 ---

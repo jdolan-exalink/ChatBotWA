@@ -42,3 +42,10 @@ services:
       - SOLUTION_NAME=${SOLUTION_NAME:-Clínica}
     volumes:
       - ./data:/app/data
+    # Health check para detectar si el bot está respondiendo
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

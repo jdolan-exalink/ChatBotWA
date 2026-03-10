@@ -59,7 +59,7 @@ _bot_paused   = False
 _chat_nav: dict[str, dict] = {}   # estado de navegación por chat
 _chats_today: set[str] = set()
 _chats_date   = None
-_last_status  = {"connected": None, "last_alert_at": 0}
+_last_status  = {"connected": None, "last_alert_at": 0, "start_time": int(time.time())}
 
 # ──────────────────────────────────────────────────────────────
 #  CACHÉ EN MEMORIA  (elimina consultas DB en el hot path)
@@ -67,11 +67,12 @@ _last_status  = {"connected": None, "last_alert_at": 0}
 #  bloquea el event loop y apila requests. Los cachemos y solo
 #  tocamos DB cuando los datos realmente cambian.
 # ──────────────────────────────────────────────────────────────
-_cfg_cache: "BotConfig | None" = None          # BotConfig única fila
+_cfg_cache: tuple = (0.0, None)                # (timestamp, BotConfig|None) TTL 10s
+_CFG_CACHE_TTL: float = 10.0                   # segundos antes de re-leer DB
 _off_hours_cache: tuple = (0.0, False)         # (timestamp, resultado) TTL 30s
 _blocklist_set: set = set()                    # teléfonos bloqueados
 _blocklist_loaded: bool = False                # ¿ya leimos de DB?
-_menu_cache: str = ""                          # contenido MenuP.MD en RAM
+_menu_cache: tuple = (0.0, "")                 # (mtime, contenido MenuP.MD)
 
 # ──────────────────────────────────────────────────────────────
 #  CLIENTE HTTP GLOBAL PARA WAHA
@@ -79,21 +80,41 @@ _menu_cache: str = ""                          # contenido MenuP.MD en RAM
 #  el event loop con cientos de conexiones simultáneas.
 # ──────────────────────────────────────────────────────────────
 _waha_client: httpx.AsyncClient | None = None
+_waha_reconnect_attempts = 0          # contador de reconexión
+_waha_last_reconnect_time = 0         # timestamp última reconexión
+_waha_force_reconnect = False         # flag para forzar reconexión
 
 def _get_waha_client() -> httpx.AsyncClient:
-    """Retorna el cliente global; lo crea si no existe aún."""
+    """Retorna el cliente global; lo crea si no existe aún.
+    Timeouts generosos (10-15s) para evitar falsos negativos con WAHA.
+    """
     global _waha_client
     if _waha_client is None or _waha_client.is_closed:
+        _logc("[HTTP] Recreando cliente HTTP WAHA")
         _waha_client = httpx.AsyncClient(
             base_url=WAHA_URL,
-            timeout=httpx.Timeout(connect=3.0, read=6.0, write=6.0, pool=3.0),
+            timeout=httpx.Timeout(
+                connect=10.0,    # 10s para conectar (WAHA puede estar lento)
+                read=15.0,       # 15s para leer (WhatsApp puede tardar)
+                write=15.0,      # 15s para escribir
+                pool=10.0,       # 10s esperando en cola
+            ),
             limits=httpx.Limits(
                 max_connections=20,        # nunca más de 20 sockets a WAHA
                 max_keepalive_connections=10,
-                keepalive_expiry=30,
+                keepalive_expiry=60,       # mantener conexiones 60s
             ),
+            # Follow redirects automáticamente
+            follow_redirects=True,
         )
     return _waha_client
+
+def _reset_waha_client():
+    """Fuerza recreación del cliente HTTP en la próxima solicitud."""
+    global _waha_client, _waha_force_reconnect
+    _waha_client = None
+    _waha_force_reconnect = False
+    _logc("[HTTP] Cliente HTTP marcado para recreación")
 
 # ──────────────────────────────────────────────────────────────
 #  LOGGING
@@ -114,7 +135,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.2.1")
+app = FastAPI(title="WA-BOT", version="2.2.2")
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -186,55 +207,149 @@ async def _init_defaults():
         db.close()
 
 async def _monitor_loop():
-    reconnect_attempts = 0
+    """Monitor de conexión WAHA con reconexión automática inteligente.
+
+    Estrategia de reconexión:
+    - Detecta caída cada 10 segundos (no 30s)
+    - Reintenta con backoff exponencial: 1s, 2s, 4s, 8s, 16s, 30s (máx)
+    - Después de 5 intentos fallidos, envía alerta
+    - Resetear contador al reconectar exitosamente
+    """
+    global _waha_reconnect_attempts, _waha_last_reconnect_time
+    reconnect_delays = [1, 2, 4, 8, 16, 30, 30, 30]  # backoff exponencial, máx 30s
+
+    _logc("[MONITOR] Iniciando loop de monitoreo WAHA...")
+
     while True:
         try:
             info = await _waha_session_info()
             status_str = str(info.get("status", "")).upper()
             s = str(info).lower()
-            connected = any(x in s for x in ["working", "connected", "authenticated"]) and "qr" not in s
+            eng = info.get("engine", {})
+            eng_state = str(eng.get("state", "UNKNOWN")).upper()
+
+            # Verificar conexión de manera más robusta
+            connected = (
+                (status_str in ("WORKING", "CONNECTED", "AUTHENTICATED")) or
+                (eng_state == "CONNECTED")
+            ) and "qr" not in s
+
             prev = _last_status["connected"]
             _last_status["connected"] = connected
 
+            # Log inicial y cambios de estado
+            if prev is None:  # Primer chequeo
+                _logc(f"[MONITOR] Estado inicial: status={status_str}, engine={eng_state}, connected={connected}")
+            elif prev != connected:  # Cambio de estado
+                if connected:
+                    _logc(f"[MONITOR] ✓ RECONNECTADO: status={status_str}, engine={eng_state}")
+                else:
+                    _logc(f"[MONITOR] ✗ DESCONECTADO: status={status_str}, engine={eng_state}")
+
             if not connected and status_str not in ("STARTING", "SCAN_QR_CODE"):
-                # Intentar restart automático (no borra auth, evita tener que reescanear QR)
-                if reconnect_attempts < 3:
-                    reconnect_attempts += 1
-                    _log(f"[MONITOR] Sesión caída (status={status_str}), intentando restart automático #{reconnect_attempts}")
+                # Sesión caída → intentar reconexión
+                now = int(time.time())
+
+                # Calcular delay según intentos
+                delay_idx = min(_waha_reconnect_attempts, len(reconnect_delays) - 1)
+                delay = reconnect_delays[delay_idx]
+
+                # Evitar reconexiones muy seguidas
+                if now - _waha_last_reconnect_time < delay:
+                    await asyncio.sleep(10)
+                    continue
+
+                _waha_reconnect_attempts += 1
+                _waha_last_reconnect_time = now
+
+                _logc(f"[MONITOR] Sesión caída (status={status_str}), intento #{_waha_reconnect_attempts}")
+
+                # Estrategia de reconexión escalonada
+                recon_ok = False
+
+                # Intento 1-2: restart simple (mantiene auth)
+                if _waha_reconnect_attempts <= 2:
                     try:
                         c = _get_waha_client()
                         r = await c.post(
                             f"/api/sessions/{WAHA_SESSION}/restart",
-                            headers=_waha_headers(), json={}
+                            headers=_waha_headers(), json={},
+                            timeout=httpx.Timeout(connect=10.0, read=15.0, write=15.0, pool=10.0)
                         )
                         _log(f"[MONITOR] restart → {r.status_code}")
-                        if r.status_code >= 400:
-                            # Si restart falla, intentar start
-                            r2 = await c.post(
-                                f"/api/sessions/{WAHA_SESSION}/start",
-                                headers=_waha_headers(), json={}
-                            )
-                            _log(f"[MONITOR] start → {r2.status_code}")
+                        if r.status_code < 400:
+                            recon_ok = True
+                            _logc("[MONITOR] Restart exitoso, esperando reconexión...")
                     except Exception as e:
-                        _log(f"[MONITOR] error en reconexión: {e}")
-                else:
-                    # Después de 3 intentos fallidos, mandar alerta
+                        _logc(f"[MONITOR] Error en restart: {e}")
+
+                # Intento 3-4: stop + start (más agresivo)
+                if not recon_ok and 2 < _waha_reconnect_attempts <= 4:
+                    try:
+                        c = _get_waha_client()
+                        # Stop primero
+                        await c.post(
+                            f"/api/sessions/{WAHA_SESSION}/stop",
+                            headers=_waha_headers(), json={}
+                        )
+                        await asyncio.sleep(2)
+                        # Start después
+                        r = await c.post(
+                            f"/api/sessions/{WAHA_SESSION}/start",
+                            headers=_waha_headers(), json={}
+                        )
+                        _log(f"[MONITOR] stop+start → {r.status_code}")
+                        if r.status_code < 400:
+                            recon_ok = True
+                            _logc("[MONITOR] Stop+Start exitoso, esperando reconexión...")
+                    except Exception as e:
+                        _logc(f"[MONITOR] Error en stop+start: {e}")
+
+                # Intento 5+: recreate completo (borra auth, genera QR)
+                if not recon_ok and _waha_reconnect_attempts > 4:
+                    _logc("[MONITOR] Intentando recreación completa de sesión (requerirá QR)")
+                    ok = await _waha_delete_and_recreate()
+                    if ok:
+                        recon_ok = True
+                        _logc("[MONITOR] Recreación completada, esperando QR...")
+
+                # Enviar alerta después de 5 intentos fallidos
+                if _waha_reconnect_attempts >= 5 and not recon_ok:
                     now = int(time.time())
-                    if now - _last_status["last_alert_at"] > 300:
+                    if now - _last_status["last_alert_at"] > 300:  # 5 min entre alertas
                         _last_status["last_alert_at"] = now
                         await _send_alert_email(
                             "[ALERTA] WhatsApp desconectado",
-                            f"El bot se desconectó y no pudo reconectarse automáticamente (status={status_str}). "
-                            "Reescanear QR desde el panel web."
+                            f"El bot se desconectó y no pudo reconectarse automáticamente después de {_waha_reconnect_attempts} intentos.\n"
+                            f"Último status reportado: {status_str}\n\n"
+                            "Acciones recomendadas:\n"
+                            "1. Verificar que WAHA esté corriendo\n"
+                            "2. Revisar logs de WAHA\n"
+                            "3. Reescanear QR desde el panel web"
                         )
+
             elif connected:
                 if prev is not True:
-                    _log(f"[MONITOR] Sesión reconectada OK (status={status_str})")
-                reconnect_attempts = 0  # resetear contador al reconectar
+                    _logc(f"[MONITOR] ✓ Sesión reconectada OK (status={status_str})")
+                # Resetear contador al reconectar
+                if _waha_reconnect_attempts > 0:
+                    _logc(f"[MONITOR] Resetear contador de reconexión (era {_waha_reconnect_attempts})")
+                _waha_reconnect_attempts = 0
 
+        except httpx.ConnectError as e:
+            # WAHA no responde en absoluto
+            _logc(f"[MONITOR] WAHA no disponible (ConnectError): {e}")
+            _waha_reconnect_attempts += 1
+            _waha_last_reconnect_time = int(time.time())
+        except httpx.TimeoutException as e:
+            # WAHA responde pero muy lento
+            _logc(f"[MONITOR] WAHA timeout: {e}")
+            _waha_reconnect_attempts += 1
+            _waha_last_reconnect_time = int(time.time())
         except Exception as e:
-            _log(f"[MONITOR] error en loop: {e}")
-        await asyncio.sleep(30)
+            _logc(f"[MONITOR] Error inesperado: {e}")
+
+        await asyncio.sleep(10)  # Chequear cada 10 segundos
 
 # ──────────────────────────────────────────────────────────────
 #  HELPERS - ARCHIVOS
@@ -288,7 +403,7 @@ async def _waha_session_info() -> dict:
     return {"name": WAHA_SESSION, "status": "unknown"}
 
 async def _waha_qr() -> bytes | None:
-    """Prueba las 4 rutas de QR en PARALELO con timeout corto. Retorna PNG bytes o None."""
+    """Prueba las 4 rutas de QR en PARALELO con timeout generoso. Retorna PNG bytes o None."""
     client = _get_waha_client()
     paths = [
         f"/api/{WAHA_SESSION}/auth/qr?format=image",
@@ -300,48 +415,100 @@ async def _waha_qr() -> bytes | None:
     async def _try(p: str) -> bytes | None:
         try:
             r = await client.get(p, headers=_waha_headers(),
-                                 timeout=httpx.Timeout(connect=2.0, read=3.0, write=3.0, pool=2.0))
+                                 timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0))
             ct = r.headers.get("content-type", "")
             if "image" in ct and r.content:
+                _logc(f"[QR] Obtenido desde {p} (image, {len(r.content)} bytes)")
                 return r.content
             if "json" in ct:
                 data = r.json()
-                raw = data.get("value") or data.get("data") or data.get("qr")
+                raw = data.get("value") or data.get("data") or data.get("qr") or data.get("qrcode")
                 if raw and isinstance(raw, str):
                     if "," in raw:
                         raw = raw.split(",", 1)[1]
-                    return base64.b64decode(raw)
-        except Exception:
-            pass
+                    decoded = base64.b64decode(raw)
+                    _logc(f"[QR] Obtenido desde {p} (base64, {len(decoded)} bytes)")
+                    return decoded
+        except httpx.TimeoutException:
+            _log(f"[QR] Timeout en {p}")
+        except Exception as e:
+            _log(f"[QR] Error en {p}: {e}")
         return None
 
     results = await asyncio.gather(*[_try(p) for p in paths])
     return next((r for r in results if r), None)
 
+async def _waha_healthcheck() -> bool:
+    """Verifica si WAHA responde. Retorna True si está disponible.
+
+    Usa /api/sessions en lugar de /health porque /health requiere Plus.
+    """
+    try:
+        c = _get_waha_client()
+        # Usar /api/sessions que siempre funciona (no requiere Plus)
+        r = await c.get(
+            "/api/sessions",
+            headers=_waha_headers(),
+            timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
+        )
+        # Si responde 200, WAHA está disponible
+        return r.status_code < 400
+    except httpx.ConnectError:
+        return False
+    except Exception:
+        return False
+
 async def _send_wha(chat_id: str, text: str):
-    """Envía texto por WhatsApp. Solo llamar desde flujo BOT, nunca en human mode."""
+    """Envía texto por WhatsApp.
+
+    Solo llamar desde flujo BOT, nunca en human mode.
+    Intenta enviar directamente, si falla reconecta y reintenta.
+    """
     if not text or not text.strip():
         _log(f"[SEND] Bloqueado - texto vacío para {chat_id}")
         return
+
     _logc(f"[CHAT] → {chat_id}: {text[:80]}")
     client = _get_waha_client()
+
+    # Intentar enviar por múltiples rutas
     for path, payload in [
         ("/api/sendText",                 {"session": WAHA_SESSION, "chatId": chat_id, "text": text}),
         (f"/api/{WAHA_SESSION}/sendText", {"chatId": chat_id, "text": text}),
         ("/api/messages/text",            {"session": WAHA_SESSION, "chatId": chat_id, "text": text}),
     ]:
         try:
-            r = await client.post(path, json=payload, headers=_waha_headers())
+            r = await client.post(
+                path,
+                json=payload,
+                headers=_waha_headers(),
+                timeout=httpx.Timeout(connect=10.0, read=15.0, write=15.0, pool=10.0)
+            )
             if r.status_code < 400:
                 _log(f"[SEND] OK via {path}")
                 return
+            # Si falla con 4xx/5xx, loguear y intentar siguiente ruta
+            _log(f"[SEND] Error {r.status_code} via {path}")
         except httpx.TimeoutException:
-            _log(f"[SEND] timeout en {path}")
-            break   # si tarda, no seguir probando otras rutas
+            _logc(f"[SEND] Timeout en {path}")
+            # Intentar reconectar y continuar con la siguiente ruta
+            _reset_waha_client()
+            await asyncio.sleep(1)
+            client = _get_waha_client()
+        except httpx.ConnectError as e:
+            _logc(f"[SEND] ConnectError en {path}: {e}")
+            # Intentar reconectar y continuar con la siguiente ruta
+            _reset_waha_client()
+            await asyncio.sleep(1)
+            client = _get_waha_client()
         except Exception as e:
-            _logc(f"[ERROR] SEND en {path}: {e}")
-            break
-    _log(f"[SEND] no enviado para {chat_id} (WAHA no disponible)")
+            _logc(f"[SEND] Error en {path}: {e}")
+            # Intentar reconectar y continuar con la siguiente ruta
+            _reset_waha_client()
+            await asyncio.sleep(1)
+            client = _get_waha_client()
+
+    _logc(f"[SEND] No enviado para {chat_id} (todas las rutas fallaron)")
 
 # ──────────────────────────────────────────────────────────────
 #  HELPERS - EMAIL
@@ -378,16 +545,18 @@ def _get_cfg(db: Session) -> BotConfig:
     return cfg
 
 def _get_cfg_cached(db: Session) -> BotConfig:
-    """Config con caché en memoria. Solo toca DB si el caché está vacío."""
+    """Config con caché TTL de 10s. Todos los workers releen DB tras ese tiempo."""
     global _cfg_cache
-    if _cfg_cache is None:
-        _cfg_cache = _get_cfg(db)
-    return _cfg_cache
+    ts, cfg = _cfg_cache
+    if cfg is None or time.time() - ts > _CFG_CACHE_TTL:
+        cfg = _get_cfg(db)
+        _cfg_cache = (time.time(), cfg)
+    return cfg
 
 def _invalidate_cfg_cache():
     """Invalida el caché de config y off-hours al guardar cambios."""
     global _cfg_cache, _off_hours_cache
-    _cfg_cache = None
+    _cfg_cache = (0.0, None)
     _off_hours_cache = (0.0, False)
 
 def _sync_debug_mode(db: Session) -> None:
@@ -457,15 +626,22 @@ def _get_blocklist(db: Session) -> set:
     return _blocklist_set
 
 def _get_menu_cached() -> str:
-    """Lee el menú una sola vez y lo cachea en RAM. Invalida en save."""
+    """Lee menú desde archivo; recachea automáticamente si el archivo cambió (mtime)."""
     global _menu_cache
-    if not _menu_cache:
-        _menu_cache = _read_menu()
-    return _menu_cache
+    p = _data_path("MenuP.MD")
+    try:
+        mtime = os.path.getmtime(p)
+    except OSError:
+        mtime = 0.0
+    last_mtime, content = _menu_cache
+    if mtime != last_mtime or not content:
+        content = _read_menu()
+        _menu_cache = (mtime, content)
+    return content
 
 def _invalidate_menu_cache():
     global _menu_cache
-    _menu_cache = ""
+    _menu_cache = (0.0, "")
 
 def _preload_caches(db: Session):
     """Pre-carga todos los cachés al arrancar para respuesta instantánea desde el primer mensaje."""
@@ -716,6 +892,7 @@ async def _handle_message(chat_id: str, text: str):
 @app.post("/webhook")
 async def webhook(req: Request):
     global _bot_paused
+    import sys
 
     # 1. Parsear payload ─────────────────────────────────────────
     data = await req.json()
@@ -726,7 +903,9 @@ async def webhook(req: Request):
         raw_txt = ""
     text = raw_txt.strip()
 
-    print(f"[CHAT] ← {chat_id!r}: {text!r}")
+    msg_log = f"[CHAT] ← {chat_id!r}: {text!r}"
+    print(msg_log, flush=True)
+    sys.stdout.flush()
 
     # 2. Filtros de ruido (sin DB) ───────────────────────────────
     if msg.get("fromMe"):
@@ -743,6 +922,11 @@ async def webhook(req: Request):
     # 3. Bot pausado ─────────────────────────────────────────────
     if _bot_paused:
         return {"ok": True, "paused": True}
+
+    # Log de procesamiento
+    proc_log = f"[WEBHOOK] Procesando: {chat_id} -> {text[:50]}"
+    print(proc_log, flush=True)
+    sys.stdout.flush()
 
     # Programar procesamiento en thread pool y retornar 200 inmediatamente.
     # WAHA solo necesita el 200 rápido; el bot responde por su cuenta.
@@ -973,7 +1157,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.2.1", "name": "WA-BOT"}
+    return {"version": "2.2.2", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -983,7 +1167,17 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
     eng_state = str(eng.get("state", "")).lower() if isinstance(eng, dict) else ""
     connected = eng_state == "connected" and info.get("me") is not None and "qr" not in s
     session_status = str(info.get("status", "")).upper()
-    qr = await _waha_qr() if (not connected and session_status == "SCAN_QR_CODE") else None
+
+    # QR disponible cuando:
+    # 1. No está conectado Y (status es SCAN_QR_CODE o STARTING)
+    # 2. O cuando eng_state indica que necesita QR
+    needs_qr = not connected and session_status in ("SCAN_QR_CODE", "STARTING", "FAILED")
+    qr = await _waha_qr() if needs_qr else None
+
+    # Logging para debug
+    if not connected:
+        _logc(f"[STATUS] Desconectado (status={session_status}, eng_state={eng_state}), QR disponible={qr is not None}")
+
     cfg = _get_cfg(db)
     return {
         "provider": "waha", "instance": WAHA_SESSION,
@@ -995,14 +1189,104 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
         "info": {"name": info.get("name", WAHA_SESSION), "status": info.get("status")},
     }
 
+@app.get("/api/waha/status")
+async def waha_status(cu=Depends(get_current_user)):
+    """Estado detallado de WAHA para el panel de admin."""
+    try:
+        info = await _waha_session_info()
+        eng = info.get("engine", {})
+
+        # Información detallada de la sesión
+        session_info = {
+            "name": info.get("name", WAHA_SESSION),
+            "status": info.get("status", "UNKNOWN"),
+            "engine": eng.get("engine", "UNKNOWN") if isinstance(eng, dict) else "UNKNOWN",
+            "engine_state": eng.get("state", "UNKNOWN") if isinstance(eng, dict) else "UNKNOWN",
+            "wweb_version": eng.get("WWebVersion", "") if isinstance(eng, dict) else "",
+            "me": info.get("me"),  # Información del usuario conectado
+            "config": info.get("config"),
+            "presence": info.get("presence"),
+            "timestamps": info.get("timestamps", {}),
+        }
+
+        # Determinar estado de conexión
+        status_str = str(info.get("status", "")).upper()
+        eng_state = str(eng.get("state", "")).upper() if isinstance(eng, dict) else ""
+
+        connected = (
+            status_str in ("WORKING", "CONNECTED", "AUTHENTICATED") or
+            eng_state == "CONNECTED"
+        ) and "qr" not in str(info).lower()
+
+        # Intentar obtener QR si no está conectado
+        needs_qr = not connected and status_str in ("SCAN_QR_CODE", "STARTING", "FAILED")
+        qr_available = False
+        if needs_qr:
+            qr_bytes = await _waha_qr()
+            qr_available = qr_bytes is not None
+
+        # Calcular uptime aproximado (desde que inició el bot)
+        uptime_seconds = int(time.time()) - int(_last_status.get("start_time", time.time()))
+
+        return {
+            "connected": connected,
+            "qr_available": qr_available,
+            "session": session_info,
+            "reconnect_attempts": _waha_reconnect_attempts,
+            "last_status": _last_status,
+            "uptime_seconds": uptime_seconds,
+            "waha_url": WAHA_URL,
+            "waha_session": WAHA_SESSION,
+        }
+    except Exception as e:
+        return {
+            "connected": False,
+            "error": str(e),
+            "waha_url": WAHA_URL,
+            "waha_session": WAHA_SESSION,
+        }
+
 @app.get("/qr")
 async def qr_image():
-    # Intenta obtener el QR directamente (rutas en paralelo, timeout 3s c/u).
-    # No esperamos a SCAN_QR_CODE: WAHA puede tener QR listo incluso en STARTING.
+    """Obtiene QR de WAHA. Si no hay QR disponible, intenta generar uno nuevo."""
+    # Intento 1: Obtener QR existente
     b = await _waha_qr()
-    if not b:
-        raise HTTPException(404, "QR no disponible")
-    return Response(content=b, media_type="image/png")
+    if b:
+        return Response(content=b, media_type="image/png")
+
+    # Intento 2: Forzar generación de QR (restart de sesión)
+    _logc("[QR] No hay QR disponible, intentando generar nuevo...")
+    try:
+        c = _get_waha_client()
+        # Intentar restart primero (mantiene auth)
+        r = await c.post(
+            f"/api/sessions/{WAHA_SESSION}/restart",
+            headers=_waha_headers(), json={}
+        )
+        _log(f"[QR] restart → {r.status_code}")
+    except Exception as e:
+        _log(f"[QR] Error en restart: {e}")
+
+    # Esperar un momento para que WAHA genere el QR
+    await asyncio.sleep(3)
+
+    # Intento 3: Obtener QR después del restart
+    b = await _waha_qr()
+    if b:
+        _logc("[QR] QR generado exitosamente después de restart")
+        return Response(content=b, media_type="image/png")
+
+    # Intento 4: Recreación completa (borra auth, genera QR nuevo)
+    _logc("[QR] Restart no generó QR, intentando recreación completa...")
+    ok = await _waha_delete_and_recreate()
+    if ok:
+        await asyncio.sleep(5)  # Esperar a que WAHA cree la sesión
+        b = await _waha_qr()
+        if b:
+            _logc("[QR] QR generado exitosamente después de recreate")
+            return Response(content=b, media_type="image/png")
+
+    raise HTTPException(404, "QR no disponible - Verificar que WAHA esté corriendo")
 
 @app.get("/api/debug/status")
 async def debug_status(cu=Depends(get_current_user)):

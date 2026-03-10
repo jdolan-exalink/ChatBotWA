@@ -2332,6 +2332,7 @@ def get_dashboard_page() -> str:
             <div class="nav-item active" onclick="switchSection('status')">📊 Estado</div>
             <div class="nav-item" onclick="switchSection('users')">👥 Usuarios</div>
             <div class="nav-item" onclick="switchSection('config')">⚙️ Configuración</div>
+            <div class="nav-item" onclick="switchSection('waha')">📡 WAHA</div>
             <div class="nav-item" onclick="switchSection('menu')">📋 Editor Menú</div>
             <div class="nav-item" onclick="switchSection('offhours')">🕐 Fuera de Hora</div>
             <div class="nav-item" onclick="switchSection('holidays')">📅 Feriados</div>
@@ -2558,7 +2559,30 @@ def get_dashboard_page() -> str:
                     </form>
                 </div>
             </div>
-            
+
+            <!-- ESTADO DE WAHA -->
+            <div id="waha" class="section">
+                <div class="card">
+                    <h2>📡 Estado de WAHA</h2>
+                    <div id="wahaContent">
+                        <div style="text-align: center; padding: 40px;">
+                            <div class="spinner"></div>
+                            <p style="margin-top: 16px; color: #94a3b8;">Cargando información de WAHA...</p>
+                        </div>
+                    </div>
+                    <div style="margin-top: 24px; display: flex; gap: 12px;">
+                        <button onclick="refreshWahaStatus()" class="btn btn-primary">🔄 Actualizar</button>
+                        <button onclick="connectWaha()" class="btn btn-secondary" id="btnConnectWaha">🔌 Conectar/Reiniciar</button>
+                        <button onclick="logoutWaha()" class="btn btn-danger" id="btnLogoutWaha">🚪 Logout (Borrar QR)</button>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 24px;">
+                    <h3>📊 Información de la Sesión</h3>
+                    <pre id="wahaRawInfo" style="background: rgba(0,0,0,0.3); padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 0.85em; color: #94a3b8;"></pre>
+                </div>
+            </div>
+
             <!-- EDITOR DE MENÚ -->
             <div id="menu" class="section">
                 <div class="card">
@@ -2813,6 +2837,7 @@ def get_dashboard_page() -> str:
                     case 'status': refresh(); break;
                     case 'users': loadUsers(); break;
                     case 'config': loadConfig(); break;
+                    case 'waha': refreshWahaStatus(); break;
                     case 'menu': loadMenu(); break;
                     case 'offhours': loadOffhours(); break;
                     case 'holidays': loadHolidays(); break;
@@ -3546,7 +3571,169 @@ def get_dashboard_page() -> str:
                 localStorage.removeItem('user');
                 window.location.href = '/login';
             }
-            
+
+            // ========== ESTADO DE WAHA ==========
+
+            async function refreshWahaStatus() {
+                try {
+                    const res = await fetch(`${API_URL}/waha/status`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    renderWahaStatus(data);
+                } catch (error) {
+                    document.getElementById('wahaContent').innerHTML = `
+                        <div style="color: #ef4444; text-align: center; padding: 20px;">
+                            ❌ Error al cargar: ${error.message}
+                        </div>
+                    `;
+                }
+            }
+
+            function renderWahaStatus(data) {
+                const connected = data.connected;
+                const session = data.session || {};
+
+                // Estado principal
+                const statusHtml = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                        <div style="background: rgba(${connected ? '34,197,94' : '239,68,68'}, 0.15); border: 1px solid rgba(${connected ? '34,197,94' : '239,68,68'}, 0.3); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 2em; margin-bottom: 8px;">${connected ? '🟢' : '🔴'}</div>
+                            <div style="color: #94a3b8; font-size: 0.85em;">Conexión</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: ${connected ? '#86efac' : '#fca5a5'};">${connected ? 'CONECTADO' : 'DESCONECTADO'}</div>
+                        </div>
+                        <div style="background: rgba(59,130,246, 0.15); border: 1px solid rgba(59,130,246, 0.3); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 2em; margin-bottom: 8px;">📡</div>
+                            <div style="color: #94a3b8; font-size: 0.85em;">Estado</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #93c5fd;">${session.status || 'UNKNOWN'}</div>
+                        </div>
+                        <div style="background: rgba(168,85,247, 0.15); border: 1px solid rgba(168,85,247, 0.3); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 2em; margin-bottom: 8px;">🤖</div>
+                            <div style="color: #94a3b8; font-size: 0.85em;">Engine</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #d8b4fe;">${session.engine || 'N/A'}</div>
+                        </div>
+                        <div style="background: rgba(234,179,8, 0.15); border: 1px solid rgba(234,179,8, 0.3); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 2em; margin-bottom: 8px;">⏱️</div>
+                            <div style="color: #94a3b8; font-size: 0.85em;">Uptime</div>
+                            <div style="font-size: 1.2em; font-weight: 600; color: #fde047;">${formatUptime(data.uptime_seconds || 0)}</div>
+                        </div>
+                    </div>
+
+                    ${connected && session.me ? `
+                        <div style="background: rgba(34,197,94, 0.1); border: 1px solid rgba(34,197,94, 0.2); padding: 16px; border-radius: 12px; margin-bottom: 16px;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="width: 48px; height: 48px; background: rgba(34,197,94, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5em;">👤</div>
+                                <div>
+                                    <div style="font-weight: 600; color: #86efac;">${session.me.pushName || 'Usuario'}</div>
+                                    <div style="color: #94a3b8; font-size: 0.85em;">${session.me.id || 'N/A'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${!connected && data.qr_available ? `
+                        <div style="text-align: center; padding: 20px;">
+                            <div style="color: #fbbf24; font-size: 1.1em; margin-bottom: 16px;">⚠️ QR Disponible - Escanea para conectar</div>
+                            <img src="/qr?ts=${Date.now()}" alt="QR Code" style="max-width: 300px; border: 2px solid rgba(251,191,36, 0.3); border-radius: 12px;" />
+                        </div>
+                    ` : ''}
+
+                    ${!connected && !data.qr_available ? `
+                        <div style="text-align: center; padding: 20px; color: #94a3b8;">
+                            ${session.status === 'STARTING' ? '⏳ WAHA está iniciando...' : 'Presiona "Conectar/Reiniciar" para iniciar sesión'}
+                        </div>
+                    ` : ''}
+                `;
+
+                document.getElementById('wahaContent').innerHTML = statusHtml;
+
+                // Información raw
+                document.getElementById('wahaRawInfo').textContent = JSON.stringify(data, null, 2);
+
+                // Actualizar botones
+                document.getElementById('btnConnectWaha').disabled = connected;
+                document.getElementById('btnLogoutWaha').disabled = !connected;
+            }
+
+            function formatUptime(seconds) {
+                const hrs = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                const secs = seconds % 60;
+                if (hrs > 0) return `${hrs}h ${mins}m`;
+                if (mins > 0) return `${mins}m ${secs}s`;
+                return `${secs}s`;
+            }
+
+            async function connectWaha() {
+                if (!confirm('¿Reiniciar sesión de WAHA? Esto puede requerir escanear QR.')) return;
+
+                try {
+                    const btn = document.getElementById('btnConnectWaha');
+                    btn.disabled = true;
+                    btn.textContent = '⏳ Conectando...';
+
+                    const res = await fetch(`${API_URL}/bot/connect`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    const data = await res.json();
+
+                    if (data.ok) {
+                        document.getElementById('wahaContent').innerHTML = `
+                            <div style="text-align: center; padding: 40px;">
+                                <div class="spinner"></div>
+                                <p style="margin-top: 16px; color: #94a3b8;">Iniciando sesión...</p>
+                            </div>
+                        `;
+                        setTimeout(refreshWahaStatus, 3000);
+                    } else {
+                        alert('Error al conectar: ' + JSON.stringify(data));
+                        btn.disabled = false;
+                        btn.textContent = '🔌 Conectar/Reiniciar';
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                    document.getElementById('btnConnectWaha').disabled = false;
+                    document.getElementById('btnConnectWaha').textContent = '🔌 Conectar/Reiniciar';
+                }
+            }
+
+            async function logoutWaha() {
+                if (!confirm('⚠️ ¿Cerrar sesión de WAHA? Tendrás que escanear QR nuevamente.')) return;
+
+                try {
+                    const btn = document.getElementById('btnLogoutWaha');
+                    btn.disabled = true;
+                    btn.textContent = '⏳ Cerrando...';
+
+                    const res = await fetch(`${API_URL}/bot/logout`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    const data = await res.json();
+
+                    if (data.ok) {
+                        document.getElementById('wahaContent').innerHTML = `
+                            <div style="text-align: center; padding: 40px; color: #fbbf24;">
+                                <div style="font-size: 3em; margin-bottom: 16px;">🚪</div>
+                                <p>Sesión cerrada. Escanea el QR para reconectar.</p>
+                            </div>
+                        `;
+                        setTimeout(refreshWahaStatus, 2000);
+                    } else {
+                        alert('Error: ' + JSON.stringify(data));
+                        btn.disabled = false;
+                        btn.textContent = '🚪 Logout (Borrar QR)';
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                    document.getElementById('btnLogoutWaha').disabled = false;
+                    document.getElementById('btnLogoutWaha').textContent = '🚪 Logout (Borrar QR)';
+                }
+            }
+
             // ========== FUNCIONES DE USUARIOS ==========
             
             function openCreateUserModal() {
