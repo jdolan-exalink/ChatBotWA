@@ -896,8 +896,19 @@ async def webhook(req: Request):
 
     # 1. Parsear payload ─────────────────────────────────────────
     data = await req.json()
+
+    # Descartar estados/stories de WhatsApp antes de parsear nada más
+    event_type = data.get("event", "")
+    if "status" in event_type.lower():
+        return {"ok": True, "i": "status_event"}
+
     msg     = data.get("payload") or data.get("message") or data
     chat_id = (msg.get("from") or msg.get("chatId") or msg.get("chat_id") or "").strip()
+
+    # Filtro temprano de estados (antes del log para no ensuciar consola)
+    if any(x in chat_id for x in ("status@", "@status", "broadcast")):
+        return {"ok": True, "i": "status"}
+
     raw_txt = msg.get("body") or msg.get("text") or ""
     if not isinstance(raw_txt, str):
         raw_txt = ""
@@ -912,8 +923,6 @@ async def webhook(req: Request):
         return {"ok": True, "i": "from_me"}
     if not chat_id or not text:
         return {"ok": True, "i": "empty"}
-    if any(x in chat_id for x in ("status@", "@status", "broadcast")):
-        return {"ok": True, "i": "status"}
     if "@g.us" in chat_id:
         return {"ok": True, "i": "group"}
     if text.lower() in {"estado", "estados", "status"}:
@@ -1320,7 +1329,18 @@ async def _waha_delete_and_recreate() -> bool:
         r = await c.post(
             f"/api/sessions",
             headers=_waha_headers(),
-            json={"name": WAHA_SESSION, "start": True}
+            json={
+                "name": WAHA_SESSION,
+                "start": True,
+                "config": {
+                    "ignore": {
+                        "status": True,
+                        "broadcast": False,
+                        "groups": False,
+                        "channels": False
+                    }
+                }
+            }
         )
         _log(f"[CONNECT] create session: {r.status_code}")
         if r.status_code < 400:
