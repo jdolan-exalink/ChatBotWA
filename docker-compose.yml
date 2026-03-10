@@ -3,6 +3,7 @@ services:
     image: devlikeapro/waha:latest
     container_name: clinic-waha
     restart: unless-stopped
+    shm_size: '512mb'
     ports:
       - "3100:3000"
     environment:
@@ -11,6 +12,9 @@ services:
       - WAHA_API_KEY=${WAHA_API_KEY}
       - WAHA_AUTO_READ=false
       - WHATSAPP_RESTART_ALL_SESSIONS=true
+      - WAHA_STORE_MESSAGES_STATUSES=false
+      - WAHA_PROCESS_STATUS=false
+      - NOWEB_PATCH_STATUSES=false
     volumes:
       - ./data/waha:/app/.sessions
 
