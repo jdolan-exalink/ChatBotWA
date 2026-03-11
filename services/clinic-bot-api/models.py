@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Float, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
 from datetime import datetime
@@ -199,3 +199,33 @@ class AgentAssignment(Base):
     
     def __repr__(self):
         return f"<AgentAssignment ticket={self.ticket_id} agent={self.agent_id}>"
+
+
+class DailyChatContact(Base):
+    """Contacto unico por dia para metrica 'chats de hoy'."""
+    __tablename__ = "daily_chat_contacts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    day = Column(String(10), index=True, nullable=False)  # YYYY-MM-DD en timezone local configurada
+    phone_number = Column(String(20), index=True, nullable=False)
+    first_message_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("day", "phone_number", name="uq_daily_chat_contacts_day_phone"),
+    )
+
+    def __repr__(self):
+        return f"<DailyChatContact day={self.day} phone={self.phone_number}>"
+
+
+class WahaRuntimeState(Base):
+    """Estado runtime persistente para métricas de conexión WAHA."""
+    __tablename__ = "waha_runtime_state"
+
+    id = Column(Integer, primary_key=True, index=True)
+    connected_since_epoch = Column(Integer, nullable=True)
+    disconnected_since_epoch = Column(Integer, nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<WahaRuntimeState connected_since={self.connected_since_epoch}>"
