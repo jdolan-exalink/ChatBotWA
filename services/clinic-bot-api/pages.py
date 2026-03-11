@@ -2402,6 +2402,11 @@ def get_dashboard_page() -> str:
                             <div class="status-item-label">Horarios</div>
                             <div class="status-item-value" id="hoursStatus">Normal</div>
                         </div>
+                        <div class="status-item">
+                            <div class="status-item-icon">⏱️</div>
+                            <div class="status-item-label">Uptime WA</div>
+                            <div class="status-item-value" id="waUptime">0s</div>
+                        </div>
                     </div>
                     <button class="btn btn-primary" onclick="refresh()">🔄 Actualizar Estado</button>
                     <button class="btn" id="pauseBtn" onclick="toggleBot()" style="margin-left:10px;">⏸️ Pausar Bot</button>
@@ -2908,6 +2913,10 @@ def get_dashboard_page() -> str:
                     document.getElementById('hoursIcon').textContent = status.off_hours ? '🕐' : '✅';
                     document.getElementById('hoursStatus').textContent = status.off_hours ? 'Fuera' : 'Normal';
                     document.getElementById('waStatusText').textContent = status.connected ? 'Conectado' : 'Desconectado';
+                    const waUptimeEl = document.getElementById('waUptime');
+                    if (waUptimeEl) {
+                        waUptimeEl.textContent = formatDuration(status.connection_uptime_seconds || 0);
+                    }
                     
                     const waBtn = document.getElementById('waBtn');
                     if (status.connected) {
@@ -2922,6 +2931,19 @@ def get_dashboard_page() -> str:
                 } catch (error) {
                     console.error('Error:', error);
                 }
+            }
+
+            function formatDuration(totalSeconds) {
+                const sec = Math.max(0, Number(totalSeconds) || 0);
+                const d = Math.floor(sec / 86400);
+                const h = Math.floor((sec % 86400) / 3600);
+                const m = Math.floor((sec % 3600) / 60);
+                const s = sec % 60;
+
+                if (d > 0) return `${d}d ${h}h ${m}m`;
+                if (h > 0) return `${h}h ${m}m ${s}s`;
+                if (m > 0) return `${m}m ${s}s`;
+                return `${s}s`;
             }
 
             async function toggleBot() {
