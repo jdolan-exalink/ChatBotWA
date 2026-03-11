@@ -53,6 +53,8 @@ ALERT_EMAIL_TO  = os.getenv("ALERT_EMAIL_TO", "")
 ALERT_EMAIL_FROM = os.getenv("ALERT_EMAIL_FROM", ALERT_EMAIL_TO)
 SOLUTION_NAME   = os.getenv("SOLUTION_NAME", "Clínica")
 CHAT_IDLE_RESET_SEC = int(os.getenv("CHAT_IDLE_RESET_SEC", "180"))
+HUMAN_MODE_DEFAULT_HOURS = int(os.getenv("HUMAN_MODE_DEFAULT_HOURS", "12"))
+HUMAN_MODE_WAITING_AGENT_HOURS = int(os.getenv("HUMAN_MODE_WAITING_AGENT_HOURS", "2"))
 
 # ──────────────────────────────────────────────────────────────
 #  ESTADO GLOBAL (en memoria)
@@ -896,8 +898,8 @@ def _is_human_mode(db: Session, chat_id: str) -> bool:
         _logc(f"[HUMAN] Expirado para {chat_id} → bot")
     return active
 
-def _start_human_mode(db: Session, chat_id: str) -> str:
-    """Activa modo humano por 12h. Retorna ticket_id."""
+def _start_human_mode(db: Session, chat_id: str, duration_hours: int = HUMAN_MODE_DEFAULT_HOURS) -> str:
+    """Activa modo humano por N horas. Retorna ticket_id."""
     import uuid
     row = db.query(ConversationState).filter(
         ConversationState.phone_number == chat_id
@@ -907,14 +909,14 @@ def _start_human_mode(db: Session, chat_id: str) -> str:
         db.add(row)
     ticket = f"TKT-{uuid.uuid4().hex[:8].upper()}"
     row.human_mode         = True
-    row.human_mode_expire  = datetime.utcnow() + timedelta(hours=12)
+    row.human_mode_expire  = datetime.utcnow() + timedelta(hours=duration_hours)
     row.current_state      = "WAITING_AGENT"
     row.handoff_active     = True
     row.handoff_started_at = datetime.utcnow()
     row.ticket_id          = ticket
     row.last_message_at    = datetime.utcnow()
     db.commit()
-    _logc(f"[HUMAN] Activado {chat_id} | ticket={ticket} | expire={row.human_mode_expire}")
+    _logc(f"[HUMAN] Activado {chat_id} | ticket={ticket} | duration={duration_hours}h | expire={row.human_mode_expire}")
     return ticket
 
 def _exit_human_mode(db: Session, chat_id: str):
@@ -961,9 +963,19 @@ def _touch_human_mode_timeout(db: Session, chat_id: str):
     if not row or not row.human_mode:
         return
     now = datetime.utcnow()
-    row.human_mode_expire = now + timedelta(hours=12)
+    # Mientras espera operador, mantener ventana corta; con operador activo, ventana estándar.
+    duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS if row.current_state == "WAITING_AGENT" else HUMAN_MODE_DEFAULT_HOURS
+    row.human_mode_expire = now + timedelta(hours=duration_hours)
     row.last_message_at = now
     db.commit()
+
+
+def _is_turnos_waiting_section(section: str) -> bool:
+    """True para secciones de selección final de médico dentro de turnos (ej: menu_1_1)."""
+    if not section or not section.startswith("menu_1_"):
+        return False
+    parts = section.split("_")
+    return len(parts) == 3 and parts[2].isdigit()
 
 
 def _extract_operator_target_chat_id(msg: dict) -> str:
@@ -1073,13 +1085,16 @@ def _sync_process_message(chat_id: str, text: str) -> str:
 
         # 7. Opción 99: activar modo humano
         if text == "99":
-            ticket = _start_human_mode(db, chat_id)
+            current_section = _chat_nav.get(chat_id, {}).get("section", "main")
+            duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS if _is_turnos_waiting_section(current_section) else HUMAN_MODE_DEFAULT_HOURS
+            ticket = _start_human_mode(db, chat_id, duration_hours=duration_hours)
             _chat_nav.pop(chat_id, None)
             return (
                 "📞 *Se ha iniciado transferencia a un operador*\n\n"
                 f"✅ Tu número de ticket: *{ticket}*\n\n"
                 "⏳ Por favor espera a que un operario se comunique contigo.\n"
                 "Esto generalmente toma unos minutos.\n\n"
+                f"⌛ Tiempo máximo de espera en este estado: *{duration_hours} horas*.\n\n"
                 "Gracias por tu paciencia 😊\n\n"
                 "_(Escribe *98* en cualquier momento para volver al menú automático)_"
             )
