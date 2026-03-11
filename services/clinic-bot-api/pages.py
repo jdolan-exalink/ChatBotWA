@@ -665,6 +665,16 @@ def get_user_panel_page() -> str:
                 <h2>WhatsApp</h2>
                 <button class="btn-connect" id="waBtn" onclick="toggleWhatsApp()">🔴 Conectar WhatsApp</button>
             </div>
+
+            <div class="card">
+                <h2>👤 Operador</h2>
+                <p style="color:#94a3b8; margin-bottom: 12px;">Cerrar modo humano para un chat y devolverlo al bot ahora.</p>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                    <input type="text" id="humanModePhoneUser" placeholder="549xxxxxxxxxx o 549...@c.us" style="flex:1; min-width:260px; padding:10px 12px; background: rgba(30, 41, 59, 0.5); border:1px solid rgba(226,232,240,0.15); border-radius:10px; color:#f1f5f9;" />
+                    <button class="btn-connect" style="width:auto; padding:10px 16px;" onclick="closeHumanModeFromUserPanel()">🔓 Volver a Bot</button>
+                </div>
+                <div id="humanModeMsgUser" style="font-size:0.9em; color:#94a3b8;"></div>
+            </div>
             
             <div class="panel-footer">
                 <div class="company">DOLAN SS - 2026</div>
@@ -845,6 +855,44 @@ def get_user_panel_page() -> str:
                 } finally {
                     btn.disabled = false;
                     btn.classList.remove('btn-disabled');
+                }
+            }
+
+            async function closeHumanModeFromUserPanel() {
+                const input = document.getElementById('humanModePhoneUser');
+                const msg = document.getElementById('humanModeMsgUser');
+                const phone = (input?.value || '').trim();
+                if (!phone) {
+                    msg.textContent = '❌ Ingresá un número/chat';
+                    msg.style.color = '#ef4444';
+                    return;
+                }
+                try {
+                    const token = localStorage.getItem('token');
+                    const res = await fetch('/api/human-mode/close', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ phone_number: phone })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        msg.textContent = '❌ ' + (data.detail || 'No se pudo cerrar modo humano');
+                        msg.style.color = '#ef4444';
+                        return;
+                    }
+                    if (data.closed) {
+                        msg.textContent = `✅ Chat ${data.phone_number} volvió a modo bot`;
+                        msg.style.color = '#86efac';
+                    } else {
+                        msg.textContent = 'ℹ️ ' + (data.detail || 'Sin cambios');
+                        msg.style.color = '#93c5fd';
+                    }
+                } catch (error) {
+                    msg.textContent = '❌ Error de conexión: ' + error.message;
+                    msg.style.color = '#ef4444';
                 }
             }
             
@@ -2417,6 +2465,16 @@ def get_dashboard_page() -> str:
                     <p style="color: #cbd5e1; margin-bottom: 16px;">Estado: <strong id="waStatusText">Desconectado</strong></p>
                     <button class="btn btn-primary" id="waBtn" onclick="toggleWhatsApp()">🔴 Conectar WhatsApp</button>
                 </div>
+
+                <div class="card">
+                    <h2>👤 Control de Modo Humano</h2>
+                    <p style="color:#94a3b8; margin-bottom: 12px;">Cerrar chat de operador para que ese número vuelva al flujo automático del bot.</p>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                        <input type="text" id="humanModePhoneAdmin" placeholder="549xxxxxxxxxx o 549...@c.us" style="flex:1; min-width:280px; padding:10px 12px; background: rgba(30, 41, 59, 0.5); border:1px solid rgba(226,232,240,0.15); border-radius:10px; color:#f1f5f9;" />
+                        <button class="btn btn-secondary" onclick="closeHumanModeFromAdmin()">🔓 Volver a Bot</button>
+                    </div>
+                    <div id="humanModeMsgAdmin" style="font-size:0.9em; color:#94a3b8;"></div>
+                </div>
             </div>
             
             <!-- USUARIOS -->
@@ -2628,6 +2686,7 @@ def get_dashboard_page() -> str:
                         <div class="buttons-group">
                             <button type="submit" class="btn btn-primary">💾 Guardar Menú</button>
                             <button type="button" class="btn btn-secondary" onclick="resetMenuEditor()">↺ Deshacer Cambios</button>
+                            <button type="button" class="btn btn-secondary" onclick="restoreMenuBackup()">⏮ Restaurar Versión Anterior</button>
                         </div>
                     </form>
                 </div>
@@ -2655,6 +2714,7 @@ def get_dashboard_page() -> str:
                         <div class="buttons-group">
                             <button type="submit" class="btn btn-primary">💾 Guardar</button>
                             <button type="button" class="btn btn-secondary" onclick="resetOffhoursEditor()">↺ Deshacer Cambios</button>
+                            <button type="button" class="btn btn-secondary" onclick="restoreOffhoursBackup()">⏮ Restaurar Versión Anterior</button>
                         </div>
                     </form>
                 </div>
@@ -2963,6 +3023,43 @@ def get_dashboard_page() -> str:
                     btn.textContent = orig;
                 } finally {
                     btn.disabled = false;
+                }
+            }
+
+            async function closeHumanModeFromAdmin() {
+                const input = document.getElementById('humanModePhoneAdmin');
+                const msg = document.getElementById('humanModeMsgAdmin');
+                const phone = (input?.value || '').trim();
+                if (!phone) {
+                    msg.textContent = '❌ Ingresá un número/chat';
+                    msg.style.color = '#ef4444';
+                    return;
+                }
+                try {
+                    const res = await fetch(`${API_URL}/human-mode/close`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ phone_number: phone })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        msg.textContent = '❌ ' + (data.detail || 'No se pudo cerrar modo humano');
+                        msg.style.color = '#ef4444';
+                        return;
+                    }
+                    if (data.closed) {
+                        msg.textContent = `✅ Chat ${data.phone_number} volvió a modo bot`;
+                        msg.style.color = '#86efac';
+                    } else {
+                        msg.textContent = 'ℹ️ ' + (data.detail || 'Sin cambios');
+                        msg.style.color = '#93c5fd';
+                    }
+                } catch (error) {
+                    msg.textContent = '❌ Error de conexión: ' + error.message;
+                    msg.style.color = '#ef4444';
                 }
             }
 
@@ -3317,6 +3414,36 @@ def get_dashboard_page() -> str:
                     console.error('Error:', error);
                 }
             }
+
+            async function restoreMenuBackup() {
+                if (!confirm('¿Restaurar la versión anterior del menú?')) return;
+                try {
+                    const res = await fetch(`${API_URL}/config/menu/restore`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    const msg = document.getElementById('menuMessage');
+                    const data = await res.json();
+                    if (!res.ok) {
+                        msg.textContent = '❌ Error: ' + (data.detail || data.error || 'No se pudo restaurar');
+                        msg.className = 'message show error';
+                        setTimeout(() => msg.classList.remove('show'), 3000);
+                        return;
+                    }
+
+                    await loadMenu();
+                    msg.textContent = '✅ Menú restaurado a la versión anterior';
+                    msg.className = 'message show success';
+                    setTimeout(() => msg.classList.remove('show'), 3000);
+                } catch (error) {
+                    const msg = document.getElementById('menuMessage');
+                    msg.textContent = '❌ Error de conexión: ' + error.message;
+                    msg.className = 'message show error';
+                    setTimeout(() => msg.classList.remove('show'), 3000);
+                    console.error('Error:', error);
+                }
+            }
             
             function resetMenuEditor() {
                 document.getElementById('menuContent').value = originalMenuContent;
@@ -3375,6 +3502,36 @@ def get_dashboard_page() -> str:
                         msg.textContent = '❌ Error: ' + (data.detail || data.error || 'Error al guardar');
                         msg.className = 'message show error';
                     }
+                    setTimeout(() => msg.classList.remove('show'), 3000);
+                } catch (error) {
+                    const msg = document.getElementById('offhoursMessage');
+                    msg.textContent = '❌ Error de conexión: ' + error.message;
+                    msg.className = 'message show error';
+                    setTimeout(() => msg.classList.remove('show'), 3000);
+                    console.error('Error:', error);
+                }
+            }
+
+            async function restoreOffhoursBackup() {
+                if (!confirm('¿Restaurar la versión anterior de fuera de hora?')) return;
+                try {
+                    const res = await fetch(`${API_URL}/config/offhours/restore`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    const msg = document.getElementById('offhoursMessage');
+                    const data = await res.json();
+                    if (!res.ok) {
+                        msg.textContent = '❌ Error: ' + (data.detail || data.error || 'No se pudo restaurar');
+                        msg.className = 'message show error';
+                        setTimeout(() => msg.classList.remove('show'), 3000);
+                        return;
+                    }
+
+                    await loadOffhours();
+                    msg.textContent = '✅ Fuera de hora restaurado a la versión anterior';
+                    msg.className = 'message show success';
                     setTimeout(() => msg.classList.remove('show'), 3000);
                 } catch (error) {
                     const msg = document.getElementById('offhoursMessage');

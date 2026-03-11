@@ -11,6 +11,7 @@ import base64
 import calendar
 import json
 import os
+import shutil
 import time
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
@@ -22,9 +23,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from database import init_db, get_db, SessionLocal, engine
-from models import Base, User, BotConfig, Holiday, HolidayMenu, WhatsAppBlockList, ConversationState
+from models import Base, User, BotConfig, Holiday, HolidayMenu, WhatsAppBlockList, ConversationState, DailyChatContact, WahaRuntimeState
 from schemas import (
     UserLogin, UserCreate, UserResponse, TokenResponse, BotConfigUpdate,
     BotConfigResponse, HolidayCreate, HolidayResponse, HolidayMenuCreate,
@@ -57,8 +59,6 @@ CHAT_IDLE_RESET_SEC = int(os.getenv("CHAT_IDLE_RESET_SEC", "180"))
 # ──────────────────────────────────────────────────────────────
 _bot_paused   = False
 _chat_nav: dict[str, dict] = {}   # estado de navegación por chat
-_chats_today: set[str] = set()
-_chats_date   = None
 _last_status  = {
     "connected": None,
     "last_alert_at": 0,
@@ -96,25 +96,60 @@ _WAHA_SESSION_OP_COOLDOWN_SEC = 8.0
 _WAHA_CONNECT_DEBOUNCE_SEC = 3.0
 
 
-def _sync_connection_timestamps(prev_connected: bool | None, connected: bool) -> None:
+def _get_runtime_state(db: Session) -> WahaRuntimeState:
+    row = db.query(WahaRuntimeState).first()
+    if not row:
+        row = WahaRuntimeState(connected_since_epoch=None, disconnected_since_epoch=int(time.time()))
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def _sync_connection_timestamps(prev_connected: bool | None, connected: bool, db: Session | None = None) -> None:
     """Mantiene marcas de tiempo de conexión/desconexión para mostrar uptime."""
     now = int(time.time())
+
+    persisted_connected_since = None
+    runtime_row = None
+    if db is not None:
+        try:
+            runtime_row = _get_runtime_state(db)
+            persisted_connected_since = runtime_row.connected_since_epoch
+        except Exception:
+            runtime_row = None
+
     if prev_connected is None:
         if connected:
-            _last_status["connected_since"] = now
+            _last_status["connected_since"] = persisted_connected_since or now
             _last_status["disconnected_since"] = None
+            if runtime_row is not None and not runtime_row.connected_since_epoch:
+                runtime_row.connected_since_epoch = _last_status["connected_since"]
+                runtime_row.disconnected_since_epoch = None
+                db.commit()
         else:
             _last_status["connected_since"] = None
             _last_status["disconnected_since"] = now
+            if runtime_row is not None:
+                runtime_row.disconnected_since_epoch = now
+                db.commit()
         return
 
     if prev_connected != connected:
         if connected:
             _last_status["connected_since"] = now
             _last_status["disconnected_since"] = None
+            if runtime_row is not None:
+                runtime_row.connected_since_epoch = now
+                runtime_row.disconnected_since_epoch = None
+                db.commit()
         else:
             _last_status["connected_since"] = None
             _last_status["disconnected_since"] = now
+            if runtime_row is not None:
+                runtime_row.connected_since_epoch = None
+                runtime_row.disconnected_since_epoch = now
+                db.commit()
 
 def _get_waha_client() -> httpx.AsyncClient:
     """Retorna el cliente global; lo crea si no existe aún.
@@ -221,7 +256,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.2.6")
+app = FastAPI(title="WA-BOT", version="2.2.7")
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -322,7 +357,11 @@ async def _monitor_loop():
 
             prev = _last_status["connected"]
             _last_status["connected"] = connected
-            _sync_connection_timestamps(prev, connected)
+            db_sync = SessionLocal()
+            try:
+                _sync_connection_timestamps(prev, connected, db_sync)
+            finally:
+                db_sync.close()
 
             # Log inicial y cambios de estado
             if prev is None:  # Primer chequeo
@@ -427,6 +466,42 @@ def _data_path(filename: str) -> str:
     if os.path.exists("/app/data"):
         return os.path.join("/app/data", filename)
     return os.path.join(os.path.dirname(__file__), "data", filename)
+
+
+def _backup_file_path(path: str) -> str:
+    return f"{path}.bak"
+
+
+def _write_text_with_backup(path: str, content: str) -> None:
+    """Guarda archivo y conserva backup de la version previa."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    bak = _backup_file_path(path)
+    if os.path.exists(path):
+        shutil.copyfile(path, bak)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def _restore_previous_text(path: str) -> str:
+    """Restaura backup y hace swap para permitir deshacer la restauracion."""
+    bak = _backup_file_path(path)
+    if not os.path.exists(bak):
+        raise FileNotFoundError("No hay backup disponible")
+
+    with open(bak, "r", encoding="utf-8") as f:
+        previous = f.read()
+
+    current = ""
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            current = f.read()
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(previous)
+    with open(bak, "w", encoding="utf-8") as f:
+        f.write(current)
+
+    return previous
 
 def _read_menu() -> str:
     try:
@@ -729,6 +804,37 @@ def _get_blocklist(db: Session) -> set:
             pass
     return _blocklist_set
 
+
+def _local_today_str(db: Session) -> str:
+    import pytz
+    cfg = _get_cfg_cached(db)
+    try:
+        tz = pytz.timezone(cfg.timezone or "America/Argentina/Buenos_Aires")
+    except Exception:
+        tz = pytz.UTC
+    return datetime.now(tz).strftime("%Y-%m-%d")
+
+
+def _track_chat_today(db: Session, chat_id: str) -> None:
+    """Registra un chat unico por dia; ignora duplicados de forma segura."""
+    phone = _normalize_phone(chat_id)
+    if not phone:
+        return
+
+    row = DailyChatContact(day=_local_today_str(db), phone_number=phone)
+    try:
+        db.add(row)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+    except Exception as e:
+        db.rollback()
+        _log(f"[METRICS] Error track_chat_today: {e}")
+
+
+def _count_chats_today(db: Session) -> int:
+    return db.query(DailyChatContact).filter(DailyChatContact.day == _local_today_str(db)).count()
+
 def _get_menu_cached() -> str:
     """Lee menú desde archivo; recachea automáticamente si el archivo cambió (mtime)."""
     global _menu_cache
@@ -825,6 +931,63 @@ def _exit_human_mode(db: Session, chat_id: str):
         db.commit()
         _logc(f"[HUMAN] Desactivado {chat_id}")
 
+
+def _start_human_mode_silent(db: Session, chat_id: str):
+    """Activa/renueva modo humano sin enviar mensaje automático al usuario."""
+    row = db.query(ConversationState).filter(
+        ConversationState.phone_number == chat_id
+    ).first()
+    if not row:
+        row = ConversationState(phone_number=chat_id)
+        db.add(row)
+
+    now = datetime.utcnow()
+    row.human_mode = True
+    row.human_mode_expire = now + timedelta(hours=12)
+    row.handoff_active = True
+    row.current_state = "IN_AGENT"
+    if not row.handoff_started_at:
+        row.handoff_started_at = now
+    row.last_message_at = now
+    db.commit()
+    _logc(f"[HUMAN] Activado por operador {chat_id} | expire={row.human_mode_expire}")
+
+
+def _touch_human_mode_timeout(db: Session, chat_id: str):
+    """Renueva timeout de modo humano por actividad de chat."""
+    row = db.query(ConversationState).filter(
+        ConversationState.phone_number == chat_id
+    ).first()
+    if not row or not row.human_mode:
+        return
+    now = datetime.utcnow()
+    row.human_mode_expire = now + timedelta(hours=12)
+    row.last_message_at = now
+    db.commit()
+
+
+def _extract_operator_target_chat_id(msg: dict) -> str:
+    """Intenta obtener el chat destino cuando WAHA reporta un mensaje fromMe."""
+    candidates = [
+        msg.get("chatId"),
+        msg.get("chat_id"),
+        msg.get("to"),
+        msg.get("recipient"),
+        msg.get("recipientId"),
+        msg.get("from"),
+    ]
+    for raw in candidates:
+        if not isinstance(raw, str):
+            continue
+        cid = raw.strip()
+        if not cid:
+            continue
+        if any(x in cid for x in ("status@", "@status", "broadcast", "@g.us")):
+            continue
+        if "@c.us" in cid:
+            return cid
+    return ""
+
 # ──────────────────────────────────────────────────────────────
 #  MENU  (navegación jerárquica Markdown)
 # ──────────────────────────────────────────────────────────────
@@ -880,15 +1043,11 @@ def _sync_process_message(chat_id: str, text: str) -> str:
     Toda la lógica síncrona con DB. Corre en thread pool.
     Devuelve el mensaje a enviar (str vacío = no enviar nada).
     """
-    global _chat_nav, _chats_today, _chats_date
+    global _chat_nav
     db = SessionLocal()
     try:
-        # 4. Contador diario
-        from datetime import date as _d
-        today = str(_d.today())
-        if _chats_date != today:
-            _chats_today = set(); _chats_date = today
-        _chats_today.add(chat_id)
+        # 4. Contador diario persistente en DB
+        _track_chat_today(db, chat_id)
 
         # 5. HUMAN MODE
         in_human = _is_human_mode(db, chat_id)
@@ -903,6 +1062,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
                     "Escribe *0* para ver el menú principal."
                 )
             else:
+                _touch_human_mode_timeout(db, chat_id)
                 _log(f"[WH] HUMAN_MODE activo → ignorando '{text}'")
                 return ""
 
@@ -1006,7 +1166,22 @@ async def webhook(req: Request):
     if "status" in event_type.lower():
         return {"ok": True, "i": "status_event"}
 
-    msg     = data.get("payload") or data.get("message") or data
+    msg = data.get("payload") or data.get("message") or data
+
+    # Si el operador inicia/escribe un chat desde WhatsApp Web, activar modo humano
+    # para ese número y evitar respuestas automáticas del bot.
+    if msg.get("fromMe"):
+        op_chat_id = _extract_operator_target_chat_id(msg)
+        if not op_chat_id:
+            return {"ok": True, "i": "from_me_no_chat"}
+        db = SessionLocal()
+        try:
+            _start_human_mode_silent(db, op_chat_id)
+            _chat_nav.pop(op_chat_id, None)
+        finally:
+            db.close()
+        return {"ok": True, "i": "from_me_human_mode", "chat": op_chat_id}
+
     chat_id = (msg.get("from") or msg.get("chatId") or msg.get("chat_id") or "").strip()
 
     # Filtro temprano de estados (antes del log para no ensuciar consola)
@@ -1023,8 +1198,6 @@ async def webhook(req: Request):
     sys.stdout.flush()
 
     # 2. Filtros de ruido (sin DB) ───────────────────────────────
-    if msg.get("fromMe"):
-        return {"ok": True, "i": "from_me"}
     if not chat_id or not text:
         return {"ok": True, "i": "empty"}
     if "@g.us" in chat_id:
@@ -1087,6 +1260,41 @@ async def change_password(req: PasswordChangeRequest, cu=Depends(get_current_use
         raise HTTPException(401, "Contraseña incorrecta")
     u.hashed_password = hash_password(req.new_password); db.commit()
     return {"ok": True}
+
+
+@app.post("/api/human-mode/close")
+async def close_human_mode_chat(req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Fuerza el cierre de modo humano para un número/chat específico."""
+    body = await req.json()
+    raw = str(body.get("phone_number") or body.get("chat_id") or "").strip()
+    if not raw:
+        raise HTTPException(400, "phone_number requerido")
+
+    normalized = _normalize_phone(raw)
+    candidates = [raw, normalized, f"{normalized}@c.us"]
+
+    row = None
+    for c in candidates:
+        if not c:
+            continue
+        row = db.query(ConversationState).filter(ConversationState.phone_number == c).first()
+        if row:
+            break
+
+    if not row:
+        return {"ok": True, "closed": False, "detail": "No existe conversación para ese número"}
+
+    if not row.human_mode:
+        return {"ok": True, "closed": False, "detail": "El chat ya está en modo bot", "phone_number": row.phone_number}
+
+    target = row.phone_number
+    _exit_human_mode(db, target)
+    # Limpiar posibles variantes en cache de navegación
+    _chat_nav.pop(target, None)
+    _chat_nav.pop(normalized, None)
+    _chat_nav.pop(f"{normalized}@c.us", None)
+
+    return {"ok": True, "closed": True, "phone_number": target}
 
 # ──────────────────────────────────────────────────────────────
 #  ADMIN
@@ -1160,6 +1368,12 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
               "ollama_url","ollama_model","admin_idle_timeout_sec","debug_mode"]:
         v = getattr(data, f, None)
         if v is not None: setattr(cfg, f, v)
+
+    # Mantener sincronizado el archivo que usa el runtime para mensaje fuera de horario
+    if data.off_hours_message is not None:
+        p = _data_path("MenuF.MD")
+        _write_text_with_backup(p, data.off_hours_message)
+
     db.commit(); db.refresh(cfg)
     _sync_debug_mode(db)   # actualiza el global en memoria
     _invalidate_cfg_cache()    # limpia caché para próxima lectura
@@ -1169,18 +1383,54 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
 async def update_menu_file(req: Request, ca=Depends(get_current_admin)):
     body = await req.json(); content = body.get("content", "")
     if not content.strip(): raise HTTPException(400, "Vacío")
-    p = _data_path("MenuP.MD"); os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f: f.write(content)
+    p = _data_path("MenuP.MD")
+    _write_text_with_backup(p, content)
     _invalidate_menu_cache()    # fuerza recarga en próximo acceso
     return {"ok": True, "bytes": len(content)}
 
+
+@app.post("/api/config/menu/restore")
+async def restore_menu_file(ca=Depends(get_current_admin)):
+    p = _data_path("MenuP.MD")
+    try:
+        restored = _restore_previous_text(p)
+    except FileNotFoundError:
+        raise HTTPException(404, "No hay backup de menú para restaurar")
+    _invalidate_menu_cache()
+    return {"ok": True, "bytes": len(restored)}
+
 @app.put("/api/config/offhours")
-async def update_offhours_file(req: Request, ca=Depends(get_current_admin)):
-    body = await req.json(); content = body.get("content", "")
+async def update_offhours_file(req: Request, ca=Depends(get_current_admin), db: Session = Depends(get_db)):
+    body = await req.json()
+    content = body.get("content", body.get("off_hours_message", ""))
     if not content.strip(): raise HTTPException(400, "Vacío")
-    p = _data_path("MenuF.MD"); os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f: f.write(content)
+    p = _data_path("MenuF.MD")
+    _write_text_with_backup(p, content)
+
+    # Sincronizar también la configuración en DB para consistencia de API
+    cfg = _get_cfg(db)
+    cfg.off_hours_message = content
+    if "off_hours_enabled" in body and body.get("off_hours_enabled") is not None:
+        cfg.off_hours_enabled = bool(body.get("off_hours_enabled"))
+    db.commit()
+    _invalidate_cfg_cache()
+
     return {"ok": True, "bytes": len(content)}
+
+
+@app.post("/api/config/offhours/restore")
+async def restore_offhours_file(ca=Depends(get_current_admin), db: Session = Depends(get_db)):
+    p = _data_path("MenuF.MD")
+    try:
+        restored = _restore_previous_text(p)
+    except FileNotFoundError:
+        raise HTTPException(404, "No hay backup de fuera de hora para restaurar")
+
+    cfg = _get_cfg(db)
+    cfg.off_hours_message = restored
+    db.commit()
+    _invalidate_cfg_cache()
+    return {"ok": True, "bytes": len(restored)}
 
 # ──────────────────────────────────────────────────────────────
 #  HOLIDAYS
@@ -1270,7 +1520,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.2.6", "name": "WA-BOT"}
+    return {"version": "2.2.7", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1291,7 +1541,7 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
     # exclusivamente del monitor loop en casos de arranque reciente.
     prev = _last_status.get("connected")
     _last_status["connected"] = connected
-    _sync_connection_timestamps(prev, connected)
+    _sync_connection_timestamps(prev, connected, db)
 
     connected_since = _last_status.get("connected_since")
     connection_uptime_seconds = int(time.time()) - int(connected_since) if connected and connected_since else 0
@@ -1315,7 +1565,7 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
         "paused": _bot_paused,
         "solution_name": cfg.solution_name,
         "off_hours": _is_off_hours(db),
-        "chats_today": len(_chats_today),
+        "chats_today": _count_chats_today(db),
         "info": {"name": info.get("name", WAHA_SESSION), "status": info.get("status")},
     }
 
@@ -1350,7 +1600,7 @@ async def waha_status(cu=Depends(get_current_user)):
 
         prev = _last_status.get("connected")
         _last_status["connected"] = connected
-        _sync_connection_timestamps(prev, connected)
+        _sync_connection_timestamps(prev, connected, db)
 
         connected_since = _last_status.get("connected_since")
         connection_uptime_seconds = int(time.time()) - int(connected_since) if connected and connected_since else 0
