@@ -59,7 +59,13 @@ _bot_paused   = False
 _chat_nav: dict[str, dict] = {}   # estado de navegación por chat
 _chats_today: set[str] = set()
 _chats_date   = None
-_last_status  = {"connected": None, "last_alert_at": 0, "start_time": int(time.time())}
+_last_status  = {
+    "connected": None,
+    "last_alert_at": 0,
+    "start_time": int(time.time()),
+    "connected_since": None,
+    "disconnected_since": int(time.time()),
+}
 
 # ──────────────────────────────────────────────────────────────
 #  CACHÉ EN MEMORIA  (elimina consultas DB en el hot path)
@@ -88,6 +94,27 @@ _waha_last_session_op_at = 0.0          # timestamp último cambio de sesión
 _waha_last_connect_request_at = 0.0     # debounce de /bot/connect
 _WAHA_SESSION_OP_COOLDOWN_SEC = 8.0
 _WAHA_CONNECT_DEBOUNCE_SEC = 3.0
+
+
+def _sync_connection_timestamps(prev_connected: bool | None, connected: bool) -> None:
+    """Mantiene marcas de tiempo de conexión/desconexión para mostrar uptime."""
+    now = int(time.time())
+    if prev_connected is None:
+        if connected:
+            _last_status["connected_since"] = now
+            _last_status["disconnected_since"] = None
+        else:
+            _last_status["connected_since"] = None
+            _last_status["disconnected_since"] = now
+        return
+
+    if prev_connected != connected:
+        if connected:
+            _last_status["connected_since"] = now
+            _last_status["disconnected_since"] = None
+        else:
+            _last_status["connected_since"] = None
+            _last_status["disconnected_since"] = now
 
 def _get_waha_client() -> httpx.AsyncClient:
     """Retorna el cliente global; lo crea si no existe aún.
@@ -194,7 +221,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.2.5")
+app = FastAPI(title="WA-BOT", version="2.2.6")
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -295,6 +322,7 @@ async def _monitor_loop():
 
             prev = _last_status["connected"]
             _last_status["connected"] = connected
+            _sync_connection_timestamps(prev, connected)
 
             # Log inicial y cambios de estado
             if prev is None:  # Primer chequeo
@@ -506,8 +534,13 @@ async def _waha_qr() -> bytes | None:
             _log(f"[QR] Error en {p}: {e}")
         return None
 
-    results = await asyncio.gather(*[_try(p) for p in paths])
-    return next((r for r in results if r), None)
+    # Probar rutas en secuencia evita picos de carga por consultas paralelas
+    # cuando el frontend hace polling.
+    for p in paths:
+        qr = await _try(p)
+        if qr:
+            return qr
+    return None
 
 async def _waha_healthcheck() -> bool:
     """Verifica si WAHA responde. Retorna True si está disponible.
@@ -1237,7 +1270,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.2.5", "name": "WA-BOT"}
+    return {"version": "2.2.6", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1254,8 +1287,18 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
         eng_state == "CONNECTED"
     ) and "scan_qr_code" not in s
 
-    # QR disponible solo cuando la sesión espera escaneo
-    needs_qr = not connected and session_status in ("SCAN_QR_CODE", "STARTING", "FAILED")
+    # Sincronizar transición también desde endpoint para no depender
+    # exclusivamente del monitor loop en casos de arranque reciente.
+    prev = _last_status.get("connected")
+    _last_status["connected"] = connected
+    _sync_connection_timestamps(prev, connected)
+
+    connected_since = _last_status.get("connected_since")
+    connection_uptime_seconds = int(time.time()) - int(connected_since) if connected and connected_since else 0
+
+    # QR disponible solo cuando la sesión espera escaneo.
+    # STARTING todavía no está lista para QR y pedirlo genera 422 en WAHA.
+    needs_qr = not connected and session_status in ("SCAN_QR_CODE", "FAILED")
     qr = await _waha_qr() if needs_qr else None
 
     if not connected:
@@ -1267,6 +1310,8 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
     return {
         "provider": "waha", "instance": WAHA_SESSION,
         "connected": connected, "has_qr": qr is not None,
+        "connected_since": connected_since,
+        "connection_uptime_seconds": connection_uptime_seconds,
         "paused": _bot_paused,
         "solution_name": cfg.solution_name,
         "off_hours": _is_off_hours(db),
@@ -1303,8 +1348,15 @@ async def waha_status(cu=Depends(get_current_user)):
             eng_state == "CONNECTED"
         ) and "qr" not in str(info).lower()
 
-        # Intentar obtener QR si no está conectado
-        needs_qr = not connected and status_str in ("SCAN_QR_CODE", "STARTING", "FAILED")
+        prev = _last_status.get("connected")
+        _last_status["connected"] = connected
+        _sync_connection_timestamps(prev, connected)
+
+        connected_since = _last_status.get("connected_since")
+        connection_uptime_seconds = int(time.time()) - int(connected_since) if connected and connected_since else 0
+
+        # Intentar obtener QR solo cuando WAHA realmente está en estado de escaneo
+        needs_qr = not connected and status_str in ("SCAN_QR_CODE", "FAILED")
         qr_available = False
         if needs_qr:
             qr_bytes = await _waha_qr()
@@ -1316,6 +1368,8 @@ async def waha_status(cu=Depends(get_current_user)):
         return {
             "connected": connected,
             "qr_available": qr_available,
+            "connected_since": connected_since,
+            "connection_uptime_seconds": connection_uptime_seconds,
             "session": session_info,
             "reconnect_attempts": _waha_reconnect_attempts,
             "last_status": _last_status,
@@ -1355,6 +1409,11 @@ async def qr_image():
         _log(f"[QR] Sesión ya conectada (status={session_status}), sin QR")
         raise HTTPException(404, "Sesión ya conectada, no hay QR disponible")
 
+    # STARTING: WAHA aún inicializando, no intentar rutas de QR todavía.
+    if session_status == "STARTING":
+        _log("[QR] WAHA en STARTING, QR aún no disponible")
+        raise HTTPException(503, "QR aún no disponible, reintentá en unos segundos")
+
     # Intento 1: Obtener QR existente (con breve retry para WAHA inestable)
     for _ in range(3):
         b = await _waha_qr()
@@ -1363,8 +1422,8 @@ async def qr_image():
         await asyncio.sleep(1)
 
     # Solo intentar recrear si la sesión está en estado problemático
-    if session_status in ("SCAN_QR_CODE", "STARTING"):
-        # El QR aún no está disponible pero WAHA está iniciando — esperar
+    if session_status == "SCAN_QR_CODE":
+        # A veces WAHA tarda en generar QR tras pasar a SCAN_QR_CODE.
         _log(f"[QR] WAHA en {session_status}, QR aún no disponible")
         raise HTTPException(503, "QR aún no disponible, reintentá en unos segundos")
 
