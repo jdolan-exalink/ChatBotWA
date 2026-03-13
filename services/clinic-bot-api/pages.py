@@ -675,6 +675,16 @@ def get_user_panel_page() -> str:
                 </div>
                 <div id="humanModeMsgUser" style="font-size:0.9em; color:#94a3b8;"></div>
             </div>
+
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h2 style="margin-bottom:0;">⏸️ Números en Espera (Parking)</h2>
+                    <button class="btn-connect" style="width:auto; padding:8px 14px; font-size:0.9em;" onclick="loadParkedList()">🔄 Actualizar</button>
+                </div>
+                <div id="parkedListUser">
+                    <div style="color:#94a3b8; font-size:0.9em;">Cargando...</div>
+                </div>
+            </div>
             
             <div class="panel-footer">
                 <div class="company">DOLAN SS - 2026</div>
@@ -886,6 +896,7 @@ def get_user_panel_page() -> str:
                     if (data.closed) {
                         msg.textContent = `✅ Chat ${data.phone_number} volvió a modo bot`;
                         msg.style.color = '#86efac';
+                        loadParkedList();
                     } else {
                         msg.textContent = 'ℹ️ ' + (data.detail || 'Sin cambios');
                         msg.style.color = '#93c5fd';
@@ -893,6 +904,68 @@ def get_user_panel_page() -> str:
                 } catch (error) {
                     msg.textContent = '❌ Error de conexión: ' + error.message;
                     msg.style.color = '#ef4444';
+                }
+            }
+
+            async function loadParkedList() {
+                const container = document.getElementById('parkedListUser');
+                if (!container) return;
+                try {
+                    const token = localStorage.getItem('token');
+                    const res = await fetch('/api/human-mode/list', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (!Array.isArray(data) || data.length === 0) {
+                        container.innerHTML = '<div style="color:#86efac; font-size:0.9em;">✅ No hay números en espera</div>';
+                        return;
+                    }
+                    const rows = data.map(item => {
+                        const started = item.handoff_started_at ? new Date(item.handoff_started_at + 'Z').toLocaleString('es-AR') : '—';
+                        const state = item.current_state === 'WAITING_AGENT' ? '⏳ Esperando operador' : '👤 Con operador';
+                        return `<tr style="border-bottom:1px solid rgba(226,232,240,0.08);">
+                            <td style="padding:10px 8px; color:#f1f5f9; font-family:monospace; font-size:0.9em;">${item.phone_number}</td>
+                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.85em;">${state}</td>
+                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${started}</td>
+                            <td style="padding:10px 8px;">
+                                <button onclick="releaseParkedUser('${item.phone_number}', this)" style="padding:6px 12px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#86efac; border-radius:6px; cursor:pointer; font-size:0.85em;">🔓 Liberar</button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                    container.innerHTML = `<table style="width:100%; border-collapse:collapse;">
+                        <thead><tr style="background:rgba(30,41,59,0.5);">
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Número</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Estado</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Inicio</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Acción</th>
+                        </tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
+                } catch(e) {
+                    container.innerHTML = '<div style="color:#ef4444; font-size:0.9em;">❌ Error al cargar lista</div>';
+                }
+            }
+
+            async function releaseParkedUser(phone, btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳';
+                try {
+                    const token = localStorage.getItem('token');
+                    const res = await fetch('/api/human-mode/close', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: phone })
+                    });
+                    const data = await res.json();
+                    if (data.closed) {
+                        loadParkedList();
+                    } else {
+                        btn.disabled = false;
+                        btn.textContent = '🔓 Liberar';
+                    }
+                } catch(e) {
+                    btn.disabled = false;
+                    btn.textContent = '🔓 Liberar';
                 }
             }
             
@@ -1175,7 +1248,9 @@ def get_user_panel_page() -> str:
             
             loadVersion();
             loadStatus();
+            loadParkedList();
             setInterval(loadStatus, 5000);
+            setInterval(loadParkedList, 15000);
         </script>
     </body>
     </html>
@@ -2475,6 +2550,16 @@ def get_dashboard_page() -> str:
                     </div>
                     <div id="humanModeMsgAdmin" style="font-size:0.9em; color:#94a3b8;"></div>
                 </div>
+
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h2 style="margin-bottom:0;">⏸️ Números en Espera (Parking)</h2>
+                        <button class="btn btn-secondary" onclick="loadAdminParkedList()" style="padding:8px 14px; font-size:0.9em;">🔄 Actualizar</button>
+                    </div>
+                    <div id="parkedListAdmin">
+                        <div style="color:#94a3b8; font-size:0.9em;">Cargando...</div>
+                    </div>
+                </div>
             </div>
             
             <!-- USUARIOS -->
@@ -3053,6 +3138,7 @@ def get_dashboard_page() -> str:
                     if (data.closed) {
                         msg.textContent = `✅ Chat ${data.phone_number} volvió a modo bot`;
                         msg.style.color = '#86efac';
+                        loadAdminParkedList();
                     } else {
                         msg.textContent = 'ℹ️ ' + (data.detail || 'Sin cambios');
                         msg.style.color = '#93c5fd';
@@ -3060,6 +3146,72 @@ def get_dashboard_page() -> str:
                 } catch (error) {
                     msg.textContent = '❌ Error de conexión: ' + error.message;
                     msg.style.color = '#ef4444';
+                }
+            }
+
+            async function loadAdminParkedList() {
+                const container = document.getElementById('parkedListAdmin');
+                if (!container) return;
+                try {
+                    const res = await fetch(`${API_URL}/human-mode/list`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (!Array.isArray(data) || data.length === 0) {
+                        container.innerHTML = '<div style="color:#86efac; font-size:0.9em;">✅ No hay números en espera</div>';
+                        return;
+                    }
+                    const rows = data.map(item => {
+                        const started = item.handoff_started_at ? new Date(item.handoff_started_at + 'Z').toLocaleString('es-AR') : '—';
+                        const expire = item.human_mode_expire ? new Date(item.human_mode_expire + 'Z').toLocaleString('es-AR') : '—';
+                        const state = item.current_state === 'WAITING_AGENT' ? '⏳ Esperando operador' : '👤 Con operador';
+                        const ticket = item.ticket_id || '—';
+                        return `<tr style="border-bottom:1px solid rgba(226,232,240,0.08);">
+                            <td style="padding:10px 8px; color:#f1f5f9; font-family:monospace; font-size:0.9em;">${item.phone_number}</td>
+                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.85em;">${state}</td>
+                            <td style="padding:10px 8px; color:#93c5fd; font-size:0.8em; font-family:monospace;">${ticket}</td>
+                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${started}</td>
+                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${expire}</td>
+                            <td style="padding:10px 8px;">
+                                <button onclick="releaseAdminParked('${item.phone_number}', this)" style="padding:6px 12px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#86efac; border-radius:6px; cursor:pointer; font-size:0.85em;">🔓 Liberar</button>
+                            </td>
+                        </tr>`;
+                    }).join('');
+                    container.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+                        <thead><tr style="background:rgba(30,41,59,0.5);">
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Número</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Estado</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Ticket</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Inicio</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Vence</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Acción</th>
+                        </tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table></div>`;
+                } catch(e) {
+                    container.innerHTML = '<div style="color:#ef4444; font-size:0.9em;">❌ Error al cargar lista</div>';
+                }
+            }
+
+            async function releaseAdminParked(phone, btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳';
+                try {
+                    const res = await fetch(`${API_URL}/human-mode/close`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: phone })
+                    });
+                    const data = await res.json();
+                    if (data.closed) {
+                        loadAdminParkedList();
+                    } else {
+                        btn.disabled = false;
+                        btn.textContent = '🔓 Liberar';
+                    }
+                } catch(e) {
+                    btn.disabled = false;
+                    btn.textContent = '🔓 Liberar';
                 }
             }
 
@@ -4197,7 +4349,9 @@ def get_dashboard_page() -> str:
             
             loadVersion();
             refresh();
+            loadAdminParkedList();
             setInterval(refresh, 5000);
+            setInterval(loadAdminParkedList, 15000);
         </script>
     </body>
     </html>
