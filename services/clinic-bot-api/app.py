@@ -52,7 +52,7 @@ GOOGLE_REFRESH_TOKEN  = os.getenv("GOOGLE_REFRESH_TOKEN", "")
 ALERT_EMAIL_TO  = os.getenv("ALERT_EMAIL_TO", "")
 ALERT_EMAIL_FROM = os.getenv("ALERT_EMAIL_FROM", ALERT_EMAIL_TO)
 SOLUTION_NAME   = os.getenv("SOLUTION_NAME", "Clínica")
-CHAT_IDLE_RESET_SEC = int(os.getenv("CHAT_IDLE_RESET_SEC", "180"))
+CHAT_IDLE_RESET_SEC = int(os.getenv("CHAT_IDLE_RESET_SEC", "7200"))
 HUMAN_MODE_DEFAULT_HOURS = int(os.getenv("HUMAN_MODE_DEFAULT_HOURS", "12"))
 HUMAN_MODE_WAITING_AGENT_HOURS = int(os.getenv("HUMAN_MODE_WAITING_AGENT_HOURS", "2"))
 
@@ -258,7 +258,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.2.7")
+app = FastAPI(title="WA-BOT", version="2.2.9")
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -1277,6 +1277,35 @@ async def change_password(req: PasswordChangeRequest, cu=Depends(get_current_use
     return {"ok": True}
 
 
+@app.get("/api/human-mode/list")
+async def list_parked_chats(cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Devuelve todos los chats actualmente en modo humano (parking)."""
+    now_utc = datetime.utcnow()
+    rows = db.query(ConversationState).filter(
+        ConversationState.human_mode == True
+    ).all()
+    result = []
+    for r in rows:
+        # Verificar que no haya expirado
+        if r.human_mode_expire is None:
+            continue
+        try:
+            exp_ts = calendar.timegm(r.human_mode_expire.timetuple())
+            now_ts = calendar.timegm(now_utc.timetuple())
+            if exp_ts <= now_ts:
+                continue
+        except Exception:
+            pass
+        result.append({
+            "phone_number": r.phone_number,
+            "current_state": r.current_state,
+            "ticket_id": r.ticket_id,
+            "handoff_started_at": r.handoff_started_at.isoformat() if r.handoff_started_at else None,
+            "human_mode_expire": r.human_mode_expire.isoformat() if r.human_mode_expire else None,
+        })
+    return result
+
+
 @app.post("/api/human-mode/close")
 async def close_human_mode_chat(req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
     """Fuerza el cierre de modo humano para un número/chat específico."""
@@ -1535,7 +1564,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.2.7", "name": "WA-BOT"}
+    return {"version": "2.2.9", "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
