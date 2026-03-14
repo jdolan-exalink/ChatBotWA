@@ -1081,6 +1081,17 @@ def get_user_panel_page() -> str:
             const token = localStorage.getItem('token');
             const userStr = localStorage.getItem('user');
 
+            // ── Auth helper: 401 → redirigir a login ─────────────
+            function _checkUnauth(res) {
+                if (res.status === 401) {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    window.location.href = '/login';
+                    return true;
+                }
+                return false;
+            }
+
             // ── Auth & init ──────────────────────────────────────
             window.addEventListener('DOMContentLoaded', () => {
                 if (!token) { window.location.href = '/login'; return; }
@@ -1316,6 +1327,7 @@ def get_user_panel_page() -> str:
                 if (!box) return;
                 try {
                     const res  = await fetch('/api/scheduled-messages', { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (_checkUnauth(res)) return;
                     const list = await res.json();
                     if (!list.length) { box.innerHTML = '<div style="color:#94a3b8;font-size:0.88em;">Sin mensajes programados. Usá ➕ Nuevo para crear uno.</div>'; return; }
                     const DAYS_MAP = {'1':'Lu','2':'Ma','3':'Mi','4':'Ju','5':'Vi','6':'Sa','7':'Do'};
