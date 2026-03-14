@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py.backup
+*.py.bak
+*.py.bk
+.pytest_cache/
+.git/
+*.log
