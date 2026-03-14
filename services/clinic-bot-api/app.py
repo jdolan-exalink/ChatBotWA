@@ -9,9 +9,11 @@ Basado en especificaciones WAHA-DOC.md:
 import asyncio
 import base64
 import calendar
+import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import time
 from datetime import datetime, timedelta
@@ -27,11 +29,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from database import init_db, get_db, SessionLocal, engine
-from models import Base, User, BotConfig, Holiday, HolidayMenu, WhatsAppBlockList, ConversationState, DailyChatContact, WahaRuntimeState, TicketHistory, ScheduledMessage
+from models import Base, User, BotConfig, Holiday, HolidayMenu, WhatsAppBlockList, ConversationState, DailyChatContact, WahaRuntimeState, TicketHistory, ScheduledMessage, ExternalAccessToken
 from schemas import (
     UserLogin, UserCreate, UserResponse, TokenResponse, BotConfigUpdate,
     BotConfigResponse, HolidayCreate, HolidayResponse, HolidayMenuCreate,
-    HolidayMenuResponse, PasswordChangeRequest, PasswordResetRequest, UserUpdate
+    HolidayMenuResponse, PasswordChangeRequest, PasswordResetRequest, UserUpdate,
+    ExternalAccessTokenCreate, ExternalAccessTokenResponse,
+    ExternalAccessTokenWithSecretResponse, ExternalNotificationPayload,
 )
 from security import hash_password, verify_password, create_access_token, get_current_user, get_current_admin
 from pages import get_login_page, get_dashboard_page, get_user_panel_page, get_user_config_page
@@ -259,7 +263,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-APP_VERSION = "2.2.19"  # fuente única de verdad — actualizar solo aqui
+APP_VERSION = "2.2.20"  # fuente única de verdad — actualizar solo aqui
 app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
@@ -562,6 +566,92 @@ def _read_menu() -> str:
 def _write_menu(text: str):
     with open(CLINIC_KB_PATH, "w", encoding="utf-8") as f:
         f.write(text)
+
+
+def _hash_external_api_key(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+
+
+def _generate_external_api_key() -> str:
+    # Prefijo fijo para identificar rápido el tipo de credencial.
+    return f"wabot_ext_{secrets.token_urlsafe(24)}"
+
+
+def _external_token_to_response(row: ExternalAccessToken) -> ExternalAccessTokenResponse:
+    return ExternalAccessTokenResponse(
+        id=row.id,
+        name=row.name,
+        token_prefix=row.token_prefix,
+        description=row.description,
+        allowed_event_types=row.allowed_event_types or "*",
+        is_active=bool(row.is_active),
+        created_by=row.created_by,
+        last_used_at=row.last_used_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _event_type_allowed(allowed_csv: str | None, event_type: str) -> bool:
+    allowed = (allowed_csv or "*").strip()
+    if not allowed or allowed == "*":
+        return True
+    allowed_set = {x.strip().lower() for x in allowed.split(",") if x.strip()}
+    return event_type.lower() in allowed_set
+
+
+def _build_external_notification_text(payload: ExternalNotificationPayload) -> str:
+    event_type = (payload.event_type or "custom").strip().lower()
+    metadata = payload.metadata or {}
+    recipient = (payload.recipient_name or metadata.get("recipient_name") or "Paciente").strip()
+    source = (payload.source_system or metadata.get("source_system") or "Sistema externo").strip()
+
+    if payload.message and payload.message.strip():
+        return payload.message.strip()
+
+    if event_type in {"turno", "appointment", "appointment_reminder"}:
+        date = str(metadata.get("date") or "").strip()
+        hour = str(metadata.get("time") or "").strip()
+        professional = str(metadata.get("professional") or metadata.get("doctor") or "").strip()
+        location = str(metadata.get("location") or "").strip()
+        lines = [f"Hola {recipient}.", "Te enviamos un recordatorio de turno."]
+        if date or hour:
+            lines.append(f"Fecha/Hora: {date} {hour}".strip())
+        if professional:
+            lines.append(f"Profesional: {professional}")
+        if location:
+            lines.append(f"Lugar: {location}")
+        lines.append("Si necesitas reprogramar, responde a este mensaje.")
+        return "\n".join(lines)
+
+    if event_type in {"factura", "invoice", "invoice_ready"}:
+        invoice_number = str(metadata.get("invoice_number") or metadata.get("number") or "").strip()
+        amount = str(metadata.get("amount") or "").strip()
+        due_date = str(metadata.get("due_date") or "").strip()
+        payment_url = str(metadata.get("payment_url") or metadata.get("url") or "").strip()
+        lines = [f"Hola {recipient}.", "Tu factura ya se encuentra disponible."]
+        if invoice_number:
+            lines.append(f"Numero: {invoice_number}")
+        if amount:
+            lines.append(f"Importe: {amount}")
+        if due_date:
+            lines.append(f"Vencimiento: {due_date}")
+        if payment_url:
+            lines.append(f"Pago online: {payment_url}")
+        lines.append("Ante cualquier consulta, responde este mensaje.")
+        return "\n".join(lines)
+
+    if metadata:
+        details = []
+        for k, v in list(metadata.items())[:5]:
+            details.append(f"- {k}: {v}")
+        return "\n".join([
+            f"Notificacion de {source} ({event_type}).",
+            "Detalle:",
+            *details,
+        ])
+
+    return f"Notificacion de {source} ({event_type})."
 
 # ──────────────────────────────────────────────────────────────
 #  HELPERS - WAHA
@@ -1351,6 +1441,35 @@ async def webhook(req: Request):
     return {"ok": True}
 
 
+def _extract_external_api_key(req: Request) -> str:
+    header_key = (req.headers.get("x-api-key") or "").strip()
+    if header_key:
+        return header_key
+    auth = (req.headers.get("authorization") or "").strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return ""
+
+
+async def _get_external_access(req: Request, db: Session = Depends(get_db)) -> ExternalAccessToken:
+    api_key = _extract_external_api_key(req)
+    if not api_key:
+        raise HTTPException(401, "API key requerida")
+
+    key_hash = _hash_external_api_key(api_key)
+    row = db.query(ExternalAccessToken).filter(
+        ExternalAccessToken.token_hash == key_hash,
+        ExternalAccessToken.is_active == True,
+    ).first()
+    if not row:
+        raise HTTPException(401, "API key inválida o inactiva")
+
+    row.last_used_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1604,8 +1723,117 @@ async def toggle_scheduled(sid: int, cu=Depends(get_current_user), db: Session =
 
 
 # ──────────────────────────────────────────────────────────────
+#  EXTERNAL INTEGRATIONS
+# ──────────────────────────────────────────────────────────────
+@app.post("/api/external/notifications")
+async def external_notification(
+    payload: ExternalNotificationPayload,
+    access: ExternalAccessToken = Depends(_get_external_access),
+):
+    event_type = (payload.event_type or "").strip().lower()
+    if not event_type:
+        raise HTTPException(400, "event_type requerido")
+    if not _event_type_allowed(access.allowed_event_types, event_type):
+        raise HTTPException(403, "event_type no permitido para este Access Token")
+
+    normalized_phone = _normalize_phone(payload.phone_number or "")
+    if not normalized_phone:
+        raise HTTPException(400, "phone_number inválido")
+
+    chat_id = f"{normalized_phone}@c.us"
+    message = _build_external_notification_text(payload)
+    if not message.strip():
+        raise HTTPException(400, "message vacío")
+
+    await _send_wha(chat_id, message)
+    return {
+        "ok": True,
+        "provider": "waha",
+        "event_type": event_type,
+        "phone_number": normalized_phone,
+        "access_token": access.name,
+    }
+
+
+# ──────────────────────────────────────────────────────────────
 #  ADMIN
 # ──────────────────────────────────────────────────────────────
+@app.get("/api/admin/access-tokens")
+async def list_access_tokens(ca=Depends(get_current_admin), db: Session = Depends(get_db)):
+    rows = db.query(ExternalAccessToken).order_by(ExternalAccessToken.created_at.desc()).all()
+    return [_external_token_to_response(r) for r in rows]
+
+
+@app.post("/api/admin/access-tokens")
+async def create_access_token_external(
+    data: ExternalAccessTokenCreate,
+    ca=Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    name = (data.name or "").strip()
+    if not name:
+        raise HTTPException(400, "name requerido")
+
+    api_key = _generate_external_api_key()
+    row = ExternalAccessToken(
+        name=name,
+        token_prefix=api_key[:18],
+        token_hash=_hash_external_api_key(api_key),
+        description=(data.description or "").strip() or None,
+        allowed_event_types=(data.allowed_event_types or "*").strip() or "*",
+        is_active=True,
+        created_by=ca.get("username"),
+    )
+    try:
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "No se pudo crear token (duplicado)")
+
+    base = _external_token_to_response(row)
+    return ExternalAccessTokenWithSecretResponse(**base.model_dump(), api_key=api_key)
+
+
+@app.post("/api/admin/access-tokens/{tid}/regenerate")
+async def regenerate_access_token_external(tid: int, ca=Depends(get_current_admin), db: Session = Depends(get_db)):
+    row = db.query(ExternalAccessToken).filter(ExternalAccessToken.id == tid).first()
+    if not row:
+        raise HTTPException(404, "No encontrado")
+
+    api_key = _generate_external_api_key()
+    row.token_prefix = api_key[:18]
+    row.token_hash = _hash_external_api_key(api_key)
+    row.is_active = True
+    db.commit()
+    db.refresh(row)
+
+    base = _external_token_to_response(row)
+    return ExternalAccessTokenWithSecretResponse(**base.model_dump(), api_key=api_key)
+
+
+@app.post("/api/admin/access-tokens/{tid}/toggle")
+async def toggle_access_token_external(tid: int, ca=Depends(get_current_admin), db: Session = Depends(get_db)):
+    row = db.query(ExternalAccessToken).filter(ExternalAccessToken.id == tid).first()
+    if not row:
+        raise HTTPException(404, "No encontrado")
+    row.is_active = not row.is_active
+    db.commit()
+    db.refresh(row)
+    return _external_token_to_response(row)
+
+
+@app.delete("/api/admin/access-tokens/{tid}")
+async def delete_access_token_external(tid: int, ca=Depends(get_current_admin), db: Session = Depends(get_db)):
+    row = db.query(ExternalAccessToken).filter(ExternalAccessToken.id == tid).first()
+    if not row:
+        raise HTTPException(404, "No encontrado")
+    db.delete(row)
+    db.commit()
+    return {"ok": True, "id": tid}
+
+
 @app.get("/api/admin/users")
 async def list_users(ca=Depends(get_current_admin), db: Session = Depends(get_db)):
     return [UserResponse.from_orm(u) for u in db.query(User).all()]

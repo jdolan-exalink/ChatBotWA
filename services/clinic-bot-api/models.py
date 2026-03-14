@@ -274,3 +274,23 @@ class ScheduledMessage(Base):
     def __repr__(self):
         return f"<ScheduledMessage '{self.name}' at {self.send_time}>"
 
+
+class ExternalAccessToken(Base):
+    """Access tokens para integraciones de sistemas externos."""
+    __tablename__ = "external_access_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    token_prefix = Column(String(32), nullable=False)
+    token_hash = Column(String(128), unique=True, index=True, nullable=False)
+    description = Column(Text)
+    allowed_event_types = Column(String(255), default="*")  # CSV: appointment,invoice,custom
+    is_active = Column(Boolean, default=True)
+    created_by = Column(String(255))
+    last_used_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<ExternalAccessToken {self.name} active={self.is_active}>"
+

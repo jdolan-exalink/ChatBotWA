@@ -216,3 +216,39 @@ class BotStatusResponse(BaseModel):
     has_qr: bool
     solution_name: str
     info: dict
+
+
+# ===================== EXTERNAL INTEGRATIONS =====================
+class ExternalAccessTokenCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    allowed_event_types: Optional[str] = "*"  # CSV o "*"
+
+
+class ExternalAccessTokenResponse(BaseModel):
+    id: int
+    name: str
+    token_prefix: str
+    description: Optional[str] = None
+    allowed_event_types: str
+    is_active: bool
+    created_by: Optional[str] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExternalAccessTokenWithSecretResponse(ExternalAccessTokenResponse):
+    api_key: str
+
+
+class ExternalNotificationPayload(BaseModel):
+    event_type: str
+    phone_number: str
+    message: Optional[str] = None
+    recipient_name: Optional[str] = None
+    source_system: Optional[str] = None
+    metadata: Optional[dict] = None

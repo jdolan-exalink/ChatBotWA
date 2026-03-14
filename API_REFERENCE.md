@@ -5,6 +5,12 @@
 http://localhost:8088
 ```
 
+## Integracion Externa (Nuevo)
+
+Para integrar sistemas externos (turnos, facturas, etc.) usando `Access Token` autogenerado desde Admin, ver:
+
+- `INTEGRACION_SISTEMAS_EXTERNOS.md`
+
 ---
 
 ## 📲 Webhooks WhatsApp

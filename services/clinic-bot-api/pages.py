@@ -3651,6 +3651,60 @@ def get_dashboard_page() -> str:
                         </form>
                     </div>
 
+                    <!-- Integraciones Externas / Access Token -->
+                    <div class="card" style="margin-top: 24px;">
+                        <h2>🔐 Access Token (Sistemas Externos)</h2>
+                        <div class="message" id="accessTokenMessage"></div>
+
+                        <form onsubmit="createAccessToken(event)" style="margin-bottom: 20px;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Nombre del acceso</label>
+                                    <input type="text" id="extAccessName" placeholder="Ej: ERP Facturacion" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Eventos permitidos (CSV o *)</label>
+                                    <input type="text" id="extAccessEvents" placeholder="appointment_reminder,invoice_ready,custom" value="*">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Descripción</label>
+                                <input type="text" id="extAccessDescription" placeholder="Sistema que enviará turnos/facturas">
+                            </div>
+                            <button type="submit" class="btn btn-primary">➕ Crear acceso (auto genera API key)</button>
+                        </form>
+
+                        <div id="newAccessTokenBox" style="display:none; margin-bottom: 18px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; padding: 14px;">
+                            <div style="font-weight: 600; color: #86efac; margin-bottom: 6px;">API key generada</div>
+                            <div style="color: #cbd5e1; font-size: 0.88em; margin-bottom: 8px;">Guardala ahora. Por seguridad no vuelve a mostrarse completa.</div>
+                            <code id="newAccessTokenValue" style="display:block; white-space: pre-wrap; word-break: break-all; color: #e2e8f0; background: rgba(15, 23, 42, 0.7); padding: 10px; border-radius: 8px;"></code>
+                            <button type="button" class="btn btn-secondary" style="margin-top: 10px;" onclick="copyLatestAccessToken()">📋 Copiar API key</button>
+                        </div>
+
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.92em;">
+                                <thead>
+                                    <tr style="background: rgba(30, 41, 59, 0.5); border-bottom: 1px solid rgba(226, 232, 240, 0.1);">
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Nombre</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Prefijo</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Eventos</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Estado</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Último uso</th>
+                                        <th style="padding: 12px; text-align: right; color: #cbd5e1;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="accessTokensTable">
+                                    <tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p style="margin-top: 14px; color: #94a3b8; font-size: 0.84em; line-height: 1.5;">
+                            Endpoint para integraciones: <code style="background: rgba(15, 23, 42, 0.7); padding: 2px 6px; border-radius: 6px;">POST /api/external/notifications</code><br>
+                            Header requerido: <code style="background: rgba(15, 23, 42, 0.7); padding: 2px 6px; border-radius: 6px;">X-API-Key: &lt;tu_token&gt;</code>
+                        </p>
+                    </div>
+
                     <!-- WAHA -->
                     <div class="card" style="margin-top: 24px;">
                         <h2>📡 Estado de WAHA</h2>
@@ -4262,6 +4316,7 @@ def get_dashboard_page() -> str:
             }
             
             let currentConfigTab = 'chatbot';
+            let latestAccessTokenValue = '';
 
             function switchConfigTab(tab, btn) {
                 currentConfigTab = tab;
@@ -4278,11 +4333,176 @@ def get_dashboard_page() -> str:
                     loadOffhours();
                 } else if (tab === 'sistema') {
                     loadConfig();
+                    loadAccessTokens();
                     refreshWahaStatus();
                 } else if (tab === 'usuarios') {
                     loadUsers();
                 } else if (tab === 'bloqueos') {
                     loadBlocklist();
+                }
+            }
+
+            function _setAccessTokenMessage(text, ok = true) {
+                const msg = document.getElementById('accessTokenMessage');
+                if (!msg) return;
+                msg.textContent = text;
+                msg.className = ok ? 'message show success' : 'message show error';
+                setTimeout(() => msg.classList.remove('show'), 3500);
+            }
+
+            function _formatDateSafe(iso) {
+                if (!iso) return 'Nunca';
+                try { return new Date(iso).toLocaleString('es-AR'); }
+                catch(e) { return iso; }
+            }
+
+            async function loadAccessTokens() {
+                const tbody = document.getElementById('accessTokensTable');
+                if (!tbody) return;
+                try {
+                    const res = await fetch(`${API_URL}/admin/access-tokens`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const rows = await res.json();
+                    if (!rows.length) {
+                        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;">Sin accesos creados</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = rows.map(r => `
+                        <tr style="border-bottom: 1px solid rgba(226, 232, 240, 0.05);">
+                            <td style="padding: 12px; color: #e2e8f0;">${r.name}</td>
+                            <td style="padding: 12px; color: #93c5fd; font-family: monospace;">${r.token_prefix}...</td>
+                            <td style="padding: 12px; color: #cbd5e1;">${r.allowed_event_types || '*'}</td>
+                            <td style="padding: 12px; color: ${r.is_active ? '#86efac' : '#fca5a5'};">${r.is_active ? 'Activo' : 'Inactivo'}</td>
+                            <td style="padding: 12px; color: #94a3b8;">${_formatDateSafe(r.last_used_at)}</td>
+                            <td style="padding: 12px; text-align: right;">
+                                <div style="display:flex; justify-content:flex-end; gap:6px; flex-wrap: wrap;">
+                                    <button class="btn btn-secondary" style="padding:4px 8px; font-size:0.82em;" onclick="regenerateAccessToken(${r.id})">♻️ Regenerar</button>
+                                    <button class="btn btn-secondary" style="padding:4px 8px; font-size:0.82em;" onclick="toggleAccessToken(${r.id})">${r.is_active ? '⏸️ Desactivar' : '▶️ Activar'}</button>
+                                    <button class="btn btn-danger" style="padding:4px 8px; font-size:0.82em;" onclick="deleteAccessToken(${r.id})">🗑️ Eliminar</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+                } catch (error) {
+                    console.error('Error loading access tokens:', error);
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#fca5a5;">Error al cargar access tokens</td></tr>';
+                }
+            }
+
+            function _showNewApiKey(value) {
+                latestAccessTokenValue = value || '';
+                const box = document.getElementById('newAccessTokenBox');
+                const code = document.getElementById('newAccessTokenValue');
+                if (!box || !code) return;
+                code.textContent = latestAccessTokenValue;
+                box.style.display = latestAccessTokenValue ? 'block' : 'none';
+            }
+
+            async function copyLatestAccessToken() {
+                if (!latestAccessTokenValue) return;
+                try {
+                    await navigator.clipboard.writeText(latestAccessTokenValue);
+                    _setAccessTokenMessage('✅ API key copiada al portapapeles', true);
+                } catch(e) {
+                    _setAccessTokenMessage('❌ No se pudo copiar. Copiala manualmente.', false);
+                }
+            }
+
+            async function createAccessToken(e) {
+                e.preventDefault();
+                try {
+                    const payload = {
+                        name: document.getElementById('extAccessName').value.trim(),
+                        description: document.getElementById('extAccessDescription').value.trim() || null,
+                        allowed_event_types: document.getElementById('extAccessEvents').value.trim() || '*'
+                    };
+                    if (!payload.name) {
+                        _setAccessTokenMessage('❌ El nombre es obligatorio', false);
+                        return;
+                    }
+
+                    const res = await fetch(`${API_URL}/admin/access-tokens`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        _setAccessTokenMessage('❌ ' + (data.detail || 'No se pudo crear el acceso'), false);
+                        return;
+                    }
+
+                    _showNewApiKey(data.api_key || '');
+                    _setAccessTokenMessage('✅ Access Token creado. Guardá la API key generada.', true);
+                    document.getElementById('extAccessName').value = '';
+                    document.getElementById('extAccessDescription').value = '';
+                    document.getElementById('extAccessEvents').value = '*';
+                    loadAccessTokens();
+                } catch (error) {
+                    console.error('Error creating access token:', error);
+                    _setAccessTokenMessage('❌ Error de conexión al crear access token', false);
+                }
+            }
+
+            async function regenerateAccessToken(id) {
+                if (!confirm('¿Regenerar API key? La anterior dejará de funcionar inmediatamente.')) return;
+                try {
+                    const res = await fetch(`${API_URL}/admin/access-tokens/${id}/regenerate`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        _setAccessTokenMessage('❌ ' + (data.detail || 'No se pudo regenerar'), false);
+                        return;
+                    }
+                    _showNewApiKey(data.api_key || '');
+                    _setAccessTokenMessage('✅ API key regenerada correctamente', true);
+                    loadAccessTokens();
+                } catch (error) {
+                    _setAccessTokenMessage('❌ Error de conexión al regenerar', false);
+                }
+            }
+
+            async function toggleAccessToken(id) {
+                try {
+                    const res = await fetch(`${API_URL}/admin/access-tokens/${id}/toggle`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        _setAccessTokenMessage('❌ ' + (data.detail || 'No se pudo cambiar estado'), false);
+                        return;
+                    }
+                    _setAccessTokenMessage('✅ Estado actualizado', true);
+                    loadAccessTokens();
+                } catch (error) {
+                    _setAccessTokenMessage('❌ Error de conexión al actualizar estado', false);
+                }
+            }
+
+            async function deleteAccessToken(id) {
+                if (!confirm('¿Eliminar este access token? Esta acción no se puede deshacer.')) return;
+                try {
+                    const res = await fetch(`${API_URL}/admin/access-tokens/${id}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        _setAccessTokenMessage('❌ ' + (data.detail || 'No se pudo eliminar'), false);
+                        return;
+                    }
+                    _setAccessTokenMessage('✅ Access token eliminado', true);
+                    loadAccessTokens();
+                } catch (error) {
+                    _setAccessTokenMessage('❌ Error de conexión al eliminar', false);
                 }
             }
             
