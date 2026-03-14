@@ -2,17 +2,33 @@
 # update.sh — descarga los últimos cambios y reconstruye el contenedor
 # USO: ./update.sh
 # IMPORTANTE: siempre usar este script en vez de 'git pull' solo.
-# El 'git pull' solo NO actualiza el contenedor Docker.
 set -e
 
-echo "🔄 Guardando cambios locales (stash)..."
-git stash
+# ── Preservar archivos de menú personalizados ────────────────────────────────
+# Estos archivos se editan por cada instalación y NO deben pisarse con git pull.
+echo "💾 Preservando archivos de configuración de menú..."
+for f in data/MenuP.MD data/MenuF.MD; do
+    if [ -f "$f" ]; then
+        cp "$f" "/tmp/$(basename $f).bak"
+        echo "   ✅ $f guardado"
+    fi
+done
 
 echo "⬇️  Actualizando repositorio..."
 git pull
 
-echo "🔁 Restaurando cambios locales..."
-git stash pop 2>/dev/null || echo "   (sin cambios locales que restaurar)"
+# ── Restaurar menús personalizados (si existían antes del pull) ─────────────
+echo "🔁 Restaurando archivos de menú personalizados..."
+for f in data/MenuP.MD data/MenuF.MD; do
+    bak="/tmp/$(basename $f).bak"
+    if [ -f "$bak" ]; then
+        cp "$bak" "$f"
+        rm "$bak"
+        echo "   ✅ $f restaurado"
+    else
+        echo "   ℹ️  $f es nuevo (instalación nueva) — usando versión del repositorio"
+    fi
+done
 
 echo "🛑 Deteniendo contenedor wa-bot..."
 docker compose stop wa-bot

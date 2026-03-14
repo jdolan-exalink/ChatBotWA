@@ -12,8 +12,20 @@ cd /app
 echo "[1] Esperando a que la BD esté lista..."
 sleep 5
 
+# Verificar archivos de menú — instalar si es instalación nueva
+echo "[2] Verificando archivos de menú..."
+mkdir -p /app/data
+for f in MenuP.MD MenuF.MD; do
+    if [ ! -f "/app/data/$f" ]; then
+        echo "   ℹ️  /app/data/$f no encontrado — copiando template inicial..."
+        cp "/app/templates/$f" "/app/data/$f" && echo "   ✅ $f creado desde template"
+    else
+        echo "   - OK (ya existe): $f"
+    fi
+done
+
 # Asegurar que la BD existe
-echo "[2] Inicializando base de datos..."
+echo "[3] Inicializando base de datos..."
 python3 -c "
 from database import init_db
 from models import User, BotConfig
@@ -86,7 +98,7 @@ print('========================================')
 "
 
 # Migraciones automáticas: agregar columnas que puedan faltar en DBs existentes
-echo "[3] Ejecutando migraciones de schema..."
+echo "[4] Ejecutando migraciones de schema..."
 python3 -c "
 from database import engine
 from sqlalchemy import text, inspect
