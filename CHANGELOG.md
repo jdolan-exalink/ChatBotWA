@@ -4,6 +4,33 @@ Todos los cambios notables de este proyecto serán documentados en este archivo.
 
 ---
 
+## [2.2.10] - 2026-03-14
+
+### ✨ Nuevas Funcionalidades
+- **Mensajes Programados** — nuevo módulo completo de scheduling
+  - ✅ Modelo `ScheduledMessage` con soporte multi-destinatario (CSV)
+  - ✅ Scheduler loop en background (resolución 1 minuto, timezone-aware)
+  - ✅ API CRUD: GET/POST/PUT/DELETE `/api/scheduled-messages` + toggle activo/inactivo
+  - ✅ Soporte de días de la semana configurables (1=Lun … 7=Dom)
+  - ✅ Panel UI: lista, modal de creación/edición, toggle sin recargar página
+- **Historial de Tickets** — trazabilidad completa de atenciones
+  - ✅ Modelo `TicketHistory` registra tickets cerrados/vencidos (razón, operador, duración)
+  - ✅ Archivado automático al expirar modo humano (`reason="expired"`)
+  - ✅ Archivado manual al cerrar ticket desde el panel operador
+  - ✅ Endpoint GET `/api/human-mode/history` con paginación
+- **Panel de chat del operador (estilo WhatsApp)**
+  - ✅ Modal de chat con historial de mensajes en tiempo real vía WAHA
+  - ✅ Campo de respuesta directa desde el panel sin salir del navegador
+  - ✅ Botón de cierre de ticket integrado en el modal de chat
+  - ✅ Endpoints: `GET /api/human-mode/messages/{phone}` y `POST /api/human-mode/reply`
+
+### 🔧 Mejoras Técnicas
+- `_is_human_mode`: archiva ticket antes de limpiar estado cuando expira
+- `_exit_human_mode`: archiva ticket con razón `manual` o `bot_return`
+- Importaciones limpias: `re`, `ScheduledMessage`, `TicketHistory` en `app.py`
+
+---
+
 ## [2.1.0] - 2026-03-06
 
 ### ✨ Nuevas Funcionalidades

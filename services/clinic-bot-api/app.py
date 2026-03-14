@@ -11,6 +11,7 @@ import base64
 import calendar
 import json
 import os
+import re
 import shutil
 import time
 from datetime import datetime, timedelta
@@ -26,7 +27,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from database import init_db, get_db, SessionLocal, engine
-from models import Base, User, BotConfig, Holiday, HolidayMenu, WhatsAppBlockList, ConversationState, DailyChatContact, WahaRuntimeState
+from models import Base, User, BotConfig, Holiday, HolidayMenu, WhatsAppBlockList, ConversationState, DailyChatContact, WahaRuntimeState, TicketHistory, ScheduledMessage
 from schemas import (
     UserLogin, UserCreate, UserResponse, TokenResponse, BotConfigUpdate,
     BotConfigResponse, HolidayCreate, HolidayResponse, HolidayMenuCreate,
@@ -284,6 +285,7 @@ async def startup():
         pass
     asyncio.create_task(_init_defaults())
     asyncio.create_task(_monitor_loop())
+    asyncio.create_task(_scheduler_loop())
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -459,8 +461,52 @@ async def _monitor_loop():
 
         await asyncio.sleep(10)  # Chequear cada 10 segundos
 
-# ──────────────────────────────────────────────────────────────
-#  HELPERS - ARCHIVOS
+async def _scheduler_loop():
+    """Envía mensajes programados a la hora configurada (resolución 1 minuto)."""
+    await asyncio.sleep(30)  # esperar arranque
+    while True:
+        try:
+            import pytz
+            db = SessionLocal()
+            try:
+                cfg = _get_cfg(db)
+                try:
+                    tz = pytz.timezone(cfg.timezone or "America/Argentina/Buenos_Aires")
+                except Exception:
+                    tz = pytz.UTC
+                now = datetime.now(tz)
+                hhmm = now.strftime("%H:%M")
+                today = now.strftime("%Y-%m-%d")
+                dow = str(now.isoweekday())  # 1=Lun … 7=Dom
+                pending = db.query(ScheduledMessage).filter(
+                    ScheduledMessage.is_active == True,
+                    ScheduledMessage.send_time == hhmm,
+                ).all()
+                for sm in pending:
+                    if sm.last_sent_date == today:
+                        continue
+                    days = [d.strip() for d in (sm.days_of_week or "1,2,3,4,5,6,7").split(",")]
+                    if dow not in days:
+                        continue
+                    # send to each phone (CSV support)
+                    for raw_phone in sm.phone_number.split(","):
+                        phone = raw_phone.strip()
+                        if not phone:
+                            continue
+                        chat_id = phone if "@c.us" in phone else f"{_normalize_phone(phone)}@c.us"
+                        try:
+                            await _send_wha(chat_id, sm.message)
+                            _log(f"[SCHED] Enviado '{sm.name}' → {phone} a las {hhmm}")
+                        except Exception as e:
+                            _log(f"[SCHED] Error enviando '{sm.name}' → {phone}: {e}")
+                    sm.last_sent_date = today
+                    db.add(sm)
+                db.commit()
+            finally:
+                db.close()
+        except Exception as e:
+            _log(f"[SCHED] Error en scheduler loop: {e}")
+        await asyncio.sleep(60)  # revisar cada minuto
 # ──────────────────────────────────────────────────────────────
 def _data_path(filename: str) -> str:
     if os.path.isabs(filename):
@@ -889,7 +935,8 @@ def _is_human_mode(db: Session, chat_id: str) -> bool:
         active = True   # conservador: asumir activo ante error
 
     if not active:
-        # Expiró → limpiar automáticamente (WAHA-DOC §11)
+        # Expiró → archivar y limpiar automáticamente (WAHA-DOC §11)
+        _archive_ticket(db, row, reason="expired", closed_by="system")
         row.human_mode = False
         row.human_mode_expire = None
         row.handoff_active = False
@@ -919,12 +966,37 @@ def _start_human_mode(db: Session, chat_id: str, duration_hours: int = HUMAN_MOD
     _logc(f"[HUMAN] Activado {chat_id} | ticket={ticket} | duration={duration_hours}h | expire={row.human_mode_expire}")
     return ticket
 
-def _exit_human_mode(db: Session, chat_id: str):
-    """Desactiva modo humano (opción 98)."""
+def _archive_ticket(db: Session, row: ConversationState, reason: str, closed_by: str = "system", operator_reply: str = ""):
+    """Archiva un ticket en TicketHistory antes de cerrarlo."""
+    try:
+        now = datetime.utcnow()
+        opened = row.handoff_started_at or row.started_at or now
+        duration = int((now - opened).total_seconds()) if opened else 0
+        hist = TicketHistory(
+            ticket_id=row.ticket_id or "",
+            phone_number=row.phone_number,
+            close_reason=reason,
+            closed_by=closed_by,
+            operator_reply=operator_reply,
+            opened_at=opened,
+            closed_at=now,
+            duration_seconds=duration,
+            menu_section=row.last_bot_menu,
+        )
+        db.add(hist)
+        db.flush()
+        _logc(f"[TICKET] Archivado {row.ticket_id} | reason={reason} | {duration}s")
+    except Exception as e:
+        _logc(f"[TICKET] Error archivando {getattr(row,'ticket_id','')} : {e}")
+
+
+def _exit_human_mode(db: Session, chat_id: str, closed_by: str = "system", operator_reply: str = ""):
+    """Desactiva modo humano (opción 98 o liberación manual)."""
     row = db.query(ConversationState).filter(
         ConversationState.phone_number == chat_id
     ).first()
     if row:
+        _archive_ticket(db, row, reason="manual", closed_by=closed_by, operator_reply=operator_reply)
         row.human_mode        = False
         row.human_mode_expire = None
         row.handoff_active    = False
@@ -1003,6 +1075,20 @@ def _extract_operator_target_chat_id(msg: dict) -> str:
 # ──────────────────────────────────────────────────────────────
 #  MENU  (navegación jerárquica Markdown)
 # ──────────────────────────────────────────────────────────────
+
+# Comodín en el menú: {{TICKET}} o {{TICKET:mensaje personalizado}}
+# El mensaje puede contener {TKT} que se reemplaza con el número de ticket.
+_TICKET_WILDCARD_RE = re.compile(r'\{\{TICKET(?::([\s\S]*?))?\}\}', re.DOTALL)
+
+def _extract_ticket_wildcard(text: str) -> tuple[bool, str]:
+    """Detecta {{TICKET}} o {{TICKET:msg}} en el texto del menú.
+    Retorna (encontrado, mensaje_personalizado)."""
+    m = _TICKET_WILDCARD_RE.search(text)
+    if not m:
+        return False, ""
+    custom = (m.group(1) or "").strip()
+    return True, custom
+
 def _menu_main() -> str:
     """Devuelve el bloque inicial del menú (hasta primer ---)."""
     lines = _get_menu_cached().split("\n")
@@ -1067,7 +1153,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
 
         if in_human:
             if text == "98":
-                _exit_human_mode(db, chat_id)
+                _exit_human_mode(db, chat_id, closed_by="client")
                 _chat_nav.pop(chat_id, None)
                 return (
                     "✅ *Volviste al menú automático.*\n\n"
@@ -1140,6 +1226,35 @@ def _sync_process_message(chat_id: str, text: str) -> str:
         else:
             answer, new_section = _menu_nav(text, nav.get("section", "main"))
             nav["section"] = new_section
+
+            # Detectar comodín {{TICKET}} en la respuesta del menú
+            has_ticket, custom_msg = _extract_ticket_wildcard(answer)
+            if has_ticket:
+                current_section = new_section
+                duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS if _is_turnos_waiting_section(current_section) else HUMAN_MODE_DEFAULT_HOURS
+                ticket = _start_human_mode(db, chat_id, duration_hours=duration_hours)
+                # Guardar sección que originó el ticket
+                row = db.query(ConversationState).filter(ConversationState.phone_number == chat_id).first()
+                if row:
+                    row.last_bot_menu = current_section
+                    db.commit()
+                _chat_nav.pop(chat_id, None)
+                if custom_msg:
+                    # Mensaje personalizado del menú: reemplazar {TKT} con el ticket real
+                    answer = custom_msg.replace("{TKT}", f"*{ticket}*")
+                else:
+                    answer = (
+                        "📞 *Se ha iniciado transferencia a un operador*\n\n"
+                        f"✅ Tu número de ticket: *{ticket}*\n\n"
+                        "⏳ Por favor espera a que un operario se comunique contigo.\n"
+                        "Esto generalmente toma unos minutos.\n\n"
+                        f"⌛ Tiempo máximo de espera en este estado: *{duration_hours} horas*.\n\n"
+                        "Gracias por tu paciencia 😊\n\n"
+                        "_(Escribe *98* en cualquier momento para volver al menú automático)_"
+                    )
+                nav["ts"] = now_ts
+                _chat_nav[chat_id] = nav
+                return answer
 
         nav["ts"] = now_ts
         _chat_nav[chat_id] = nav
@@ -1332,13 +1447,160 @@ async def close_human_mode_chat(req: Request, cu=Depends(get_current_user), db: 
         return {"ok": True, "closed": False, "detail": "El chat ya está en modo bot", "phone_number": row.phone_number}
 
     target = row.phone_number
-    _exit_human_mode(db, target)
+    operator_reply = str(body.get("operator_reply") or "").strip()
+    _exit_human_mode(db, target, closed_by=cu["username"], operator_reply=operator_reply)
     # Limpiar posibles variantes en cache de navegación
     _chat_nav.pop(target, None)
     _chat_nav.pop(normalized, None)
     _chat_nav.pop(f"{normalized}@c.us", None)
 
     return {"ok": True, "closed": True, "phone_number": target}
+
+
+@app.get("/api/human-mode/messages/{phone}")
+async def get_chat_messages(phone: str, cu=Depends(get_current_user)):
+    """Obtiene los últimos mensajes de un chat desde WAHA."""
+    # Normalizar formato para WAHA
+    chat_id = phone if "@c.us" in phone else f"{_normalize_phone(phone)}@c.us"
+    try:
+        client = _get_waha_client()
+        for path in [
+            f"/api/{WAHA_SESSION}/chats/{chat_id}/messages?limit=40&downloadMedia=false",
+            f"/api/chats/{chat_id}/messages?session={WAHA_SESSION}&limit=40&downloadMedia=false",
+        ]:
+            try:
+                r = await client.get(path, headers=_waha_headers(),
+                                     timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0))
+                if r.status_code < 400:
+                    data = r.json()
+                    msgs = data if isinstance(data, list) else data.get("messages", [])
+                    result = []
+                    for m in msgs:
+                        body_text = m.get("body") or m.get("text") or m.get("content") or ""
+                        result.append({
+                            "id": m.get("id") or m.get("_serialized", ""),
+                            "from_me": bool(m.get("fromMe", False)),
+                            "body": body_text,
+                            "timestamp": m.get("timestamp") or m.get("t") or 0,
+                            "type": m.get("type", "chat"),
+                        })
+                    return {"ok": True, "messages": result}
+            except Exception:
+                continue
+        return {"ok": False, "messages": [], "detail": "No se pudieron obtener mensajes"}
+    except Exception as e:
+        return {"ok": False, "messages": [], "detail": str(e)}
+
+
+@app.post("/api/human-mode/reply")
+async def reply_to_chat(req: Request, cu=Depends(get_current_user)):
+    """Envía un mensaje al cliente desde el panel del operador."""
+    body = await req.json()
+    phone = str(body.get("phone_number") or "").strip()
+    text  = str(body.get("text") or "").strip()
+    if not phone or not text:
+        raise HTTPException(400, "phone_number y text requeridos")
+    chat_id = phone if "@c.us" in phone else f"{_normalize_phone(phone)}@c.us"
+    await _send_wha(chat_id, text)
+    return {"ok": True}
+
+
+@app.get("/api/human-mode/history")
+async def ticket_history(cu=Depends(get_current_user), db: Session = Depends(get_db),
+                         limit: int = 50, offset: int = 0):
+    """Historial de tickets cerrados/vencidos para estadísticas."""
+    rows = db.query(TicketHistory).order_by(TicketHistory.closed_at.desc()).offset(offset).limit(limit).all()
+    total = db.query(TicketHistory).count()
+    return {
+        "total": total,
+        "items": [{
+            "id": r.id,
+            "ticket_id": r.ticket_id,
+            "phone_number": r.phone_number,
+            "close_reason": r.close_reason,
+            "closed_by": r.closed_by,
+            "opened_at": r.opened_at.isoformat() if r.opened_at else None,
+            "closed_at": r.closed_at.isoformat() if r.closed_at else None,
+            "duration_seconds": r.duration_seconds,
+            "menu_section": r.menu_section,
+        } for r in rows]
+    }
+
+
+# ──────────────────────────────────────────────────────────────
+#  MENSAJES PROGRAMADOS
+# ──────────────────────────────────────────────────────────────
+def _sm_to_dict(sm: ScheduledMessage) -> dict:
+    return {
+        "id": sm.id,
+        "name": sm.name,
+        "phone_number": sm.phone_number,
+        "message": sm.message,
+        "send_time": sm.send_time,
+        "days_of_week": sm.days_of_week,
+        "is_active": sm.is_active,
+        "last_sent_date": sm.last_sent_date,
+        "created_by": sm.created_by,
+        "created_at": sm.created_at.isoformat() if sm.created_at else None,
+    }
+
+@app.get("/api/scheduled-messages")
+async def list_scheduled(cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.query(ScheduledMessage).order_by(ScheduledMessage.send_time).all()
+    return [_sm_to_dict(r) for r in rows]
+
+@app.post("/api/scheduled-messages")
+async def create_scheduled(req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    body = await req.json()
+    name = str(body.get("name") or "").strip()
+    phone = str(body.get("phone_number") or "").strip()
+    message = str(body.get("message") or "").strip()
+    send_time = str(body.get("send_time") or "").strip()
+    days = str(body.get("days_of_week") or "1,2,3,4,5,6,7").strip()
+    if not name or not phone or not message or not send_time:
+        raise HTTPException(400, "name, phone_number, message y send_time son requeridos")
+    import re as _re
+    if not _re.match(r"^\d{2}:\d{2}$", send_time):
+        raise HTTPException(400, "send_time debe tener formato HH:MM")
+    sm = ScheduledMessage(
+        name=name, phone_number=phone, message=message,
+        send_time=send_time, days_of_week=days, is_active=True,
+        created_by=cu["username"]
+    )
+    db.add(sm); db.commit(); db.refresh(sm)
+    return _sm_to_dict(sm)
+
+@app.put("/api/scheduled-messages/{sid}")
+async def update_scheduled(sid: int, req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    sm = db.query(ScheduledMessage).filter(ScheduledMessage.id == sid).first()
+    if not sm:
+        raise HTTPException(404, "No encontrado")
+    body = await req.json()
+    for field in ("name", "phone_number", "message", "send_time", "days_of_week"):
+        if field in body and body[field] is not None:
+            setattr(sm, field, str(body[field]).strip())
+    if "is_active" in body:
+        sm.is_active = bool(body["is_active"])
+    db.commit(); db.refresh(sm)
+    return _sm_to_dict(sm)
+
+@app.delete("/api/scheduled-messages/{sid}")
+async def delete_scheduled(sid: int, cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    sm = db.query(ScheduledMessage).filter(ScheduledMessage.id == sid).first()
+    if not sm:
+        raise HTTPException(404, "No encontrado")
+    db.delete(sm); db.commit()
+    return {"deleted": True}
+
+@app.post("/api/scheduled-messages/{sid}/toggle")
+async def toggle_scheduled(sid: int, cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    sm = db.query(ScheduledMessage).filter(ScheduledMessage.id == sid).first()
+    if not sm:
+        raise HTTPException(404, "No encontrado")
+    sm.is_active = not sm.is_active
+    db.commit()
+    return {"id": sm.id, "is_active": sm.is_active}
+
 
 # ──────────────────────────────────────────────────────────────
 #  ADMIN

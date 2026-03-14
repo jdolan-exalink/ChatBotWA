@@ -229,3 +229,48 @@ class WahaRuntimeState(Base):
 
     def __repr__(self):
         return f"<WahaRuntimeState connected_since={self.connected_since_epoch}>"
+
+
+class TicketHistory(Base):
+    """Historial de tickets cerrados o vencidos para estadísticas."""
+    __tablename__ = "ticket_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(String(100), index=True, nullable=False)
+    phone_number = Column(String(20), index=True, nullable=False)
+
+    # Estado al cierre
+    close_reason = Column(String(50), default="manual")  # manual | expired | bot_return
+    closed_by = Column(String(255))   # username del operador o "system"
+    operator_reply = Column(Text)     # Último mensaje enviado por el operador (si hubo)
+
+    # Tiempos
+    opened_at = Column(DateTime(timezone=True))   # handoff_started_at original
+    closed_at = Column(DateTime(timezone=True), server_default=func.now())
+    duration_seconds = Column(Integer)            # segundos desde apertura a cierre
+
+    # Sección del menú que originó el ticket
+    menu_section = Column(String(100))
+
+    def __repr__(self):
+        return f"<TicketHistory {self.ticket_id} reason={self.close_reason}>"
+
+
+class ScheduledMessage(Base):
+    """Mensajes programados para envío automático a una hora configurada."""
+    __tablename__ = "scheduled_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)          # etiqueta descriptiva
+    phone_number = Column(String(30), nullable=False)   # destinatario (puede ser múltiples, CSV)
+    message = Column(Text, nullable=False)              # texto del mensaje
+    send_time = Column(String(5), nullable=False)       # "HH:MM" hora local configurada
+    days_of_week = Column(String(20), default="1,2,3,4,5,6,7")  # 1=Lun … 7=Dom (CSV)
+    is_active = Column(Boolean, default=True)
+    last_sent_date = Column(String(10), nullable=True)  # "YYYY-MM-DD" evita doble envío
+    created_by = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f"<ScheduledMessage '{self.name}' at {self.send_time}>"
+
