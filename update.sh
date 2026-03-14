@@ -5,8 +5,11 @@ set -e
 echo "🔄 Actualizando repositorio..."
 git pull
 
-echo "🔨 Reconstruyendo y reiniciando contenedores..."
-docker compose up -d --build
+echo "🔨 Reconstruyendo contenedor (sin caché)..."
+docker compose build --no-cache wa-bot
+
+echo "🚀 Reiniciando servicios..."
+docker compose up -d
 
 echo "✅ Actualización completada. Versión activa:"
 sleep 5

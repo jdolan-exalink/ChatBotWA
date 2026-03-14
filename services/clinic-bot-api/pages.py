@@ -3367,7 +3367,7 @@ def get_dashboard_page() -> str:
                 
                 <div class="sidebar-footer-info">
                     <div class="company" style="color: #64748b;">DOLAN SS</div>
-                    <div class="version" id="dashboardVersion" style="color: #475569;">v2.2.1</div>
+                    <div class="version" id="dashboardVersion" style="color: #475569;">v2.2.13</div>
                 </div>
             </div>
         </div>
