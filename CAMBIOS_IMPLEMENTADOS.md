@@ -1,5 +1,32 @@
 # 🚀 Sistema Integral de Clínica WhatsApp Bot - Resumen de Cambios
 
+## 🆕 Nuevos Cambios Técnicos (Marzo 2026)
+
+### ✅ Corrección de carga de menús en Configuración
+
+Se resolvió el problema donde `MenuP.MD` y `MenuF.MD` aparecían en blanco en pantalla de configuración.
+
+Implementación realizada:
+
+- Mejora en resolución de rutas de datos (`_data_path`) para soportar:
+  - `DATA_DIR` (si está definido)
+  - `/app/data` (Docker)
+  - `services/clinic-bot-api/data` (legacy)
+  - `data/` en raíz del proyecto (local)
+- Fallback estable para creación inicial de archivos en local.
+
+### ✅ Endpoints de configuración alineados
+
+- Nuevo `GET /api/config/menu` para leer `MenuP.MD`.
+- Nuevo `GET /api/config/offhours` para leer estado y mensaje fuera de horario.
+- `POST /api/config/menu` agregado como alias de `PUT /api/config/menu`.
+- Update de menú acepta payload con `content` o `menu`.
+
+### ✅ Documentación actualizada
+
+- `API_REFERENCE.md` alineado con métodos y payload reales.
+- Se reflejan los nuevos endpoints y compatibilidad de payload.
+
 ## ✨ Cambios Principales Implementados
 
 ### 1. **Sistema Completo de Autenticación y Usuarios**
@@ -118,7 +145,7 @@ cp .env.example .env
 docker-compose up -d
 
 # Verificar logs
-docker-compose logs -f clinic-bot-api
+docker-compose logs -f wa-bot
 ```
 
 **URLs Disponibles:**

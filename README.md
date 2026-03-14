@@ -63,7 +63,22 @@ python app.py
 |-----------|----------|
 | [GUIA_RAPIDA.md](GUIA_RAPIDA.md) | ⚡ Inicio en 10 minutos |
 | [DOCUMENTACION.md](DOCUMENTACION.md) | 📖 Documentación completa |
-| [CAMBIOS_IMPLEMENTADOS.md](CAMBIOS_IMPLEMENTADOS.md) | ✨ Detalle técnico |
+| [CAMBIOS_IMPLEMENTADOS.md](CAMBIOS_IMPLEMENTADOS.md) | ✨ Detalle técnico con los nuevos cambios |
+
+---
+
+## 🆕 Novedades Marzo 2026
+
+- Se corrigió la resolución de rutas para `MenuP.MD` y `MenuF.MD` en Docker y en ejecución local.
+- Se agregaron endpoints explícitos de lectura:
+  - `GET /api/config/menu`
+  - `GET /api/config/offhours`
+- La actualización de menú ahora acepta ambos métodos:
+  - `POST /api/config/menu`
+  - `PUT /api/config/menu`
+- Compatibilidad de payload para menú:
+  - `{"content": "..."}`
+  - `{"menu": "..."}`
 
 ---
 

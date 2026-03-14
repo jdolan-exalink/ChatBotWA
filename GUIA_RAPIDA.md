@@ -1,4 +1,4 @@
-# ⚡ Guía Rápida de Inicio
+# ⚡ Guía Rápida de Inicio en 10 Minutos
 
 ## 1️⃣ Primeros Pasos (5 minutos)
 
@@ -21,7 +21,7 @@ nano .env
 docker-compose up -d
 
 # Esperar a que esté listo (10-20 segundos)
-docker-compose logs -f clinic-bot-api
+docker-compose logs -f wa-bot
 ```
 
 ### Paso 3: Acceder al Sistema
@@ -244,6 +244,40 @@ curl -X POST http://localhost:8088/api/blocklist \
 - `1. Número`
 - `[Link](url)`
 - `✅❌🟢`
+
+---
+
+## 🔟 Novedades API (Marzo 2026)
+
+### Endpoints para menú y fuera de horario
+
+```bash
+# Obtener menú principal
+curl -X GET http://localhost:8088/api/config/menu \
+  -H "Authorization: Bearer {TOKEN}"
+
+# Actualizar menú (POST o PUT)
+curl -X POST http://localhost:8088/api/config/menu \
+  -H "Authorization: Bearer {TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"# Menú actualizado"}'
+
+# Obtener mensaje fuera de horario
+curl -X GET http://localhost:8088/api/config/offhours \
+  -H "Authorization: Bearer {TOKEN}"
+```
+
+### Compatibilidad de payload en actualización de menú
+
+Se aceptan ambos formatos al guardar menú:
+
+```json
+{"content": "# Menú"}
+```
+
+```json
+{"menu": "# Menú"}
+```
 
 ---
 
