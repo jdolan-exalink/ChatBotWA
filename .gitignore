@@ -56,6 +56,12 @@ ENV/
 data/waha/
 data/waha/webjs/
 
+# Runtime-customized menu files (must stay local per installation)
+data/MenuP.MD
+data/MenuF.MD
+data/MenuP.md
+data/MenuF.md
+
 # Docker
 .docker
 docker-compose.override.yml

@@ -231,7 +231,7 @@ def get_login_page() -> str:
                         DOLAN SS - 2026
                     </p>
                     <p style="color: #64748b; font-size: 0.7em; text-align: center; margin-top: 4px;">
-                        Ver: <span id="versionDisplay">2.2.15</span>
+                        Ver: <span id="versionDisplay">2.2.19</span>
                     </p>
                 </div>
             </div>
@@ -813,7 +813,7 @@ def get_user_panel_page() -> str:
 
                 <div class="sidebar-footer-info">
                     <div class="company">DOLAN SS · 2026</div>
-                    <div class="version" id="userPanelVersion">v2.2.15</div>
+                    <div class="version" id="userPanelVersion">v2.2.19</div>
                 </div>
             </div>
         </div>
@@ -3367,7 +3367,7 @@ def get_dashboard_page() -> str:
                 
                 <div class="sidebar-footer-info">
                     <div class="company" style="color: #64748b;">DOLAN SS</div>
-                    <div class="version" id="dashboardVersion" style="color: #475569;">v2.2.15</div>
+                    <div class="version" id="dashboardVersion" style="color: #475569;">v2.2.19</div>
                 </div>
             </div>
         </div>

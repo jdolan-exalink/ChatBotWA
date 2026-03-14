@@ -15,13 +15,13 @@ sleep 5
 # Verificar archivos de menú — instalar si es instalación nueva
 echo "[2] Verificando archivos de menú..."
 mkdir -p /app/data
-for f in MenuP.MD MenuF.MD; do
-    if [ ! -f "/app/data/$f" ]; then
-        echo "   ℹ️  /app/data/$f no encontrado — copiando template inicial..."
-        cp "/app/templates/$f" "/app/data/$f" && echo "   ✅ $f creado desde template"
-    else
-        echo "   - OK (ya existe): $f"
+for base in MenuP MenuF; do
+    if [ -f "/app/data/${base}.MD" ] || [ -f "/app/data/${base}.md" ]; then
+        echo "   - OK (ya existe): ${base}.MD/.md"
+        continue
     fi
+    echo "   ℹ️  /app/data/${base}.MD no encontrado — copiando template inicial..."
+    cp "/app/templates/${base}.MD" "/app/data/${base}.MD" && echo "   ✅ ${base}.MD creado desde template"
 done
 
 # Asegurar que la BD existe
