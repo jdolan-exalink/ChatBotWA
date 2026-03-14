@@ -1,6 +1,6 @@
 services:
   waha:
-    image: devlikeapro/waha:latest
+    image: devlikeapro/waha:2026.3-local
     container_name: clinic-waha
     restart: unless-stopped
     shm_size: '1gb'

@@ -1876,7 +1876,7 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
     }
 
 @app.get("/api/waha/status")
-async def waha_status(cu=Depends(get_current_user)):
+async def waha_status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
     """Estado detallado de WAHA para el panel de admin."""
     try:
         info = await _waha_session_info()
@@ -2160,7 +2160,9 @@ async def dashboard_page(): return get_dashboard_page()
 async def user_panel_page(): return get_user_panel_page()
 
 @app.get("/user-config", response_class=HTMLResponse)
-async def user_config_page(): return get_user_config_page()
+async def user_config_page():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/user-panel", status_code=301)
 
 # ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
