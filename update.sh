@@ -5,8 +5,14 @@
 # El 'git pull' solo NO actualiza el contenedor Docker.
 set -e
 
-echo "🔄 Actualizando repositorio..."
+echo "🔄 Guardando cambios locales (stash)..."
+git stash
+
+echo "⬇️  Actualizando repositorio..."
 git pull
+
+echo "🔁 Restaurando cambios locales..."
+git stash pop 2>/dev/null || echo "   (sin cambios locales que restaurar)"
 
 echo "🛑 Deteniendo contenedor wa-bot..."
 docker compose stop wa-bot
