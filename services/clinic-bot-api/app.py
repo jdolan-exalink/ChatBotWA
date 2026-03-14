@@ -259,7 +259,8 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-app = FastAPI(title="WA-BOT", version="2.2.9")
+APP_VERSION = "2.2.12"  # fuente única de verdad — actualizar sólo aquí
+app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
     CORSMiddleware,
@@ -1826,7 +1827,7 @@ async def health():
 
 @app.get("/version")
 async def version():
-    return {"version": "2.2.9", "name": "WA-BOT"}
+    return {"version": APP_VERSION, "name": "WA-BOT"}
 
 @app.get("/status")
 async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
