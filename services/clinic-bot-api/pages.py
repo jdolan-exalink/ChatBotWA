@@ -335,14 +335,14 @@ def get_login_page() -> str:
     """
 
 def get_user_panel_page() -> str:
-    """Panel simplificado para usuarios regulares"""
+    """Panel de usuario rediseñado - misma estética que admin con sidebar"""
     return """
     <!DOCTYPE html>
     <html lang="es">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Mi Panel - ChatBot WA</title>
+        <title>Panel Usuario - ChatBot WA</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             
@@ -350,373 +350,664 @@ def get_user_panel_page() -> str:
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
                 background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
                 min-height: 100vh;
-                padding: 20px;
                 color: #e2e8f0;
             }
             
-            .container {
-                max-width: 700px;
-                margin: 0 auto;
-            }
-            
-            .header {
+            /* ── SIDEBAR ── */
+            .sidebar {
+                position: fixed;
+                left: 0; top: 0;
+                width: 250px; height: 100vh;
+                background: rgba(15, 23, 42, 0.95);
+                backdrop-filter: blur(10px);
+                border-right: 1px solid rgba(226, 232, 240, 0.1);
+                padding: 24px 0 0 0;
                 display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 40px;
+                flex-direction: column;
+                z-index: 100;
             }
-            
-            .header h1 {
-                font-size: 2em;
-                font-weight: 700;
+
+            .sidebar-header {
+                padding: 0 20px 24px;
+                border-bottom: 1px solid rgba(226, 232, 240, 0.1);
+                margin-bottom: 12px;
+            }
+
+            .sidebar-header h2 {
+                font-size: 1.3em;
                 background: linear-gradient(135deg, #3b82f6, #06b6d4);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
                 background-clip: text;
+                margin-bottom: 4px;
             }
-            
-            .nav-buttons {
-                display: flex;
-                gap: 10px;
-            }
-            
-            .nav-btn {
-                padding: 8px 16px;
-                background: rgba(59, 130, 246, 0.1);
-                border: 1px solid rgba(59, 130, 246, 0.3);
-                color: #93c5fd;
-                border-radius: 8px;
+
+            .sidebar-header p { color: #94a3b8; font-size: 0.82em; }
+
+            .sidebar-nav { flex: 1; }
+
+            .nav-item {
+                padding: 12px 20px;
+                color: #cbd5e1;
                 cursor: pointer;
-                font-size: 0.9em;
                 transition: all 0.3s ease;
+                border-left: 3px solid transparent;
+                margin: 2px 0;
+                font-size: 0.95em;
+                font-weight: 500;
+                display: flex;
+                align-items: center;
+                gap: 8px;
             }
-            
-            .nav-btn:hover {
-                background: rgba(59, 130, 246, 0.2);
+            .nav-item:hover { background: rgba(59, 130, 246, 0.1); color: #93c5fd; }
+            .nav-item.active { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border-left-color: #3b82f6; }
+
+            /* ── SIDEBAR FOOTER ── */
+            .sidebar-footer {
+                border-top: 1px solid rgba(226, 232, 240, 0.1);
+                padding: 14px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                background: rgba(15, 23, 42, 0.97);
             }
-            
-            .logout-btn {
-                padding: 8px 16px;
+
+            .sidebar-user {
+                display: flex;
+                align-items: center;
+                gap: 9px;
+                padding: 9px 10px;
+                background: rgba(30, 41, 59, 0.5);
+                border-radius: 10px;
+                border: 1px solid rgba(226, 232, 240, 0.07);
+                cursor: pointer;
+                transition: background 0.2s;
+                user-select: none;
+            }
+            .sidebar-user:hover { background: rgba(30, 41, 59, 0.8); }
+
+            .sidebar-user-avatar {
+                width: 32px; height: 32px;
+                background: linear-gradient(135deg, #3b82f6, #06b6d4);
+                border-radius: 8px;
+                display: flex; align-items: center; justify-content: center;
+                font-weight: 700; color: white; font-size: 0.88em;
+                flex-shrink: 0;
+            }
+            .sidebar-user-info { flex: 1; overflow: hidden; }
+            .sidebar-user-name {
+                color: #f1f5f9; font-weight: 600; font-size: 0.88em;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            }
+            .sidebar-user-role { color: #64748b; font-size: 0.75em; }
+
+            .user-chevron {
+                color: #64748b; font-size: 0.75em;
+                transition: transform 0.25s;
+                flex-shrink: 0;
+            }
+            .user-chevron.open { transform: rotate(180deg); }
+
+            .user-menu {
+                background: rgba(15, 23, 42, 0.98);
+                border: 1px solid rgba(226, 232, 240, 0.1);
+                border-radius: 10px;
+                overflow: hidden;
+            }
+            .user-menu-item {
+                padding: 10px 14px;
+                color: #93c5fd;
+                cursor: pointer;
+                font-size: 0.88em;
+                font-weight: 500;
+                transition: background 0.2s;
+                display: flex; align-items: center; gap: 8px;
+            }
+            .user-menu-item:hover { background: rgba(59, 130, 246, 0.15); }
+
+            .sidebar-logout-btn {
+                width: 100%;
+                padding: 9px;
                 background: rgba(239, 68, 68, 0.1);
-                border: 1px solid rgba(244, 63, 94, 0.5);
+                border: 1px solid rgba(239, 68, 68, 0.2);
                 color: #fca5a5;
                 border-radius: 8px;
                 cursor: pointer;
-                font-size: 0.9em;
+                font-size: 0.85em;
+                font-weight: 600;
+                display: flex; align-items: center; justify-content: center; gap: 6px;
                 transition: all 0.3s ease;
             }
-            
-            .logout-btn:hover {
-                background: rgba(239, 68, 68, 0.2);
+            .sidebar-logout-btn:hover { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); }
+
+            .sidebar-footer-info { text-align: center; }
+            .sidebar-footer-info .company { color: #475569; font-weight: 600; font-size: 0.78em; }
+            .sidebar-footer-info .version { color: #334155; font-size: 0.75em; }
+
+            /* ── MAIN ── */
+            .main { margin-left: 250px; padding: 30px; min-height: 100vh; }
+
+            .section { display: none; }
+            .section.active { display: block; animation: fadeIn 0.3s ease; }
+
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(8px); }
+                to   { opacity: 1; transform: translateY(0); }
             }
-            
+
+            .page-header { margin-bottom: 28px; }
+            .page-header h1 {
+                font-size: 2em; font-weight: 700;
+                background: linear-gradient(135deg, #3b82f6, #06b6d4);
+                -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+
+            /* ── CARDS ── */
+            .card {
+                background: rgba(18, 24, 40, 0.85);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(226, 232, 240, 0.08);
+                border-radius: 16px;
+                padding: 24px;
+                margin-bottom: 24px;
+            }
+            .card h2 { font-size: 1.2em; margin-bottom: 18px; color: #f1f5f9; font-weight: 600; }
+            .card-footer {
+                display: flex; gap: 12px; justify-content: flex-end;
+                margin-top: 20px; padding-top: 20px;
+                border-top: 1px solid rgba(226, 232, 240, 0.06);
+            }
+
+            /* ── BUTTONS ── */
+            .btn {
+                padding: 10px 20px; border: none; border-radius: 8px;
+                font-size: 0.9em; font-weight: 600; cursor: pointer;
+                transition: all 0.2s;
+            }
+            .btn-primary { background: linear-gradient(135deg, #3b82f6, #06b6d4); color: white; }
+            .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(59,130,246,0.3); }
+            .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+            .btn-secondary {
+                background: rgba(226,232,240,0.08);
+                border: 1px solid rgba(226,232,240,0.12);
+                color: #94a3b8;
+            }
+            .btn-secondary:hover { background: rgba(226,232,240,0.13); }
+            .btn-danger {
+                background: rgba(239,68,68,0.12);
+                border: 1px solid rgba(244,63,94,0.35);
+                color: #f87171;
+            }
+            .btn-danger:hover { background: rgba(239,68,68,0.22); }
+            .btn-sm { padding: 5px 12px; font-size: 0.82em; }
+            .btn-icon { padding: 5px 10px; font-size: 0.85em; }
+
+            /* ── STATUS GRID ── */
             .status-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-                gap: 16px;
-                margin-bottom: 30px;
+                grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                gap: 16px; margin-bottom: 24px;
             }
-            
-            .status-card {
-                background: rgba(18, 24, 40, 0.8);
-                backdrop-filter: blur(10px);
-                border: 1px solid rgba(226, 232, 240, 0.1);
-                border-radius: 16px;
-                padding: 20px;
-                text-align: center;
+            .status-item {
+                background: rgba(30, 41, 59, 0.5);
+                border: 1px solid rgba(226, 232, 240, 0.08);
+                border-radius: 12px; padding: 18px; text-align: center;
             }
-            
-            .status-icon {
-                font-size: 2.5em;
-                margin-bottom: 10px;
-            }
-            
-            .status-label {
-                font-size: 0.85em;
-                color: #94a3b8;
-                margin-bottom: 8px;
-            }
-            
-            .status-value {
-                font-size: 1em;
-                color: #f1f5f9;
-                font-weight: 600;
-            }
-            
-            .card {
-                background: rgba(18, 24, 40, 0.8);
-                backdrop-filter: blur(10px);
-                border: 1px solid rgba(226, 232, 240, 0.1);
-                border-radius: 16px;
-                padding: 32px;
-                margin-bottom: 24px;
-            }
-            
-            .card h2 {
-                font-size: 1.3em;
-                margin-bottom: 24px;
-                color: #f1f5f9;
-            }
-            
+            .status-item-icon { font-size: 2em; margin-bottom: 8px; }
+            .status-item-label { font-size: 0.82em; color: #94a3b8; margin-bottom: 6px; }
+            .status-item-value { font-size: 1.5em; color: #f1f5f9; font-weight: 700; }
+
+            /* ── TOGGLE / CONNECT BUTTONS ── */
             .toggle-btn {
-                width: 100%;
-                padding: 16px;
-                border: none;
-                border-radius: 10px;
-                font-size: 1.1em;
-                font-weight: 600;
-                cursor: pointer;
+                width: 100%; padding: 14px;
+                border: none; border-radius: 10px;
+                font-size: 1em; font-weight: 600; cursor: pointer;
                 transition: all 0.3s ease;
+            }
+            .toggle-btn.active { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+            .toggle-btn.paused { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+            .toggle-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(59,130,246,0.25); }
+
+            .btn-connect {
+                width: 100%; padding: 12px;
+                background: linear-gradient(135deg, #06b6d4, #3b82f6);
+                color: white; border: none; border-radius: 10px;
+                font-size: 1em; font-weight: 600; cursor: pointer;
+                transition: all 0.3s ease;
+            }
+            .btn-connect:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(6,182,212,0.3); }
+            .btn-connect:disabled { cursor: default; opacity: 0.85; }
+            .btn-connect.connected { background: linear-gradient(135deg, #16a34a, #15803d); }
+
+            /* ── FORM ── */
+            .form-group { margin-bottom: 14px; }
+            .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+            @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
+            label { display: block; color: #cbd5e1; font-size: 0.88em; font-weight: 500; margin-bottom: 5px; }
+            input[type="text"],
+            input[type="email"],
+            input[type="password"],
+            input[type="date"],
+            input[type="time"],
+            select, textarea {
+                width: 100%; padding: 9px 12px;
+                background: rgba(30,41,59,0.6);
+                border: 1px solid rgba(226,232,240,0.12);
+                border-radius: 8px; color: #f1f5f9; font-size: 0.92em;
+                font-family: inherit; transition: border-color 0.2s;
+            }
+            input:focus, select:focus, textarea:focus {
+                outline: none; border-color: rgba(59,130,246,0.5);
+                background: rgba(30,41,59,0.8);
+            }
+            textarea { resize: vertical; }
+
+            /* ── CALENDAR ── */
+            .hol-layout {
+                display: grid;
+                grid-template-columns: 1.15fr 0.85fr;
+                gap: 24px; align-items: start;
+            }
+            @media (max-width: 900px) { .hol-layout { grid-template-columns: 1fr; } }
+
+            .cal-wrap {
+                background: rgba(30,41,59,0.5);
+                border: 1px solid rgba(226,232,240,0.1);
+                border-radius: 12px; padding: 18px;
+                user-select: none;
+            }
+            .cal-header {
+                display: flex; align-items: center; justify-content: space-between;
                 margin-bottom: 16px;
             }
-            
-            .toggle-btn.active {
-                background: linear-gradient(135deg, #10b981, #059669);
-                color: white;
+            .cal-title { font-size: 1.1em; font-weight: 600; color: #f1f5f9; }
+            .cal-nav { display: flex; gap: 6px; }
+            .cal-btn {
+                padding: 5px 12px;
+                background: rgba(59,130,246,0.12);
+                border: 1px solid rgba(59,130,246,0.25);
+                color: #93c5fd; border-radius: 7px; cursor: pointer;
+                font-size: 0.85em; font-weight: 600; transition: background 0.2s;
             }
-            
-            .toggle-btn.paused {
+            .cal-btn:hover { background: rgba(59,130,246,0.25); }
+            .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+            .cal-hdr { text-align: center; font-size: 0.76em; font-weight: 700; color: #64748b; padding: 5px 0; }
+            .cal-hdr.wknd { color: #f472b6; }
+            .cal-cell {
+                aspect-ratio: 1; display: flex; align-items: center;
+                justify-content: center; border-radius: 8px;
+                background: rgba(15,23,42,0.4);
+                border: 1px solid rgba(226,232,240,0.08);
+                font-size: 0.88em; font-weight: 600; color: #cbd5e1;
+                cursor: pointer; transition: all 0.18s;
+            }
+            .cal-cell.empty { background: transparent; border-color: transparent; cursor: default; }
+            .cal-cell:not(.empty):not(.selected):not(.pending):not(.removing):hover {
+                background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.35); color: #93c5fd;
+            }
+            .cal-cell.wknd { color: #f472b6; }
+            .cal-cell.selected {
+                background: linear-gradient(135deg, #3b82f6, #06b6d4);
+                border-color: rgba(59,130,246,0.6); color: #fff; font-weight: 700;
+            }
+            .cal-cell.pending {
                 background: linear-gradient(135deg, #f59e0b, #d97706);
-                color: white;
+                border-color: rgba(245,158,11,0.6); color: #fff; font-weight: 700;
             }
-            
-            .toggle-btn:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+            .cal-cell.removing {
+                background: rgba(239,68,68,0.18);
+                border-color: rgba(244,63,94,0.45); color: #f87171; text-decoration: line-through;
             }
-            
-            .btn-connect {
-                width: 100%;
-                padding: 12px;
-                background: linear-gradient(135deg, #06b6d4, #3b82f6);
-                color: white;
-                border: none;
-                border-radius: 10px;
-                font-size: 1em;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.3s ease;
+            .cal-cell.today { outline: 2px solid rgba(99,102,241,0.8); outline-offset: 2px; }
+            .cal-legend {
+                display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px;
+                padding-top: 14px; border-top: 1px solid rgba(226,232,240,0.07);
+                font-size: 0.78em; color: #64748b;
             }
-            .btn-connect:hover:not(:disabled) {
-                transform: translateY(-2px);
-                box-shadow: 0 10px 25px rgba(6, 182, 212, 0.3);
+            .cal-legend span { display: flex; align-items: center; gap: 5px; }
+            .leg-dot { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+
+            .pending-badge {
+                display: inline-flex; align-items: center; gap: 6px;
+                padding: 7px 12px; background: rgba(245,158,11,0.12);
+                border: 1px solid rgba(245,158,11,0.35);
+                border-radius: 8px; font-size: 0.85em; color: #fcd34d;
+                margin-bottom: 14px;
             }
-            .btn-connect:disabled {
-                cursor: default;
-                opacity: 0.85;
+            .pending-badge.hidden { display: none; }
+
+            .holiday-row {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 9px 12px; background: rgba(59,130,246,0.06);
+                border: 1px solid rgba(59,130,246,0.12);
+                border-radius: 9px; margin-bottom: 7px;
             }
-            .btn-connect.connected {
-                background: linear-gradient(135deg, #16a34a, #15803d);
+            .holiday-info { display: flex; flex-direction: column; gap: 2px; }
+            .holiday-date { font-size: 0.82em; color: #60a5fa; font-weight: 600; }
+            .holiday-name { font-size: 0.9em; color: #f1f5f9; }
+            .empty-state { text-align: center; padding: 28px; color: #475569; font-size: 0.9em; font-style: italic; }
+
+            /* ── BLOCKLIST ── */
+            .block-row {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 11px 14px; background: rgba(30,41,59,0.4);
+                border: 1px solid rgba(226,232,240,0.07);
+                border-radius: 9px; margin-bottom: 8px;
             }
+            .block-info { display: flex; flex-direction: column; gap: 2px; }
+            .block-phone { font-size: 0.92em; color: #f1f5f9; font-weight: 600; }
+            .block-reason { font-size: 0.8em; color: #64748b; }
+
+            /* ── TOAST ── */
+            .toast {
+                position: fixed; bottom: 24px; right: 24px;
+                padding: 13px 20px; border-radius: 10px;
+                font-size: 0.88em; font-weight: 500;
+                transform: translateY(80px); opacity: 0;
+                transition: all 0.3s; z-index: 9000;
+                max-width: 320px; pointer-events: none;
+            }
+            .toast.show { transform: translateY(0); opacity: 1; }
+            .toast.success { background: rgba(16,185,129,0.18); border: 1px solid rgba(16,185,129,0.4); color: #6ee7b7; }
+            .toast.error   { background: rgba(239,68,68,0.18); border: 1px solid rgba(244,63,94,0.4); color: #fca5a5; }
+            .toast.info    { background: rgba(59,130,246,0.18); border: 1px solid rgba(59,130,246,0.4); color: #93c5fd; }
+
+            /* ── WA TOAST ── */
             .wa-toast {
-                position: fixed;
-                bottom: 30px;
-                left: 50%;
+                position: fixed; bottom: 30px; left: 50%;
                 transform: translateX(-50%) translateY(80px);
-                background: #16a34a;
-                color: white;
-                padding: 14px 28px;
-                border-radius: 12px;
-                font-weight: 600;
-                font-size: 0.95em;
-                z-index: 9999;
-                opacity: 0;
+                background: #16a34a; color: white;
+                padding: 14px 28px; border-radius: 12px;
+                font-weight: 600; font-size: 0.95em;
+                z-index: 9999; opacity: 0;
                 transition: transform 0.35s ease, opacity 0.35s ease;
                 pointer-events: none;
             }
-            .wa-toast.show {
-                transform: translateX(-50%) translateY(0);
-                opacity: 1;
-            }
-            
-            .modal {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.7);
-                align-items: center;
-                justify-content: center;
-                z-index: 1000;
-            }
-            
-            .modal.show {
-                display: flex;
-            }
-            
+            .wa-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+            /* ── MODALS ── */
+            .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); align-items: center; justify-content: center; z-index: 1000; }
+            .modal.show { display: flex; }
             .modal-content {
-                background: rgba(18, 24, 40, 0.95);
-                border: 1px solid rgba(226, 232, 240, 0.1);
-                border-radius: 20px;
-                padding: 40px;
-                max-width: 400px;
-                width: 90%;
-                text-align: center;
+                background: rgba(18,24,40,0.96); border: 1px solid rgba(226,232,240,0.1);
+                border-radius: 20px; padding: 36px; max-width: 400px; width: 90%; text-align: center;
             }
-            
-            .modal-content h3 {
-                color: #f1f5f9;
-                margin-bottom: 20px;
-            }
-            
-            .qr-image {
-                margin: 20px 0;
-                max-width: 100%;
-                border-radius: 12px;
-                border: 2px solid rgba(226, 232, 240, 0.1);
-            }
-            
+            .modal-content h3 { color: #f1f5f9; margin-bottom: 16px; }
+            .qr-image { margin: 18px 0; max-width: 100%; border-radius: 12px; border: 2px solid rgba(226,232,240,0.1); }
             .modal-close {
-                display: inline-block;
-                padding: 8px 16px;
-                background: rgba(239, 68, 68, 0.1);
-                color: #fca5a5;
-                border: 1px solid rgba(244, 63, 94, 0.5);
-                border-radius: 8px;
-                cursor: pointer;
-                margin-top: 20px;
-            }
-            
-            .panel-footer {
-                text-align: center;
-                padding: 32px 20px;
-                margin-top: 40px;
-                border-top: 1px solid rgba(226, 232, 240, 0.1);
-            }
-            
-            .panel-footer .company {
-                color: #cbd5e1;
-                font-weight: 600;
-                margin-bottom: 4px;
-            }
-            
-            .panel-footer .version {
-                color: #64748b;
-                font-size: 0.85em;
+                display: inline-block; padding: 8px 18px;
+                background: rgba(239,68,68,0.1); color: #fca5a5;
+                border: 1px solid rgba(244,63,94,0.4);
+                border-radius: 8px; cursor: pointer; margin-top: 18px;
             }
 
-            /* Spinner QR */
-            .qr-loading {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                padding: 30px 0;
-            }
+            /* ── SPINNER ── */
+            .qr-loading { display: flex; flex-direction: column; align-items: center; padding: 28px 0; }
             .spinner {
-                width: 56px;
-                height: 56px;
-                border: 5px solid rgba(59, 130, 246, 0.2);
+                width: 50px; height: 50px;
+                border: 5px solid rgba(59,130,246,0.2);
                 border-top-color: #3b82f6;
-                border-radius: 50%;
-                animation: spin 0.9s linear infinite;
+                border-radius: 50%; animation: spin 0.9s linear infinite;
             }
             @keyframes spin { to { transform: rotate(360deg); } }
-            .spinner-text {
-                color: #94a3b8;
-                margin-top: 16px;
-                font-size: 0.9em;
-                text-align: center;
-                line-height: 1.5;
+            .spinner-text { color: #94a3b8; margin-top: 14px; font-size: 0.88em; text-align: center; line-height: 1.5; }
+
+            /* ── CHANGE PASSWORD MODAL ── */
+            .pw-modal {
+                display: none; position: fixed; inset: 0;
+                background: rgba(0,0,0,0.78); align-items: center; justify-content: center; z-index: 3000;
             }
-            .btn-disabled { opacity: 0.6; cursor: not-allowed !important; }
+            .pw-modal.show { display: flex; }
+            .pw-modal-content {
+                background: rgba(15,23,42,0.99);
+                border: 1px solid rgba(226,232,240,0.12);
+                border-radius: 18px; padding: 28px; width: 94%; max-width: 380px;
+                display: flex; flex-direction: column; gap: 14px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            }
+            .pw-modal-header { display: flex; justify-content: space-between; align-items: center; }
+            .pw-modal-title { color: #f1f5f9; font-size: 1.05em; font-weight: 700; }
+            .pw-modal-close { background: none; border: none; color: #94a3b8; font-size: 1.3em; cursor: pointer; }
+
+            @media (max-width: 768px) {
+                .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-bottom: 1px solid rgba(226,232,240,0.1); }
+                .main { margin-left: 0; padding: 20px; }
+            }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1>💬 Mi Panel</h1>
-                <div class="nav-buttons">
-                    <button class="nav-btn" onclick="window.location.href='/user-config'">⚙️ Configuración</button>
-                    <button class="logout-btn" onclick="logout()">Desconectar</button>
-                </div>
-            </div>
-            
-            <div class="status-grid">
-                <div class="status-card">
-                    <div class="status-icon" id="waIcon">🔴</div>
-                    <div class="status-label">WhatsApp</div>
-                    <div class="status-value" id="waStatus">Desconect.</div>
-                </div>
-                <div class="status-card">
-                    <div class="status-icon" id="botIcon">⏸️</div>
-                    <div class="status-label">Bot</div>
-                    <div class="status-value" id="botStatus">Pausado</div>
-                </div>
-                <div class="status-card">
-                    <div class="status-icon" id="hoursIcon">✅</div>
-                    <div class="status-label">Horarios</div>
-                    <div class="status-value" id="hoursStatus">Normal</div>
-                </div>
-                <div class="status-card">
-                    <div class="status-icon">🤖</div>
-                    <div class="status-label">Solución</div>
-                    <div class="status-value" id="solutionName">—</div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>Control del Bot</h2>
-                <button class="toggle-btn" id="toggleBtn" onclick="toggleBot()">▶️ Activar Bot</button>
+
+        <!-- ══════════ SIDEBAR ══════════ -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>🤖 WA-BOT</h2>
+                <p>Panel Usuario</p>
             </div>
 
-            <div class="card">
-                <h2>WhatsApp</h2>
-                <button class="btn-connect" id="waBtn" onclick="toggleWhatsApp()">🔴 Conectar WhatsApp</button>
+            <div class="sidebar-nav">
+                <div class="nav-item active" id="navEstado" onclick="switchSection('estado')">📊 Estado</div>
+                <div class="nav-item" id="navFeriados" onclick="switchSection('feriados')">📅 Feriados</div>
+                <div class="nav-item" id="navBloqueados" onclick="switchSection('bloqueados')">🚫 Bloqueados</div>
             </div>
 
-            <div class="card">
-                <h2>👤 Operador</h2>
-                <p style="color:#94a3b8; margin-bottom: 12px;">Cerrar modo humano para un chat y devolverlo al bot ahora.</p>
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-                    <input type="text" id="humanModePhoneUser" placeholder="549xxxxxxxxxx o 549...@c.us" style="flex:1; min-width:260px; padding:10px 12px; background: rgba(30, 41, 59, 0.5); border:1px solid rgba(226,232,240,0.15); border-radius:10px; color:#f1f5f9;" />
-                    <button class="btn-connect" style="width:auto; padding:10px 16px;" onclick="closeHumanModeFromUserPanel()">🔓 Volver a Bot</button>
+            <div class="sidebar-footer">
+                <!-- User box with dropdown -->
+                <div class="sidebar-user" id="sidebarUserBox" onclick="toggleUserMenu()">
+                    <div class="sidebar-user-avatar" id="userAvatar">U</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName">Usuario</div>
+                        <div class="sidebar-user-role">Operador</div>
+                    </div>
+                    <span class="user-chevron" id="userChevron">▾</span>
                 </div>
-                <div id="humanModeMsgUser" style="font-size:0.9em; color:#94a3b8;"></div>
-            </div>
 
-            <div class="card">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                    <h2 style="margin-bottom:0;">⏸️ Números en Espera (Parking)</h2>
-                    <button class="btn-connect" style="width:auto; padding:8px 14px; font-size:0.9em;" onclick="loadParkedList()">🔄 Actualizar</button>
+                <!-- Dropdown menu -->
+                <div class="user-menu" id="userMenu" style="display:none;">
+                    <div class="user-menu-item" onclick="openChangePwModal()">🔑 Cambiar Contraseña</div>
                 </div>
-                <div id="parkedListUser">
-                    <div style="color:#94a3b8; font-size:0.9em;">Cargando...</div>
-                </div>
-            </div>
 
-            <div class="card">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                    <h2 style="margin-bottom:0;">🕐 Mensajes Programados</h2>
-                    <button class="btn-connect" style="width:auto; padding:8px 14px; font-size:0.9em;" onclick="openSchedModal()">➕ Nuevo</button>
-                </div>
-                <div id="schedList"><div style="color:#94a3b8; font-size:0.9em;">Cargando...</div></div>
-            </div>
+                <button class="sidebar-logout-btn" onclick="logout()">
+                    <span>🚪</span> Logout
+                </button>
 
-            <div class="panel-footer">
-                <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="userPanelVersion">v2.2.1</div>
+                <div class="sidebar-footer-info">
+                    <div class="company">DOLAN SS · 2026</div>
+                    <div class="version" id="userPanelVersion">v2.2.1</div>
+                </div>
             </div>
         </div>
-        
-        <!-- Modal Mensajes Programados -->
-        <div id="schedModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82); align-items:center; justify-content:center; z-index:2000;">
-            <div style="background:rgba(15,23,42,0.99); border:1px solid rgba(226,232,240,0.12); border-radius:18px; padding:28px; width:94%; max-width:480px; display:flex; flex-direction:column; gap:14px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div style="color:#f1f5f9; font-size:1.05em; font-weight:700;" id="schedModalTitle">🕐 Nuevo Mensaje Programado</div>
-                    <button onclick="closeSchedModal()" style="background:none; border:none; color:#94a3b8; font-size:1.3em; cursor:pointer;">&times;</button>
+
+        <!-- ══════════ MAIN CONTENT ══════════ -->
+        <div class="main">
+
+            <!-- ═══  ESTADO  ═══ -->
+            <div id="estado" class="section active">
+                <div class="page-header">
+                    <h1>📊 Estado del Sistema</h1>
                 </div>
-                <div style="display:flex; flex-direction:column; gap:10px;">
-                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Nombre / Descripción</label>
-                        <input id="schedName" type="text" placeholder="Ej: Recordatorio turno mañana" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
-                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Número(s) destino <span style="color:#64748b;">(separados por coma si son varios)</span></label>
-                        <input id="schedPhone" type="text" placeholder="5491112345678" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
-                    <div style="display:flex; gap:10px;">
-                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Hora de envío</label>
-                            <input id="schedTime" type="time" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
-                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Días</label>
-                            <select id="schedDays" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.85em; box-sizing:border-box;">
+
+                <div class="status-grid">
+                    <div class="status-item">
+                        <div class="status-item-icon" id="waIcon">🔴</div>
+                        <div class="status-item-label">WhatsApp</div>
+                        <div class="status-item-value" id="waStatus">Desconectado</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-item-icon" id="botIcon">⏸️</div>
+                        <div class="status-item-label">Bot</div>
+                        <div class="status-item-value" id="botStatus">Pausado</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-item-icon" id="hoursIcon">✅</div>
+                        <div class="status-item-label">Horarios</div>
+                        <div class="status-item-value" id="hoursStatus">Normal</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-item-icon">🤖</div>
+                        <div class="status-item-label">Solución</div>
+                        <div class="status-item-value" id="solutionName">—</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>🎛️ Control del Bot</h2>
+                    <button class="toggle-btn" id="toggleBtn" onclick="toggleBot()">▶️ Activar Bot</button>
+                </div>
+
+                <div class="card">
+                    <h2>📱 WhatsApp</h2>
+                    <button class="btn-connect" id="waBtn" onclick="toggleWhatsApp()">🔴 Conectar WhatsApp</button>
+                </div>
+
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <h2 style="margin-bottom:0;">⏸️ Números en Espera (Parking)</h2>
+                        <button class="btn btn-secondary" style="padding:7px 13px;font-size:0.85em;" onclick="loadParkedList()">🔄 Actualizar</button>
+                    </div>
+                    <div id="parkedListUser"><div style="color:#94a3b8;font-size:0.88em;">Cargando...</div></div>
+                </div>
+
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <h2 style="margin-bottom:0;">🕐 Mensajes Programados</h2>
+                        <button class="btn btn-primary" style="padding:7px 13px;font-size:0.85em;" onclick="openSchedModal()">➕ Nuevo</button>
+                    </div>
+                    <div id="schedList"><div style="color:#94a3b8;font-size:0.88em;">Cargando...</div></div>
+                </div>
+            </div>
+
+            <!-- ═══  FERIADOS  ═══ -->
+            <div id="feriados" class="section">
+                <div class="page-header">
+                    <h1>📅 Feriados</h1>
+                </div>
+
+                <div class="hol-layout">
+                    <div class="card" style="margin-bottom:0;">
+                        <h2>📅 Calendario de Feriados</h2>
+                        <p style="color:#64748b;font-size:0.85em;margin-bottom:14px;">
+                            Clic en un día para marcar/desmarcar como feriado.
+                            <strong style="color:#60a5fa;">Azul</strong> = guardado &nbsp;·&nbsp;
+                            <strong style="color:#fcd34d;">Amarillo</strong> = pendiente &nbsp;·&nbsp;
+                            <strong style="color:#f87171;">Tachado</strong> = por eliminar.
+                        </p>
+                        <div id="pendingBadge" class="pending-badge hidden">
+                            ⚠️ <span id="pendingText">0 cambios pendientes</span>
+                        </div>
+                        <div class="cal-wrap">
+                            <div class="cal-header">
+                                <div class="cal-nav">
+                                    <button class="cal-btn" onclick="calPrev()">◀ Ant</button>
+                                    <button class="cal-btn" onclick="calToday()">Hoy</button>
+                                    <button class="cal-btn" onclick="calNext()">Sig ▶</button>
+                                </div>
+                                <div class="cal-title" id="calTitle">—</div>
+                            </div>
+                            <div class="cal-grid" id="calGrid"></div>
+                            <div class="cal-legend">
+                                <span><div class="leg-dot" style="background:linear-gradient(135deg,#3b82f6,#06b6d4);"></div> Guardado</span>
+                                <span><div class="leg-dot" style="background:linear-gradient(135deg,#f59e0b,#d97706);"></div> Por guardar</span>
+                                <span><div class="leg-dot" style="background:rgba(239,68,68,0.3);border:1px solid #f87171;"></div> Por eliminar</span>
+                                <span><div class="leg-dot" style="background:transparent;outline:2px solid rgba(99,102,241,0.8);outline-offset:1px;"></div> Hoy</span>
+                                <span><div class="leg-dot" style="background:rgba(244,114,182,0.15);"></div> <span style="color:#f472b6">Fin de semana</span></span>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <button class="btn btn-secondary" onclick="cancelHolidays()">✖ Cancelar</button>
+                            <button class="btn btn-primary" id="saveHBtn" onclick="saveHolidays()">💾 Guardar Feriados</button>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom:0;">
+                        <h2>📋 Feriados Guardados</h2>
+                        <div id="holidaysList" style="max-height:480px;overflow-y:auto;">
+                            <div class="empty-state">Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══  BLOQUEADOS  ═══ -->
+            <div id="bloqueados" class="section">
+                <div class="page-header">
+                    <h1>🚫 Lista de Bloqueados</h1>
+                </div>
+
+                <div class="card">
+                    <h2>🔒 Bloquear Número</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Número (ej: 5491112345678)</label>
+                            <input type="text" id="blPhone" placeholder="5491112345678">
+                        </div>
+                        <div class="form-group">
+                            <label>Motivo (opcional)</label>
+                            <input type="text" id="blReason" placeholder="Spam, molestia, etc.">
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-secondary" onclick="clearBlockForm()">✖ Cancelar</button>
+                        <button class="btn btn-primary" id="saveBlBtn" onclick="saveBlock()">🚫 Bloquear</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📋 Números Bloqueados</h2>
+                    <div id="blocklistItems"><div class="empty-state">Cargando...</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════ MODALS ══════════ -->
+
+        <!-- Modal: Cambiar Contraseña -->
+        <div class="pw-modal" id="changePwModal">
+            <div class="pw-modal-content">
+                <div class="pw-modal-header">
+                    <span class="pw-modal-title">🔑 Cambiar Contraseña</span>
+                    <button class="pw-modal-close" onclick="closeChangePwModal()">&times;</button>
+                </div>
+                <form onsubmit="return false;" autocomplete="on">
+                <input type="text" name="username" autocomplete="username" style="display:none;" aria-hidden="true">
+                <div class="form-group">
+                    <label>Contraseña Actual</label>
+                    <input type="password" id="oldPw" placeholder="Tu contraseña actual" autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña Nueva</label>
+                    <input type="password" id="newPw" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Confirmar Contraseña</label>
+                    <input type="password" id="confirmPw" placeholder="Repetí la nueva contraseña" autocomplete="new-password">
+                </div>
+                </form>
+                <div id="pwMsg" style="font-size:0.85em;min-height:18px;text-align:center;"></div>
+                <div style="display:flex;gap:10px;margin-top:4px;">
+                    <button onclick="savePassword()" class="btn btn-primary" style="flex:1;">💾 Guardar</button>
+                    <button onclick="closeChangePwModal()" class="btn btn-secondary" style="padding:10px 16px;">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Mensajes Programados -->
+        <div id="schedModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);align-items:center;justify-content:center;z-index:2000;">
+            <div style="background:rgba(15,23,42,0.99);border:1px solid rgba(226,232,240,0.12);border-radius:18px;padding:28px;width:94%;max-width:480px;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="color:#f1f5f9;font-size:1.05em;font-weight:700;" id="schedModalTitle">🕐 Nuevo Mensaje Programado</div>
+                    <button onclick="closeSchedModal()" style="background:none;border:none;color:#94a3b8;font-size:1.3em;cursor:pointer;">&times;</button>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <div><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Nombre / Descripción</label>
+                        <input id="schedName" type="text" placeholder="Ej: Recordatorio turno mañana" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;box-sizing:border-box;"></div>
+                    <div><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Número(s) destino</label>
+                        <input id="schedPhone" type="text" placeholder="5491112345678" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;box-sizing:border-box;"></div>
+                    <div style="display:flex;gap:10px;">
+                        <div style="flex:1;"><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Hora de envío</label>
+                            <input id="schedTime" type="time" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;box-sizing:border-box;"></div>
+                        <div style="flex:1;"><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Días</label>
+                            <select id="schedDays" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.85em;box-sizing:border-box;">
                                 <option value="1,2,3,4,5,6,7">Todos los días</option>
                                 <option value="1,2,3,4,5">Lunes a Viernes</option>
                                 <option value="6,7">Fin de semana</option>
@@ -726,249 +1017,233 @@ def get_user_panel_page() -> str:
                                 <option value="7">Domingo</option>
                             </select></div>
                     </div>
-                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Mensaje</label>
-                        <textarea id="schedMsg" rows="4" placeholder="Texto del mensaje a enviar..." style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; resize:vertical; box-sizing:border-box;"></textarea></div>
+                    <div><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Mensaje</label>
+                        <textarea id="schedMsg" rows="4" placeholder="Texto del mensaje a enviar..." style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;resize:vertical;box-sizing:border-box;"></textarea></div>
                 </div>
-                <div style="display:flex; gap:10px; margin-top:4px;">
-                    <button onclick="saveSchedMsg()" style="flex:1; padding:11px; background:linear-gradient(135deg,#3b82f6,#06b6d4); border:none; border-radius:8px; color:white; font-weight:600; cursor:pointer;">💾 Guardar</button>
-                    <button onclick="closeSchedModal()" style="padding:11px 18px; background:rgba(30,41,59,0.5); border:1px solid rgba(226,232,240,0.1); border-radius:8px; color:#94a3b8; cursor:pointer;">Cancelar</button>
+                <div style="display:flex;gap:10px;margin-top:4px;">
+                    <button onclick="saveSchedMsg()" style="flex:1;padding:11px;background:linear-gradient(135deg,#3b82f6,#06b6d4);border:none;border-radius:8px;color:white;font-weight:600;cursor:pointer;">💾 Guardar</button>
+                    <button onclick="closeSchedModal()" style="padding:11px 18px;background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.1);border-radius:8px;color:#94a3b8;cursor:pointer;">Cancelar</button>
                 </div>
-                <div id="schedModalMsg" style="font-size:0.85em; min-height:18px; text-align:center;"></div>
+                <div id="schedModalMsg" style="font-size:0.85em;min-height:18px;text-align:center;"></div>
             </div>
         </div>
 
-        <!-- Modal Chat Ticket -->
-        <div id="chatModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); align-items:center; justify-content:center; z-index:2000;">
-            <div style="background:#111b21; border-radius:16px; width:96%; max-width:560px; height:82vh; max-height:680px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,0.7);">
-                <!-- Header WA style -->
-                <div style="background:#1f2c34; padding:10px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0;">
-                    <div style="width:40px; height:40px; border-radius:50%; background:#2a3942; display:flex; align-items:center; justify-content:center; font-size:1.1em; flex-shrink:0;">👤</div>
-                    <div style="flex:1; min-width:0;">
-                        <div id="chatModalTitle" style="color:#e9edef; font-size:0.97em; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
-                        <div style="color:#8696a0; font-size:0.75em;">Ticket: <span id="chatModalTicket" style="color:#53bdeb; font-family:monospace;"></span></div>
+        <!-- Modal: Chat Ticket -->
+        <div id="chatModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);align-items:center;justify-content:center;z-index:2000;">
+            <div style="background:#111b21;border-radius:16px;width:96%;max-width:560px;height:82vh;max-height:680px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.7);">
+                <div style="background:#1f2c34;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;">
+                    <div style="width:40px;height:40px;border-radius:50%;background:#2a3942;display:flex;align-items:center;justify-content:center;font-size:1.1em;flex-shrink:0;">👤</div>
+                    <div style="flex:1;min-width:0;">
+                        <div id="chatModalTitle" style="color:#e9edef;font-size:0.97em;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                        <div style="color:#8696a0;font-size:0.75em;">Ticket: <span id="chatModalTicket" style="color:#53bdeb;font-family:monospace;"></span></div>
                     </div>
-                    <button onclick="closeChatModal()" style="background:none; border:none; color:#8696a0; font-size:1.3em; cursor:pointer; padding:6px; flex-shrink:0;">&times;</button>
+                    <button onclick="closeChatModal()" style="background:none;border:none;color:#8696a0;font-size:1.3em;cursor:pointer;padding:6px;flex-shrink:0;">&times;</button>
                 </div>
-                <!-- Messages -->
-                <div id="chatMessages" style="flex:1; overflow-y:auto; padding:12px 10px; display:flex; flex-direction:column; gap:2px; background:#0b141a;"></div>
-                <!-- Compose bar -->
-                <div style="background:#1f2c34; padding:8px 12px; display:flex; align-items:flex-end; gap:8px; border-top:1px solid rgba(255,255,255,0.06); flex-shrink:0;">
-                    <div style="flex:1; background:#2a3942; border-radius:24px; padding:9px 16px; display:flex; align-items:flex-end; min-height:44px;">
+                <div id="chatMessages" style="flex:1;overflow-y:auto;padding:12px 10px;display:flex;flex-direction:column;gap:2px;background:#0b141a;"></div>
+                <div style="background:#1f2c34;padding:8px 12px;display:flex;align-items:flex-end;gap:8px;border-top:1px solid rgba(255,255,255,0.06);flex-shrink:0;">
+                    <div style="flex:1;background:#2a3942;border-radius:24px;padding:9px 16px;display:flex;align-items:flex-end;min-height:44px;">
                         <textarea id="chatReplyInput" placeholder="Escribe un mensaje" rows="1"
-                            style="flex:1; background:transparent; border:none; outline:none; color:#d1d7db; font-size:0.95em; resize:none; overflow-y:hidden; max-height:110px; height:22px; font-family:inherit; line-height:22px; padding:0; display:block; width:100%;"
+                            style="flex:1;background:transparent;border:none;outline:none;color:#d1d7db;font-size:0.95em;resize:none;overflow-y:hidden;max-height:110px;height:22px;font-family:inherit;line-height:22px;padding:0;display:block;width:100%;"
                             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatReply();}"
                             oninput="_resizeChatTA(this)"></textarea>
                     </div>
                     <button id="chatCloseBtn" onclick="closeTicketFromModal()" title="Cerrar ticket"
-                        style="width:44px; height:44px; flex-shrink:0; background:rgba(220,38,38,0.22); border:1px solid rgba(220,38,38,0.45); border-radius:50%; color:#fca5a5; font-size:0.95em; cursor:pointer;">🔒</button>
+                        style="width:44px;height:44px;flex-shrink:0;background:rgba(220,38,38,0.22);border:1px solid rgba(220,38,38,0.45);border-radius:50%;color:#fca5a5;font-size:0.95em;cursor:pointer;">🔒</button>
                     <button onclick="sendChatReply()" title="Enviar"
-                        style="width:44px; height:44px; flex-shrink:0; background:#00a884; border:none; border-radius:50%; color:white; font-size:1.1em; cursor:pointer;">➤</button>
+                        style="width:44px;height:44px;flex-shrink:0;background:#00a884;border:none;border-radius:50%;color:white;font-size:1.1em;cursor:pointer;">➤</button>
                 </div>
-                <div id="chatReplyMsg" style="font-size:0.8em; min-height:20px; text-align:center; padding:2px 12px 5px; background:#1f2c34; color:#8696a0;"></div>
+                <div id="chatReplyMsg" style="font-size:0.8em;min-height:20px;text-align:center;padding:2px 12px 5px;background:#1f2c34;color:#8696a0;"></div>
             </div>
         </div>
 
-        <!-- Modal QR -->
+        <!-- Modal: QR -->
         <div class="modal" id="qrModal">
             <div class="modal-content">
                 <h3>📱 Conectar WhatsApp</h3>
-                <p style="color: #cbd5e1; margin-bottom: 8px;">Escanea el código QR desde tu WhatsApp</p>
+                <p style="color:#cbd5e1;margin-bottom:8px;">Escanea el código QR desde tu WhatsApp</p>
                 <div class="qr-loading" id="qrLoading">
                     <div class="spinner"></div>
                     <p class="spinner-text" id="qrStatus">Iniciando sesión...<br><small>Por favor espera unos segundos</small></p>
                 </div>
                 <img id="qrImage" class="qr-image" src="" alt="QR Code" style="display:none;">
-                <p id="qrExpireMsg" style="display:none; color:#94a3b8; font-size:0.8em; margin-top:6px;">⏱️ El QR se renueva automáticamente</p>
-                <div id="qrError" style="display:none; color:#ef4444; padding:16px 0;">
+                <p id="qrExpireMsg" style="display:none;color:#94a3b8;font-size:0.8em;margin-top:6px;">⏱️ El QR se renueva automáticamente</p>
+                <div id="qrError" style="display:none;color:#ef4444;padding:16px 0;">
                     ❌ No se pudo obtener el QR.<br>
-                    <button onclick="_retryQr()" style="margin-top:12px; padding:8px 20px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd; border-radius:8px; cursor:pointer; font-size:0.9em;">🔄 Reintentar</button>
+                    <button onclick="_retryQr()" style="margin-top:12px;padding:8px 20px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;border-radius:8px;cursor:pointer;font-size:0.9em;">🔄 Reintentar</button>
                 </div>
                 <button class="modal-close" onclick="closeQrModal()">✖ Cerrar</button>
             </div>
         </div>
-        
+
+        <div class="toast" id="toast"></div>
+
         <script>
-            // Variables para rastrear cambios de estado
-            let lastConnectedStatus = null;
-            let statusPollingInterval = null;
-            
-            // Solicitar permisos de notificación
-            function requestNotificationPermission() {
-                if ('Notification' in window && Notification.permission === 'default') {
-                    Notification.requestPermission();
-                }
-            }
-            
-            // Mostrar notificación de desconexión
-            function notifyDisconnection() {
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification('🤖 WA-BOT', {
-                        body: '⚠️ El bot se ha desconectado de WhatsApp',
-                        icon: '🔴',
-                        tag: 'bot-disconnect'
-                    });
-                }
-            }
-            
-            // Validar autenticación al cargar la página
-            window.addEventListener('DOMContentLoaded', function() {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    window.location.href = '/login';
-                    return;
-                }
+            const token = localStorage.getItem('token');
+            const userStr = localStorage.getItem('user');
+
+            // ── Auth & init ──────────────────────────────────────
+            window.addEventListener('DOMContentLoaded', () => {
+                if (!token) { window.location.href = '/login'; return; }
+                _loadSidebarUser();
+                switchSection('estado');
                 requestNotificationPermission();
                 loadStatus();
-                
-                // Polling cada 8 segundos para detectar desconexiones
-                statusPollingInterval = setInterval(async () => {
-                    try {
-                        const token = localStorage.getItem('token');
-                        const res = await fetch('/status', {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        const status = await res.json();
-                        
-                        // Detectar cambio de conectado a desconectado
-                        if (lastConnectedStatus === true && status.connected === false) {
-                            console.warn('[STATUS] Desconexión detectada!');
-                            notifyDisconnection();
-                        }
-                        
-                        lastConnectedStatus = status.connected;
-                    } catch (e) {
-                        console.error('[STATUS_POLL] Error:', e);
-                    }
-                }, 8000);
+                loadParkedList();
+                loadSchedList();
+                loadVersion();
+                setInterval(loadStatus, 5000);
+                setInterval(loadParkedList, 15000);
+                setInterval(_pollDisconnect, 8000);
             });
-            
+
+            function _loadSidebarUser() {
+                if (userStr) {
+                    try {
+                        const u = JSON.parse(userStr);
+                        const nameEl   = document.getElementById('sidebarUserName');
+                        const avatarEl = document.getElementById('userAvatar');
+                        if (nameEl) nameEl.textContent = u.full_name || u.username || 'Usuario';
+                        if (avatarEl) avatarEl.textContent = (u.full_name || u.username || 'U').charAt(0).toUpperCase();
+                        return;
+                    } catch(e) {}
+                }
+                fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } })
+                    .then(r => r.json()).then(u => {
+                        const nameEl   = document.getElementById('sidebarUserName');
+                        const avatarEl = document.getElementById('userAvatar');
+                        if (nameEl) nameEl.textContent = u.full_name || u.username || 'Usuario';
+                        if (avatarEl) avatarEl.textContent = (u.full_name || u.username || 'U').charAt(0).toUpperCase();
+                    }).catch(() => {});
+            }
+
+            // ── User dropdown ────────────────────────────────────
+            let _userMenuOpen = false;
+            function toggleUserMenu() {
+                _userMenuOpen = !_userMenuOpen;
+                const menu    = document.getElementById('userMenu');
+                const chevron = document.getElementById('userChevron');
+                menu.style.display = _userMenuOpen ? 'block' : 'none';
+                if (chevron) chevron.classList.toggle('open', _userMenuOpen);
+            }
+
+            // ── Section switch ───────────────────────────────────
+            function switchSection(id) {
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                const section = document.getElementById(id);
+                if (section) section.classList.add('active');
+                const cap = id.charAt(0).toUpperCase() + id.slice(1);
+                const navEl = document.getElementById('nav' + cap);
+                if (navEl) navEl.classList.add('active');
+                if (id === 'feriados')  { loadHolidays(); renderCalendar(); }
+                if (id === 'bloqueados') { loadBlocklist(); }
+            }
+
+            // ── Toast ────────────────────────────────────────────
+            let _toastTimer;
+            function showToast(msg, type = 'success') {
+                const t = document.getElementById('toast');
+                clearTimeout(_toastTimer);
+                t.textContent = msg;
+                t.className = 'toast ' + type + ' show';
+                _toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+            }
+
+            // ── Status / notifications ───────────────────────────
+            let lastConnectedStatus = null;
+
+            function requestNotificationPermission() {
+                if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+            }
+
+            async function _pollDisconnect() {
+                try {
+                    const res = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                    const s = await res.json();
+                    if (lastConnectedStatus === true && s.connected === false) {
+                        if ('Notification' in window && Notification.permission === 'granted') {
+                            new Notification('🤖 WA-BOT', { body: '⚠️ El bot se ha desconectado de WhatsApp', tag: 'bot-disconnect' });
+                        }
+                    }
+                    lastConnectedStatus = s.connected;
+                } catch(e) {}
+            }
+
             async function loadStatus() {
                 try {
-                    const token = localStorage.getItem('token');
-                    const res = await fetch('/status', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    
-                    if (!res.ok) {
-                        if (res.status === 403) {
-                            window.location.href = '/login';
-                            return;
-                        }
-                        throw new Error(`HTTP ${res.status}`);
-                    }
-                    const status = await res.json();
-                    lastConnectedStatus = status.connected;  // Actualizar estado para notificaciones
-                    
-                    // Estado WhatsApp
-                    const connected = status.connected;
-                    document.getElementById('waIcon').textContent = connected ? '🟢' : '🔴';
-                    document.getElementById('waStatus').textContent = connected ? 'Conectado' : 'Desconectado';
-                    
-                    // Estado Bot
-                    const isPaused = status.paused;
-                    if (!connected) {
-                        document.getElementById('botIcon').textContent = '🔴';
+                    const res = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!res.ok) { if (res.status === 403) { window.location.href = '/login'; } return; }
+                    const s = await res.json();
+                    lastConnectedStatus = s.connected;
+
+                    document.getElementById('waIcon').textContent   = s.connected ? '🟢' : '🔴';
+                    document.getElementById('waStatus').textContent  = s.connected ? 'Conectado' : 'Desconectado';
+
+                    if (!s.connected) {
+                        document.getElementById('botIcon').textContent  = '🔴';
                         document.getElementById('botStatus').textContent = 'Desconectado';
-                    } else if (isPaused) {
-                        document.getElementById('botIcon').textContent = '⏸️';
+                    } else if (s.paused) {
+                        document.getElementById('botIcon').textContent  = '⏸️';
                         document.getElementById('botStatus').textContent = 'Pausado';
                     } else {
-                        document.getElementById('botIcon').textContent = '▶️';
+                        document.getElementById('botIcon').textContent  = '▶️';
                         document.getElementById('botStatus').textContent = 'Activo';
                     }
-                    
-                    // Horarios
-                    document.getElementById('hoursIcon').textContent = status.off_hours ? '🕐' : '✅';
-                    document.getElementById('hoursStatus').textContent = status.off_hours ? 'Fuera' : 'Normal';
-                    
-                    // Solución
-                    document.getElementById('solutionName').textContent = status.solution_name || '—';
-                    
-                    // Botón toggle del bot
+
+                    document.getElementById('hoursIcon').textContent   = s.off_hours ? '🕐' : '✅';
+                    document.getElementById('hoursStatus').textContent  = s.off_hours ? 'Fuera' : 'Normal';
+                    document.getElementById('solutionName').textContent = s.solution_name || '—';
+
                     const toggleBtn = document.getElementById('toggleBtn');
-                    if (isPaused) {
+                    if (s.paused) {
                         toggleBtn.textContent = '▶️ Activar Bot';
-                        toggleBtn.classList.remove('active');
-                        toggleBtn.classList.add('paused');
+                        toggleBtn.classList.remove('active'); toggleBtn.classList.add('paused');
                     } else {
                         toggleBtn.textContent = '⏸️ Pausar Bot';
-                        toggleBtn.classList.add('active');
-                        toggleBtn.classList.remove('paused');
+                        toggleBtn.classList.add('active'); toggleBtn.classList.remove('paused');
                     }
-                    
-                    // Botón WhatsApp
+
                     const waBtn = document.getElementById('waBtn');
-                    if (connected) {
+                    if (s.connected) {
                         waBtn.textContent = '✅ WhatsApp Conectado';
-                        waBtn.disabled = true;
-                        waBtn.classList.add('connected');
+                        waBtn.disabled = true; waBtn.classList.add('connected');
                     } else {
                         waBtn.textContent = '🔴 Conectar WhatsApp';
-                        waBtn.disabled = false;
-                        waBtn.classList.remove('connected');
+                        waBtn.disabled = false; waBtn.classList.remove('connected');
                     }
-                } catch (error) {
-                    console.error('Error al cargar estado:', error);
-                }
+                } catch(e) { console.error('[STATUS]', e); }
             }
-            
+
             async function toggleBot() {
                 const btn = document.getElementById('toggleBtn');
                 if (!btn || btn.disabled) return;
                 btn.disabled = true;
-                btn.classList.add('btn-disabled');
                 const origText = btn.textContent;
                 btn.textContent = '⏳ Cambiando...';
                 try {
-                    const token = localStorage.getItem('token');
-                    const res = await fetch('/status', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const status = await res.json();
-                    const endpoint = status.paused ? '/bot/resume' : '/bot/pause';
-                    const response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (response.ok) {
-                        await loadStatus();
-                    } else {
-                        btn.textContent = origText;
-                    }
-                } catch (error) {
-                    console.error('toggleBot error:', error);
-                    btn.textContent = origText;
-                } finally {
-                    btn.disabled = false;
-                    btn.classList.remove('btn-disabled');
-                }
+                    const res = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                    const s   = await res.json();
+                    const ep  = s.paused ? '/bot/resume' : '/bot/pause';
+                    const r   = await fetch(ep, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                    if (r.ok) await loadStatus();
+                    else btn.textContent = origText;
+                } catch(e) { btn.textContent = origText; }
+                finally { btn.disabled = false; }
             }
 
             async function closeHumanModeFromUserPanel() {
                 const input = document.getElementById('humanModePhoneUser');
-                const msg = document.getElementById('humanModeMsgUser');
+                const msg   = document.getElementById('humanModeMsgUser');
                 const phone = (input?.value || '').trim();
-                if (!phone) {
-                    msg.textContent = '❌ Ingresá un número/chat';
-                    msg.style.color = '#ef4444';
-                    return;
-                }
+                if (!phone) { msg.textContent = '❌ Ingresá un número/chat'; msg.style.color = '#ef4444'; return; }
                 try {
-                    const token = localStorage.getItem('token');
                     const res = await fetch('/api/human-mode/close', {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone_number: phone })
                     });
                     const data = await res.json();
-                    if (!res.ok) {
-                        msg.textContent = '❌ ' + (data.detail || 'No se pudo cerrar modo humano');
-                        msg.style.color = '#ef4444';
-                        return;
-                    }
+                    if (!res.ok) { msg.textContent = '❌ ' + (data.detail || 'Error'); msg.style.color = '#ef4444'; return; }
                     if (data.closed) {
                         msg.textContent = `✅ Chat ${data.phone_number} volvió a modo bot`;
                         msg.style.color = '#86efac';
@@ -977,197 +1252,165 @@ def get_user_panel_page() -> str:
                         msg.textContent = 'ℹ️ ' + (data.detail || 'Sin cambios');
                         msg.style.color = '#93c5fd';
                     }
-                } catch (error) {
-                    msg.textContent = '❌ Error de conexión: ' + error.message;
-                    msg.style.color = '#ef4444';
-                }
+                } catch(e) { msg.textContent = '❌ Error de conexión'; msg.style.color = '#ef4444'; }
             }
 
             async function loadParkedList() {
                 const container = document.getElementById('parkedListUser');
                 if (!container) return;
                 try {
-                    const token = localStorage.getItem('token');
-                    const res = await fetch('/api/human-mode/list', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res  = await fetch('/api/human-mode/list', { headers: { 'Authorization': `Bearer ${token}` } });
                     const data = await res.json();
                     if (!Array.isArray(data) || data.length === 0) {
-                        container.innerHTML = '<div style="color:#86efac; font-size:0.9em;">✅ No hay números en espera</div>';
-                        return;
+                        container.innerHTML = '<div style="color:#86efac;font-size:0.88em;">✅ No hay números en espera</div>'; return;
                     }
                     const rows = data.map(item => {
                         const started = item.handoff_started_at ? new Date(item.handoff_started_at + 'Z').toLocaleString('es-AR') : '—';
-                        const state = item.current_state === 'WAITING_AGENT' ? '⏳ Esperando operador' : '👤 Con operador';
-                        const ticket = item.ticket_id || '—';
-                        return `<tr style="border-bottom:1px solid rgba(226,232,240,0.08);">
-                            <td style="padding:10px 8px;">
-                                <button onclick="openChatModal('${item.phone_number}','${ticket}','user')" style="background:none;border:none;color:#93c5fd;font-family:monospace;font-size:0.9em;cursor:pointer;text-decoration:underline;padding:0;">${item.phone_number}</button>
-                            </td>
-                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.85em;">${ticket}</td>
-                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.85em;">${state}</td>
-                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${started}</td>
-                            <td style="padding:10px 8px;">
-                                <button onclick="openChatModal('${item.phone_number}','${ticket}','user')" style="padding:6px 10px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd; border-radius:6px; cursor:pointer; font-size:0.8em; margin-right:4px;">💬 Chat</button>
-                                <button onclick="releaseParkedUser('${item.phone_number}', this)" style="padding:6px 10px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#86efac; border-radius:6px; cursor:pointer; font-size:0.8em;">🔓 Liberar</button>
+                        const state   = item.current_state === 'WAITING_AGENT' ? '⏳ Esperando operador' : '👤 Con operador';
+                        const ticket  = item.ticket_id || '—';
+                        return `<tr style="border-bottom:1px solid rgba(226,232,240,0.07);">
+                            <td style="padding:9px 8px;"><button onclick="openChatModal('${item.phone_number}','${ticket}','user')" style="background:none;border:none;color:#93c5fd;font-family:monospace;font-size:0.88em;cursor:pointer;text-decoration:underline;padding:0;">${item.phone_number}</button></td>
+                            <td style="padding:9px 8px;color:#94a3b8;font-size:0.82em;">${ticket}</td>
+                            <td style="padding:9px 8px;color:#94a3b8;font-size:0.82em;">${state}</td>
+                            <td style="padding:9px 8px;color:#94a3b8;font-size:0.78em;">${started}</td>
+                            <td style="padding:9px 8px;">
+                                <button onclick="openChatModal('${item.phone_number}','${ticket}','user')" style="padding:5px 9px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;border-radius:6px;cursor:pointer;font-size:0.78em;margin-right:4px;">💬 Chat</button>
+                                <button onclick="releaseParkedUser('${item.phone_number}',this)" style="padding:5px 9px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#86efac;border-radius:6px;cursor:pointer;font-size:0.78em;">🔓 Liberar</button>
                             </td>
                         </tr>`;
                     }).join('');
-                    container.innerHTML = `<table style="width:100%; border-collapse:collapse;">
+                    container.innerHTML = `<table style="width:100%;border-collapse:collapse;">
                         <thead><tr style="background:rgba(30,41,59,0.5);">
-                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Número</th>
-                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Ticket</th>
-                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Estado</th>
-                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Inicio</th>
-                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Acciones</th>
+                            <th style="padding:9px 8px;text-align:left;color:#cbd5e1;font-size:0.82em;">Número</th>
+                            <th style="padding:9px 8px;text-align:left;color:#cbd5e1;font-size:0.82em;">Ticket</th>
+                            <th style="padding:9px 8px;text-align:left;color:#cbd5e1;font-size:0.82em;">Estado</th>
+                            <th style="padding:9px 8px;text-align:left;color:#cbd5e1;font-size:0.82em;">Inicio</th>
+                            <th style="padding:9px 8px;text-align:left;color:#cbd5e1;font-size:0.82em;">Acciones</th>
                         </tr></thead>
                         <tbody>${rows}</tbody>
                     </table>`;
                 } catch(e) {
-                    container.innerHTML = '<div style="color:#ef4444; font-size:0.9em;">❌ Error al cargar lista</div>';
+                    container.innerHTML = '<div style="color:#ef4444;font-size:0.88em;">❌ Error al cargar lista</div>';
                 }
             }
 
             async function releaseParkedUser(phone, btn) {
-                btn.disabled = true;
-                btn.textContent = '⏳';
+                btn.disabled = true; btn.textContent = '⏳';
                 try {
-                    const token = localStorage.getItem('token');
-                    const res = await fetch('/api/human-mode/close', {
+                    const res  = await fetch('/api/human-mode/close', {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone_number: phone })
                     });
                     const data = await res.json();
-                    if (data.closed) {
-                        loadParkedList();
-                    } else {
-                        btn.disabled = false;
-                        btn.textContent = '🔓 Liberar';
-                    }
-                } catch(e) {
-                    btn.disabled = false;
-                    btn.textContent = '🔓 Liberar';
-                }
+                    if (data.closed) loadParkedList();
+                    else { btn.disabled = false; btn.textContent = '🔓 Liberar'; }
+                } catch(e) { btn.disabled = false; btn.textContent = '🔓 Liberar'; }
             }
 
-            // ── MENSAJES PROGRAMADOS ─────────────────────────────────
+            // ── Scheduled messages ───────────────────────────────
             let _schedEditId = null;
 
             async function loadSchedList() {
                 const box = document.getElementById('schedList');
                 if (!box) return;
-                const token = localStorage.getItem('token');
                 try {
-                    const res = await fetch('/api/scheduled-messages', { headers: { 'Authorization': `Bearer ${token}` }});
+                    const res  = await fetch('/api/scheduled-messages', { headers: { 'Authorization': `Bearer ${token}` } });
                     const list = await res.json();
-                    if (!list.length) { box.innerHTML = '<div style="color:#94a3b8;font-size:0.9em;">Sin mensajes programados. Crea uno con ➕ Nuevo.</div>'; return; }
+                    if (!list.length) { box.innerHTML = '<div style="color:#94a3b8;font-size:0.88em;">Sin mensajes programados. Usá ➕ Nuevo para crear uno.</div>'; return; }
                     const DAYS_MAP = {'1':'Lu','2':'Ma','3':'Mi','4':'Ju','5':'Vi','6':'Sa','7':'Do'};
                     box.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' + list.map(sm => {
-                        const days = (sm.days_of_week||'').split(',').map(d=>DAYS_MAP[d.trim()]||d).join(' ');
+                        const days   = (sm.days_of_week||'').split(',').map(d=>DAYS_MAP[d.trim()]||d).join(' ');
                         const active = sm.is_active;
                         return `<div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
                             <div style="flex:1;min-width:0;">
-                                <div style="color:#f1f5f9;font-weight:600;font-size:0.92em;">${sm.name}</div>
-                                <div style="color:#8696a0;font-size:0.78em;margin-top:2px;">📞 ${sm.phone_number} &nbsp;·&nbsp; 🕐 ${sm.send_time} &nbsp;·&nbsp; 📅 ${days}</div>
-                                <div style="color:#94a3b8;font-size:0.82em;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;">${sm.message}</div>
+                                <div style="color:#f1f5f9;font-weight:600;font-size:0.9em;">${sm.name}</div>
+                                <div style="color:#8696a0;font-size:0.78em;margin-top:2px;">📞 ${sm.phone_number} · 🕐 ${sm.send_time} · 📅 ${days}</div>
+                                <div style="color:#94a3b8;font-size:0.8em;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;">${sm.message}</div>
                             </div>
                             <div style="display:flex;gap:6px;flex-shrink:0;">
-                                <button onclick="toggleSched(${sm.id})" title="${active?'Desactivar':'Activar'}" style="padding:5px 8px;background:${active?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)'};border:1px solid ${active?'rgba(16,185,129,0.4)':'rgba(100,116,139,0.3)'};border-radius:6px;color:${active?'#86efac':'#94a3b8'};cursor:pointer;font-size:0.85em;">${active?'✅':'⏸️'}</button>
+                                <button onclick="toggleSched(${sm.id})" style="padding:5px 8px;background:${active?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)'};border:1px solid ${active?'rgba(16,185,129,0.4)':'rgba(100,116,139,0.3)'};border-radius:6px;color:${active?'#86efac':'#94a3b8'};cursor:pointer;font-size:0.85em;">${active?'✅':'⏸️'}</button>
                                 <button onclick="editSched(${sm.id})" style="padding:5px 8px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:6px;color:#93c5fd;cursor:pointer;font-size:0.85em;">✏️</button>
                                 <button onclick="deleteSched(${sm.id})" style="padding:5px 8px;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.3);border-radius:6px;color:#fca5a5;cursor:pointer;font-size:0.85em;">🗑️</button>
                             </div>
                         </div>`;
                     }).join('') + '</div>';
-                } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:0.9em;">Error al cargar mensajes programados</div>'; }
+                } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:0.88em;">Error al cargar mensajes programados</div>'; }
             }
 
             function openSchedModal(sm) {
                 _schedEditId = sm ? sm.id : null;
                 document.getElementById('schedModalTitle').textContent = sm ? '✏️ Editar Mensaje Programado' : '🕐 Nuevo Mensaje Programado';
-                document.getElementById('schedName').value = sm ? sm.name : '';
-                document.getElementById('schedPhone').value = sm ? sm.phone_number : '';
-                document.getElementById('schedTime').value = sm ? sm.send_time : '';
-                document.getElementById('schedDays').value = sm && sm.days_of_week ? sm.days_of_week : '1,2,3,4,5,6,7';
-                document.getElementById('schedMsg').value = sm ? sm.message : '';
+                document.getElementById('schedName').value    = sm ? sm.name : '';
+                document.getElementById('schedPhone').value   = sm ? sm.phone_number : '';
+                document.getElementById('schedTime').value    = sm ? sm.send_time : '';
+                document.getElementById('schedDays').value    = sm && sm.days_of_week ? sm.days_of_week : '1,2,3,4,5,6,7';
+                document.getElementById('schedMsg').value     = sm ? sm.message : '';
                 document.getElementById('schedModalMsg').textContent = '';
                 document.getElementById('schedModal').style.display = 'flex';
             }
-
             function closeSchedModal() { document.getElementById('schedModal').style.display = 'none'; _schedEditId = null; }
 
             async function saveSchedMsg() {
-                const token = localStorage.getItem('token');
-                const msgEl = document.getElementById('schedModalMsg');
+                const msgEl   = document.getElementById('schedModalMsg');
                 const payload = {
-                    name: document.getElementById('schedName').value.trim(),
+                    name:        document.getElementById('schedName').value.trim(),
                     phone_number: document.getElementById('schedPhone').value.trim(),
-                    message: document.getElementById('schedMsg').value.trim(),
-                    send_time: document.getElementById('schedTime').value.trim(),
+                    message:     document.getElementById('schedMsg').value.trim(),
+                    send_time:   document.getElementById('schedTime').value.trim(),
                     days_of_week: document.getElementById('schedDays').value,
                 };
                 if (!payload.name || !payload.phone_number || !payload.message || !payload.send_time) {
-                    msgEl.style.color='#f87171'; msgEl.textContent='Completá todos los campos obligatorios.'; return;
+                    msgEl.style.color = '#f87171'; msgEl.textContent = 'Completá todos los campos.'; return;
                 }
                 try {
-                    const url = _schedEditId ? `/api/scheduled-messages/${_schedEditId}` : '/api/scheduled-messages';
+                    const url    = _schedEditId ? `/api/scheduled-messages/${_schedEditId}` : '/api/scheduled-messages';
                     const method = _schedEditId ? 'PUT' : 'POST';
-                    const res = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const res    = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     if (res.ok) { closeSchedModal(); loadSchedList(); }
-                    else { const d = await res.json(); msgEl.style.color='#f87171'; msgEl.textContent = '❌ ' + (d.detail||'Error'); }
-                } catch(e) { msgEl.style.color='#f87171'; msgEl.textContent='❌ Error de red'; }
+                    else { const d = await res.json(); msgEl.style.color = '#f87171'; msgEl.textContent = '❌ ' + (d.detail || 'Error'); }
+                } catch(e) { msgEl.style.color = '#f87171'; msgEl.textContent = '❌ Error de red'; }
             }
 
             async function toggleSched(id) {
-                const token = localStorage.getItem('token');
-                await fetch(`/api/scheduled-messages/${id}/toggle`, { method:'POST', headers:{ 'Authorization':`Bearer ${token}` }});
+                await fetch(`/api/scheduled-messages/${id}/toggle`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
                 loadSchedList();
             }
-
             async function editSched(id) {
-                const token = localStorage.getItem('token');
-                const res = await fetch('/api/scheduled-messages', { headers:{ 'Authorization':`Bearer ${token}` }});
+                const res  = await fetch('/api/scheduled-messages', { headers: { 'Authorization': `Bearer ${token}` } });
                 const list = await res.json();
-                const sm = list.find(x => x.id === id);
+                const sm   = list.find(x => x.id === id);
                 if (sm) openSchedModal(sm);
             }
-
             async function deleteSched(id) {
                 if (!confirm('¿Eliminar este mensaje programado?')) return;
-                const token = localStorage.getItem('token');
-                await fetch(`/api/scheduled-messages/${id}`, { method:'DELETE', headers:{ 'Authorization':`Bearer ${token}` }});
+                await fetch(`/api/scheduled-messages/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
                 loadSchedList();
             }
 
-            // ── CHAT MODAL (shared user panel) ──────────────────────
-            let _chatModalPhone = '';
-            let _chatModalPanel = '';
+            // ── Chat Modal ───────────────────────────────────────
+            let _chatModalPhone  = '';
             let _chatMsgPollTimer = null;
 
             function _resizeChatTA(el) {
                 el.style.height = '22px';
-                const lineH = 22;
-                const maxH = lineH * 4;
-                const newH = Math.min(maxH, el.scrollHeight);
-                el.style.height = newH + 'px';
+                const maxH = 22 * 4;
+                el.style.height    = Math.min(maxH, el.scrollHeight) + 'px';
                 el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
             }
 
             function openChatModal(phone, ticket, panel) {
                 _chatModalPhone = phone;
-                _chatModalPanel = panel;
-                const modal = document.getElementById('chatModal');
-                document.getElementById('chatModalTitle').textContent = phone;
+                document.getElementById('chatModalTitle').textContent  = phone;
                 document.getElementById('chatModalTicket').textContent = ticket;
                 document.getElementById('chatMessages').innerHTML = '<div style="color:#8696a0;text-align:center;padding:30px;">Cargando mensajes...</div>';
                 const ta = document.getElementById('chatReplyInput');
                 ta.value = ''; ta.style.height = '22px'; ta.style.overflowY = 'hidden';
                 document.getElementById('chatReplyMsg').textContent = '';
-                modal.style.display = 'flex';
+                document.getElementById('chatModal').style.display = 'flex';
                 loadChatMessages();
                 _chatMsgPollTimer = setInterval(loadChatMessages, 8000);
             }
-
             function closeChatModal() {
                 if (_chatMsgPollTimer) { clearInterval(_chatMsgPollTimer); _chatMsgPollTimer = null; }
                 document.getElementById('chatModal').style.display = 'none';
@@ -1176,39 +1419,22 @@ def get_user_panel_page() -> str:
 
             async function loadChatMessages() {
                 if (!_chatModalPhone) return;
-                const token = localStorage.getItem('token');
                 try {
-                    const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(_chatModalPhone)}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const res  = await fetch(`/api/human-mode/messages/${encodeURIComponent(_chatModalPhone)}`, { headers: { 'Authorization': `Bearer ${token}` } });
                     const data = await res.json();
-                    const box = document.getElementById('chatMessages');
+                    const box  = document.getElementById('chatMessages');
                     if (!data.ok || !data.messages.length) {
-                        box.innerHTML = '<div style="color:#8696a0;text-align:center;padding:30px;font-size:0.9em;">Sin mensajes disponibles</div>';
-                        return;
+                        box.innerHTML = '<div style="color:#8696a0;text-align:center;padding:30px;font-size:0.9em;">Sin mensajes disponibles</div>'; return;
                     }
-                    const sorted = [...data.messages].sort((a,b) => a.timestamp - b.timestamp);
+                    const sorted     = [...data.messages].sort((a,b) => a.timestamp - b.timestamp);
                     const wasAtBottom = box.scrollHeight - box.scrollTop <= box.clientHeight + 60;
                     box.innerHTML = sorted.map(m => {
-                        const t = m.timestamp ? new Date(m.timestamp * 1000).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
-                        if (m.from_me) {
-                            return `<div style="display:flex;justify-content:flex-end;margin:2px 0;">
-                                <div style="background:#005c4b;border-radius:8px 2px 8px 8px;padding:7px 12px 5px;max-width:78%;color:#e9edef;font-size:0.9em;word-break:break-word;">
-                                    ${m.body || '<i style="color:#8696a0">[sin texto]</i>'}
-                                    <div style="font-size:0.68em;color:#8adfcc;text-align:right;margin-top:3px;">${t}</div>
-                                </div></div>`;
-                        } else {
-                            return `<div style="display:flex;justify-content:flex-start;margin:2px 0;">
-                                <div style="background:#202c33;border-radius:2px 8px 8px 8px;padding:7px 12px 5px;max-width:78%;color:#e9edef;font-size:0.9em;word-break:break-word;">
-                                    ${m.body || '<i style="color:#8696a0">[sin texto]</i>'}
-                                    <div style="font-size:0.68em;color:#8696a0;text-align:right;margin-top:3px;">${t}</div>
-                                </div></div>`;
-                        }
+                        const t = m.timestamp ? new Date(m.timestamp*1000).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                        if (m.from_me) return `<div style="display:flex;justify-content:flex-end;margin:2px 0;"><div style="background:#005c4b;border-radius:8px 2px 8px 8px;padding:7px 12px 5px;max-width:78%;color:#e9edef;font-size:0.9em;word-break:break-word;">${m.body||'<i style="color:#8696a0">[sin texto]</i>'}<div style="font-size:0.68em;color:#8adfcc;text-align:right;margin-top:3px;">${t}</div></div></div>`;
+                        return `<div style="display:flex;justify-content:flex-start;margin:2px 0;"><div style="background:#202c33;border-radius:2px 8px 8px 8px;padding:7px 12px 5px;max-width:78%;color:#e9edef;font-size:0.9em;word-break:break-word;">${m.body||'<i style="color:#8696a0">[sin texto]</i>'}<div style="font-size:0.68em;color:#8696a0;text-align:right;margin-top:3px;">${t}</div></div></div>`;
                     }).join('');
                     if (wasAtBottom) box.scrollTop = box.scrollHeight;
-                } catch(e) {
-                    document.getElementById('chatMessages').innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px;">Error al cargar mensajes</div>';
-                }
+                } catch(e) { document.getElementById('chatMessages').innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px;">Error al cargar mensajes</div>'; }
             }
 
             async function sendChatReply() {
@@ -1216,7 +1442,6 @@ def get_user_panel_page() -> str:
                 const msg   = document.getElementById('chatReplyMsg');
                 const text  = (input.value || '').trim();
                 if (!text || !_chatModalPhone) return;
-                const token = localStorage.getItem('token');
                 input.disabled = true;
                 try {
                     const res = await fetch('/api/human-mode/reply', {
@@ -1226,105 +1451,35 @@ def get_user_panel_page() -> str:
                     });
                     if (res.ok) {
                         input.value = ''; input.style.height = '22px'; input.style.overflowY = 'hidden';
-                        msg.textContent = '✅ Enviado';
-                        msg.style.color = '#8adfcc';
+                        msg.textContent = '✅ Enviado'; msg.style.color = '#8adfcc';
                         setTimeout(() => { msg.textContent = ''; }, 2000);
                         setTimeout(loadChatMessages, 800);
-                    } else {
-                        msg.textContent = '❌ Error al enviar';
-                        msg.style.color = '#ef4444';
-                    }
-                } catch(e) {
-                    msg.textContent = '❌ Error de conexión';
-                    msg.style.color = '#ef4444';
-                } finally {
-                    input.disabled = false; input.focus();
-                }
+                    } else { msg.textContent = '❌ Error al enviar'; msg.style.color = '#ef4444'; }
+                } catch(e) { msg.textContent = '❌ Error de conexión'; msg.style.color = '#ef4444'; }
+                finally { input.disabled = false; input.focus(); }
             }
 
             async function closeTicketFromModal() {
                 if (!_chatModalPhone) return;
                 const reply = document.getElementById('chatReplyInput').value.trim();
-                const token = localStorage.getItem('token');
-                const btn = document.getElementById('chatCloseBtn');
+                const btn   = document.getElementById('chatCloseBtn');
                 btn.disabled = true; btn.textContent = '⏳';
                 try {
-                    const res = await fetch('/api/human-mode/close', {
+                    const res  = await fetch('/api/human-mode/close', {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone_number: _chatModalPhone, operator_reply: reply })
                     });
                     const data = await res.json();
-                    if (data.closed) {
-                        closeChatModal();
-                        loadParkedList();
-                    }
-                } finally {
-                    btn.disabled = false; btn.textContent = '🔒 Cerrar Ticket';
-                }
+                    if (data.closed) { closeChatModal(); loadParkedList(); }
+                } finally { btn.disabled = false; btn.textContent = '🔒'; }
             }
-            
-            async function changePassword() {
-                try {
-                    const oldPassword = document.getElementById('oldPassword').value;
-                    const newPassword = document.getElementById('newPassword').value;
-                    const confirmPassword = document.getElementById('confirmPassword').value;
-                    const statusDiv = document.getElementById('passwordStatus');
-                    
-                    if (!oldPassword || !newPassword || !confirmPassword) {
-                        statusDiv.textContent = '❌ Por favor completa todos los campos';
-                        statusDiv.style.color = '#ef4444';
-                        return;
-                    }
-                    
-                    if (newPassword !== confirmPassword) {
-                        statusDiv.textContent = '❌ Las contraseñas no coinciden';
-                        statusDiv.style.color = '#ef4444';
-                        return;
-                    }
-                    
-                    if (newPassword.length < 6) {
-                        statusDiv.textContent = '❌ La contraseña debe tener al menos 6 caracteres';
-                        statusDiv.style.color = '#ef4444';
-                        return;
-                    }
-                    
-                    const token = localStorage.getItem('token');
-                    const response = await fetch('/api/auth/change-password', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            old_password: oldPassword,
-                            new_password: newPassword
-                        })
-                    });
-                    
-                    if (response.ok) {
-                        statusDiv.textContent = '✅ Contraseña actualizada correctamente';
-                        statusDiv.style.color = '#10b981';
-                        document.getElementById('oldPassword').value = '';
-                        document.getElementById('newPassword').value = '';
-                        document.getElementById('confirmPassword').value = '';
-                        setTimeout(() => { statusDiv.textContent = ''; }, 3000);
-                    } else {
-                        const error = await response.json();
-                        statusDiv.textContent = '❌ ' + (error.detail || 'Error al cambiar contraseña');
-                        statusDiv.style.color = '#ef4444';
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
-                    document.getElementById('passwordStatus').textContent = '❌ Error al cambiar contraseña';
-                    document.getElementById('passwordStatus').style.color = '#ef4444';
-                }
-            }
-            
-            let _qrPollTimer = null;
-            let _connPollTimer = null;
+
+            // ── WA Connect / QR ──────────────────────────────────
+            let _qrPollTimer    = null;
+            let _connPollTimer  = null;
             let _qrRefreshTimer = null;
-            let _qrLastUpdateAt = 0;
+            let _qrLastUpdateAt  = 0;
             let _lastConnectKickAt = 0;
 
             async function _fetchAndShowQr() {
@@ -1332,57 +1487,42 @@ def get_user_panel_page() -> str:
                     const qrRes = await fetch('/qr?ts=' + Date.now());
                     if (qrRes.ok) {
                         const blob = await qrRes.blob();
-                        const url = URL.createObjectURL(blob);
+                        const url  = URL.createObjectURL(blob);
                         document.getElementById('qrImage').src = url;
                         document.getElementById('qrImage').style.display = 'block';
                         document.getElementById('qrExpireMsg').style.display = 'block';
                         document.getElementById('qrLoading').style.display = 'none';
                         _qrLastUpdateAt = Date.now();
                         const st = document.getElementById('qrStatus');
-                        if (st) st.innerHTML = 'QR listo para escanear<br><small>Se renueva automaticamente</small>';
+                        if (st) st.innerHTML = 'QR listo para escanear<br><small>Se renueva automáticamente</small>';
                         return true;
                     }
-                    // 404 = sesión ya conectada o QR no disponible — verificar estado
                     if (qrRes.status === 404 || qrRes.status === 503) {
-                        const token = localStorage.getItem('token');
                         const st = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
-                        if (st.ok) {
-                            const s = await st.json();
-                            if (s.connected) {
-                                console.log('[QR] Sesión ya conectada, cerrando modal');
-                                _closeQrSuccess();
-                                return true;
-                            }
-                        }
+                        if (st.ok) { const s = await st.json(); if (s.connected) { _closeQrSuccess(); return true; } }
                     }
                 } catch(e) {}
                 return false;
             }
 
             function _retryQr() {
-                const token = localStorage.getItem('token');
                 document.getElementById('qrError').style.display = 'none';
                 document.getElementById('qrLoading').style.display = 'flex';
                 const st = document.getElementById('qrStatus');
                 if (st) st.innerHTML = 'Solicitando nuevo QR...<br><small>Por favor espera</small>';
-                // Asegurar sesión en segundo plano — sin bloquear
-                fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
-                    .catch(e => console.warn('[WA] retry connect:', e));
+                fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
                 _startQrPhase1(token);
             }
 
-            function _startQrPhase1(token) {
-                if (_qrPollTimer) { clearInterval(_qrPollTimer); _qrPollTimer = null; }
+            function _startQrPhase1(tok) {
+                if (_qrPollTimer)    { clearInterval(_qrPollTimer);    _qrPollTimer    = null; }
                 if (_qrRefreshTimer) { clearInterval(_qrRefreshTimer); _qrRefreshTimer = null; }
                 let attempts = 0;
                 _qrPollTimer = setInterval(async () => {
                     attempts++;
-                    // Update status text so user sees progress
-                    const secs = Math.round(attempts * 0.8);
                     const st = document.getElementById('qrStatus');
-                    if (st) st.innerHTML = `Esperando QR... (${secs}s)<br><small>Conectando con WhatsApp</small>`;
-
-                    if (attempts > 450) { // ~6 min max
+                    if (st) st.innerHTML = `Esperando QR... (${Math.round(attempts*0.8)}s)<br><small>Conectando con WhatsApp</small>`;
+                    if (attempts > 450) {
                         clearInterval(_qrPollTimer); _qrPollTimer = null;
                         document.getElementById('qrLoading').style.display = 'none';
                         document.getElementById('qrError').style.display = 'block';
@@ -1391,21 +1531,15 @@ def get_user_panel_page() -> str:
                     const ok = await _fetchAndShowQr();
                     if (ok) {
                         clearInterval(_qrPollTimer); _qrPollTimer = null;
-                        console.log('[QR] Mostrado en intento ' + attempts);
-                        // Fase 2: esperar scan + auto-refresh QR cada 50s
-                        _startConnectPoll(token);
+                        _startConnectPoll(tok);
                         _qrRefreshTimer = setInterval(async () => {
                             const img = document.getElementById('qrImage');
                             if (!img || img.style.display === 'none') return;
-                            console.log('[QR] Renovando QR...');
-                            const ok = await _fetchAndShowQr();
-                            if (!ok || (Date.now() - _qrLastUpdateAt) > 45000) {
-                                const st = document.getElementById('qrStatus');
-                                if (st) st.innerHTML = 'Renovando QR...<br><small>No cierres esta ventana</small>';
+                            const ok2 = await _fetchAndShowQr();
+                            if (!ok2 || (Date.now() - _qrLastUpdateAt) > 45000) {
                                 if ((Date.now() - _lastConnectKickAt) > 90000) {
                                     _lastConnectKickAt = Date.now();
-                                    fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
-                                        .catch(e => console.warn('[WA] refresh connect:', e));
+                                    fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${tok}` } }).catch(() => {});
                                 }
                             }
                         }, 30000);
@@ -1415,79 +1549,44 @@ def get_user_panel_page() -> str:
 
             function toggleWhatsApp() {
                 const btn = document.getElementById('waBtn');
-                const token = localStorage.getItem('token');
                 if (btn && btn.disabled) return;
                 if (btn) { btn.disabled = true; btn.textContent = '⏳ Conectando...'; }
-
                 if (lastConnectedStatus === true) {
-                    // Ya conectado → solo reconectar, sin mostrar QR
-                    if (btn) btn.textContent = '⏳ Reconectando...';
-                    fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
-                        .catch(e => console.warn('[WA] reconnect:', e));
-                    setTimeout(() => {
-                        if (btn) { btn.disabled = false; btn.textContent = '🟢 Reconectar WhatsApp'; }
-                        loadStatus();
-                    }, 5000);
+                    fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
+                    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = '🟢 Reconectar WhatsApp'; } loadStatus(); }, 5000);
                     return;
                 }
-
-                // No conectado: abrir modal YA, sin esperar nada
                 _openQrModal();
-
-                // Lanzar /bot/connect en segundo plano (sin await = sin bloquear)
-                fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
-                    .catch(e => console.warn('[WA] connect:', e));
-
-                // Empezar polling de QR inmediatamente
+                fetch('/bot/connect', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {});
                 _startQrPhase1(token);
                 if (btn) btn.disabled = false;
             }
 
-            // Fase 2: polling de /status hasta detectar conexión exitosa
-            function _startConnectPoll(token) {
+            function _startConnectPoll(tok) {
                 if (_connPollTimer) { clearInterval(_connPollTimer); _connPollTimer = null; }
                 let connAttempts = 0;
                 _connPollTimer = setInterval(async () => {
                     connAttempts++;
-                    if (connAttempts > 300) { // hasta ~10 minutos
-                        clearInterval(_connPollTimer); _connPollTimer = null;
-                        return;
-                    }
+                    if (connAttempts > 300) { clearInterval(_connPollTimer); _connPollTimer = null; return; }
                     try {
-                        const r = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
+                        const r = await fetch('/status', { headers: { 'Authorization': `Bearer ${tok}` } });
                         if (!r.ok) return;
                         const s = await r.json();
-                        if (s.connected) {
-                            clearInterval(_connPollTimer); _connPollTimer = null;
-                            console.log('[QR] ¡Conectado! Cerrando modal...');
-                            _closeQrSuccess();
-                        }
+                        if (s.connected) { clearInterval(_connPollTimer); _connPollTimer = null; _closeQrSuccess(); }
                     } catch(e) {}
                 }, 2000);
             }
 
             function _closeQrSuccess() {
                 closeQrModal();
-                // Deshabilitar botón y poner estado conectado
                 const btn = document.getElementById('waBtn');
-                if (btn) {
-                    btn.textContent = '✅ WhatsApp Conectado';
-                    btn.disabled = true;
-                    btn.classList.add('connected');
-                }
-                // Toast de éxito
+                if (btn) { btn.textContent = '✅ WhatsApp Conectado'; btn.disabled = true; btn.classList.add('connected'); }
                 let toast = document.getElementById('waToast');
-                if (!toast) {
-                    toast = document.createElement('div');
-                    toast.id = 'waToast';
-                    toast.className = 'wa-toast';
-                    document.body.appendChild(toast);
-                }
+                if (!toast) { toast = document.createElement('div'); toast.id = 'waToast'; toast.className = 'wa-toast'; document.body.appendChild(toast); }
                 toast.textContent = '✅ WhatsApp conectado exitosamente';
                 toast.classList.add('show');
                 setTimeout(() => toast.classList.remove('show'), 4000);
-                // Refrescar estado del panel
-                if (typeof loadStatus === 'function') loadStatus();
+                loadStatus();
             }
 
             function _openQrModal() {
@@ -1502,9 +1601,9 @@ def get_user_panel_page() -> str:
             }
 
             function closeQrModal() {
-                if (_qrPollTimer)   { clearInterval(_qrPollTimer);   _qrPollTimer   = null; }
-                if (_connPollTimer) { clearInterval(_connPollTimer); _connPollTimer = null; }
-                if (_qrRefreshTimer){ clearInterval(_qrRefreshTimer); _qrRefreshTimer = null; }
+                if (_qrPollTimer)    { clearInterval(_qrPollTimer);    _qrPollTimer    = null; }
+                if (_connPollTimer)  { clearInterval(_connPollTimer);  _connPollTimer  = null; }
+                if (_qrRefreshTimer) { clearInterval(_qrRefreshTimer); _qrRefreshTimer = null; }
                 document.getElementById('qrModal').classList.remove('show');
                 document.getElementById('qrLoading').style.display = 'flex';
                 document.getElementById('qrImage').style.display = 'none';
@@ -1513,40 +1612,251 @@ def get_user_panel_page() -> str:
                 document.getElementById('qrError').style.display = 'none';
                 const st = document.getElementById('qrStatus');
                 if (st) st.innerHTML = 'Iniciando sesión...<br><small>Por favor espera unos segundos</small>';
-                // Rehabilitar botón y refrescar estado
                 const waBtn = document.getElementById('waBtn');
                 if (waBtn) waBtn.disabled = false;
                 setTimeout(() => loadStatus(), 500);
             }
 
-            function logout() {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                window.location.href = '/login';
+            // ── Calendar / Feriados ──────────────────────────────
+            let calDate    = new Date();
+            let _savedHols = [];
+            let _savedSet  = new Set();
+            let _selSet    = new Set();
+
+            const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const WDAYS  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+            function calPrev()  { calDate.setMonth(calDate.getMonth()-1); renderCalendar(); }
+            function calNext()  { calDate.setMonth(calDate.getMonth()+1); renderCalendar(); }
+            function calToday() { calDate = new Date(); renderCalendar(); }
+
+            function fmtDate(d)      { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+            function fmtParts(y,m,d) { return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+            function fmtHuman(s)     { if(!s) return ''; const [y,m,d]=s.split('-'); return d+'/'+m+'/'+y; }
+
+            function renderCalendar() {
+                const yr      = calDate.getFullYear();
+                const mo      = calDate.getMonth();
+                const titleEl = document.getElementById('calTitle');
+                if (titleEl) titleEl.textContent = MONTHS[mo] + ' ' + yr;
+                const todayStr = fmtDate(new Date());
+                const grid = document.getElementById('calGrid');
+                if (!grid) return;
+                grid.innerHTML = '';
+                WDAYS.forEach((d,i) => { const h = document.createElement('div'); h.className = 'cal-hdr'+(i===0||i===6?' wknd':''); h.textContent = d; grid.appendChild(h); });
+                const firstDow = new Date(yr,mo,1).getDay();
+                const daysInMo = new Date(yr,mo+1,0).getDate();
+                for(let i=0;i<firstDow;i++) { const e=document.createElement('div'); e.className='cal-cell empty'; grid.appendChild(e); }
+                for(let d=1;d<=daysInMo;d++) {
+                    const ds     = fmtParts(yr,mo+1,d);
+                    const dow    = new Date(yr,mo,d).getDay();
+                    const isWkd  = dow===0||dow===6;
+                    const inDB   = _savedSet.has(ds);
+                    const inSel  = _selSet.has(ds);
+                    const cell   = document.createElement('div');
+                    let cls = 'cal-cell'+(isWkd?' wknd':'')+(ds===todayStr?' today':'');
+                    if(inDB&&inSel)       cls+=' selected';
+                    else if(!inDB&&inSel) cls+=' pending';
+                    else if(inDB&&!inSel) cls+=' removing';
+                    cell.className = cls;
+                    cell.textContent = d;
+                    if(inDB&&inSel)        cell.title = (_savedHols.find(h=>h.date===ds)?.name||'Feriado guardado');
+                    else if(!inDB&&inSel)  cell.title = 'Nuevo feriado — pendiente de guardar';
+                    else if(inDB&&!inSel)  cell.title = 'Se eliminará al guardar';
+                    cell.onclick = () => { if(_selSet.has(ds)) _selSet.delete(ds); else _selSet.add(ds); renderCalendar(); updatePendingBadge(); };
+                    grid.appendChild(cell);
+                }
             }
-            
-            // Cargar versión del servidor
+
+            function updatePendingBadge() {
+                const toAdd = [..._selSet].filter(d=>!_savedSet.has(d)).length;
+                const toDel = [..._savedSet].filter(d=>!_selSet.has(d)).length;
+                const total = toAdd + toDel;
+                const badge = document.getElementById('pendingBadge');
+                const text  = document.getElementById('pendingText');
+                if (total > 0) {
+                    badge?.classList.remove('hidden');
+                    const parts = [];
+                    if(toAdd>0) parts.push(`+${toAdd} por agregar`);
+                    if(toDel>0) parts.push(`-${toDel} por eliminar`);
+                    if(text) text.textContent = parts.join('  ·  ');
+                } else { badge?.classList.add('hidden'); }
+            }
+
+            async function loadHolidays() {
+                try {
+                    const res = await fetch('/api/holidays', { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!res.ok) throw new Error();
+                    _savedHols = await res.json();
+                    _savedHols.sort((a,b) => a.date.localeCompare(b.date));
+                    _savedSet  = new Set(_savedHols.map(h=>h.date));
+                    _selSet    = new Set(_savedSet);
+                    updatePendingBadge(); renderCalendar(); renderHolidayList();
+                } catch(e) {
+                    const el = document.getElementById('holidaysList');
+                    if(el) el.innerHTML = '<div class="empty-state">❌ Error al cargar feriados</div>';
+                }
+            }
+
+            function renderHolidayList() {
+                const el = document.getElementById('holidaysList');
+                if (!el) return;
+                if (!_savedHols.length) { el.innerHTML = '<div class="empty-state">📭 No hay feriados guardados</div>'; return; }
+                el.innerHTML = _savedHols.map(h => `
+                    <div class="holiday-row">
+                        <div class="holiday-info">
+                            <span class="holiday-date">📅 ${fmtHuman(h.date)}</span>
+                            <span class="holiday-name">${h.name||'Feriado'}</span>
+                        </div>
+                        <button class="btn btn-danger btn-sm" onclick="quickDelete(${h.id},'${h.date}')">🗑️</button>
+                    </div>`).join('');
+            }
+
+            function cancelHolidays() {
+                _selSet = new Set(_savedSet);
+                renderCalendar(); updatePendingBadge();
+                showToast('↺ Cambios descartados', 'info');
+            }
+
+            async function saveHolidays() {
+                const toAdd = [..._selSet].filter(d=>!_savedSet.has(d));
+                const toDel = [..._savedSet].filter(d=>!_selSet.has(d));
+                if (toAdd.length===0 && toDel.length===0) { showToast('Sin cambios pendientes','info'); return; }
+                const btn = document.getElementById('saveHBtn');
+                btn.disabled = true; btn.textContent = '⏳ Guardando...';
+                let errors = 0;
+                try {
+                    for(const date of toDel) {
+                        const h = _savedHols.find(h=>h.date===date);
+                        if (!h) continue;
+                        const r = await fetch('/api/holidays/'+h.id, { method:'DELETE', headers:{'Authorization':`Bearer ${token}`} });
+                        if (!r.ok) errors++;
+                    }
+                    for(const date of toAdd) {
+                        const r = await fetch('/api/holidays', { method:'POST', headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'}, body:JSON.stringify({date,name:'Feriado'}) });
+                        if (!r.ok) errors++;
+                    }
+                    await loadHolidays();
+                    if (errors > 0) showToast(`⚠️ Guardado con ${errors} error(es)`, 'error');
+                    else showToast('✅ Feriados actualizados correctamente');
+                } catch(e) { showToast('❌ Error de conexión', 'error'); }
+                finally { btn.disabled = false; btn.textContent = '💾 Guardar Feriados'; }
+            }
+
+            async function quickDelete(id, date) {
+                _selSet.delete(date);
+                const r = await fetch('/api/holidays/'+id, { method:'DELETE', headers:{'Authorization':`Bearer ${token}`} });
+                if (r.ok) { showToast('🗑️ Feriado eliminado'); await loadHolidays(); }
+                else showToast('❌ Error al eliminar', 'error');
+            }
+
+            // ── Blocklist ────────────────────────────────────────
+            let _blocklist = [];
+
+            async function loadBlocklist() {
+                try {
+                    const res = await fetch('/api/blocklist', { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!res.ok) throw new Error();
+                    _blocklist = await res.json();
+                    renderBlocklist();
+                } catch(e) {
+                    const el = document.getElementById('blocklistItems');
+                    if(el) el.innerHTML = '<div class="empty-state">❌ Error al cargar la lista</div>';
+                }
+            }
+
+            function renderBlocklist() {
+                const el = document.getElementById('blocklistItems');
+                if (!el) return;
+                if (!_blocklist.length) { el.innerHTML = '<div class="empty-state">✅ No hay números bloqueados</div>'; return; }
+                el.innerHTML = _blocklist.map(b => `
+                    <div class="block-row">
+                        <div class="block-info">
+                            <span class="block-phone">📵 ${b.phone_number}</span>
+                            ${b.reason ? `<span class="block-reason">${b.reason}</span>` : ''}
+                        </div>
+                        <button class="btn btn-danger btn-icon" onclick="unblock(${b.id},'${b.phone_number}')">🗑️ Desbloquear</button>
+                    </div>`).join('');
+            }
+
+            async function saveBlock() {
+                const phone  = document.getElementById('blPhone').value.trim();
+                const reason = document.getElementById('blReason').value.trim();
+                if (!phone) { showToast('Ingresá un número de teléfono','error'); return; }
+                const btn = document.getElementById('saveBlBtn');
+                btn.disabled = true; btn.textContent = '⏳ Bloqueando...';
+                try {
+                    const res = await fetch('/api/blocklist', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: phone, reason })
+                    });
+                    if (res.ok) { showToast('🚫 Número bloqueado'); clearBlockForm(); await loadBlocklist(); }
+                    else { const err = await res.json(); showToast('❌ '+(err.detail||'Error al bloquear'),'error'); }
+                } catch(e) { showToast('❌ Error de conexión','error'); }
+                finally { btn.disabled = false; btn.textContent = '🚫 Bloquear'; }
+            }
+
+            async function unblock(id, phone) {
+                if (!confirm('¿Desbloquear '+phone+'?')) return;
+                try {
+                    const res = await fetch('/api/blocklist/'+id, { method:'DELETE', headers:{'Authorization':`Bearer ${token}`} });
+                    if (res.ok) { showToast('✅ Número desbloqueado'); await loadBlocklist(); }
+                    else showToast('❌ Error al desbloquear','error');
+                } catch(e) { showToast('❌ Error de conexión','error'); }
+            }
+            function clearBlockForm() { document.getElementById('blPhone').value = ''; document.getElementById('blReason').value = ''; }
+
+            // ── Change Password Modal ────────────────────────────
+            function openChangePwModal() {
+                _userMenuOpen = false;
+                document.getElementById('userMenu').style.display = 'none';
+                document.getElementById('userChevron')?.classList.remove('open');
+                document.getElementById('oldPw').value     = '';
+                document.getElementById('newPw').value     = '';
+                document.getElementById('confirmPw').value = '';
+                document.getElementById('pwMsg').textContent = '';
+                document.getElementById('changePwModal').classList.add('show');
+            }
+            function closeChangePwModal() { document.getElementById('changePwModal').classList.remove('show'); }
+
+            async function savePassword() {
+                const oldPw     = document.getElementById('oldPw').value;
+                const newPw     = document.getElementById('newPw').value;
+                const confirmPw = document.getElementById('confirmPw').value;
+                const msgEl     = document.getElementById('pwMsg');
+                if (!oldPw||!newPw||!confirmPw) { msgEl.style.color='#f87171'; msgEl.textContent='Completá todos los campos'; return; }
+                if (newPw !== confirmPw)          { msgEl.style.color='#f87171'; msgEl.textContent='Las contraseñas no coinciden'; return; }
+                if (newPw.length < 6)             { msgEl.style.color='#f87171'; msgEl.textContent='Mínimo 6 caracteres'; return; }
+                const saveBtns = document.querySelectorAll('.pw-modal-content .btn-primary');
+                saveBtns.forEach(b => { b.disabled = true; b.textContent = '⏳ Guardando...'; });
+                try {
+                    const res = await fetch('/api/auth/change-password', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ old_password: oldPw, new_password: newPw })
+                    });
+                    if (res.ok) {
+                        msgEl.style.color = '#6ee7b7'; msgEl.textContent = '✅ Contraseña actualizada';
+                        showToast('✅ Contraseña actualizada exitosamente');
+                        setTimeout(() => closeChangePwModal(), 1500);
+                    } else {
+                        const err = await res.json();
+                        msgEl.style.color = '#f87171'; msgEl.textContent = '❌ '+(err.detail||'Contraseña actual incorrecta');
+                    }
+                } catch(e) { msgEl.style.color='#f87171'; msgEl.textContent='❌ Error de conexión'; }
+                finally { saveBtns.forEach(b => { b.disabled=false; b.textContent='💾 Guardar'; }); }
+            }
+
+            // ── Misc ─────────────────────────────────────────────
+            function logout() { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/login'; }
+
             async function loadVersion() {
                 try {
                     const res = await fetch('/version');
-                    if (res.ok) {
-                        const data = await res.json();
-                        const versionEl = document.getElementById('userPanelVersion');
-                        if (versionEl) {
-                            versionEl.textContent = data.version;
-                        }
-                    }
-                } catch (e) {
-                    console.log('Version not available:', e);
-                }
+                    if (res.ok) { const d = await res.json(); const el = document.getElementById('userPanelVersion'); if(el) el.textContent = d.version; }
+                } catch(e) {}
             }
-            
-            loadVersion();
-            loadStatus();
-            loadParkedList();
-            loadSchedList();
-            setInterval(loadStatus, 5000);
-            setInterval(loadParkedList, 15000);
         </script>
     </body>
     </html>
@@ -2029,10 +2339,12 @@ def get_user_config_page() -> str:
         function renderCalendar() {
             const yr = calDate.getFullYear();
             const mo = calDate.getMonth();
-            document.getElementById('calTitle').textContent = MONTHS[mo] + ' ' + yr;
+            const titleEl = document.getElementById('calTitle');
+            if (titleEl) titleEl.textContent = MONTHS[mo] + ' ' + yr;
 
             const todayStr = fmtDate(new Date());
             const grid = document.getElementById('calGrid');
+            if (!grid) return;
             grid.innerHTML = '';
 
             // Headers
@@ -2095,14 +2407,14 @@ def get_user_config_page() -> str:
             const total = toAdd + toDel;
             const badge = document.getElementById('pendingBadge');
             const text  = document.getElementById('pendingText');
-            if(total>0) {
-                badge.classList.remove('hidden');
-                const parts=[];
-                if(toAdd>0) parts.push(`+${toAdd} por agregar`);
-                if(toDel>0) parts.push(`-${toDel} por eliminar`);
-                text.textContent = parts.join('  ·  ');
+            if (total > 0) {
+                if (badge) badge.classList.remove('hidden');
+                const parts = [];
+                if (toAdd > 0) parts.push(`+${toAdd} por agregar`);
+                if (toDel > 0) parts.push(`-${toDel} por eliminar`);
+                if (text) text.textContent = parts.join('  ·  ');
             } else {
-                badge.classList.add('hidden');
+                if (badge) badge.classList.add('hidden');
             }
         }
 
@@ -2409,22 +2721,93 @@ def get_dashboard_page() -> str:
                 bottom: 0;
                 left: 0;
                 right: 0;
-                padding: 20px;
+                padding: 16px;
                 border-top: 1px solid rgba(226, 232, 240, 0.1);
                 background: rgba(15, 23, 42, 0.95);
-                text-align: center;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .sidebar-user {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 8px;
+                background: rgba(30, 41, 59, 0.4);
+                border-radius: 10px;
+                border: 1px solid rgba(226, 232, 240, 0.05);
+            }
+
+            .sidebar-user-avatar {
+                width: 32px;
+                height: 32px;
+                background: linear-gradient(135deg, #3b82f6, #06b6d4);
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 700;
+                color: white;
                 font-size: 0.85em;
+            }
+
+            .sidebar-user-info {
+                flex: 1;
+                text-align: left;
+                overflow: hidden;
+            }
+
+            .sidebar-user-name {
+                color: #f1f5f9;
+                font-weight: 600;
+                font-size: 0.9em;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .sidebar-user-role {
+                color: #64748b;
+                font-size: 0.75em;
+            }
+
+            .sidebar-logout-btn {
+                width: 100%;
+                padding: 8px;
+                background: rgba(239, 68, 68, 0.1);
+                border: 1px solid rgba(239, 68, 68, 0.2);
+                color: #fca5a5;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 0.85em;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                transition: all 0.3s ease;
+            }
+
+            .sidebar-logout-btn:hover {
+                background: rgba(239, 68, 68, 0.2);
+                border-color: rgba(239, 68, 68, 0.4);
+            }
+            
+            .sidebar-footer-info {
+                text-align: center;
+                font-size: 0.8em;
             }
             
             .sidebar-footer .company {
-                color: #cbd5e1;
+                color: #475569;
                 font-weight: 600;
-                margin-bottom: 4px;
+                margin-bottom: 2px;
             }
             
             .sidebar-footer .version {
-                color: #64748b;
-                font-size: 0.75em;
+                color: #334155;
+                font-size: 0.85em;
             }
             
             .main {
@@ -2766,6 +3149,184 @@ def get_dashboard_page() -> str:
                 transform: translateX(-50%) translateY(0);
                 opacity: 1;
             }
+
+            /* ── Config Tabs ── */
+            .config-tab-bar {
+                display: flex;
+                gap: 6px;
+                margin-bottom: 24px;
+                background: rgba(15, 23, 42, 0.7);
+                padding: 5px;
+                border-radius: 12px;
+                border: 1px solid rgba(226, 232, 240, 0.08);
+            }
+            .config-tab {
+                flex: 1;
+                padding: 10px 16px;
+                background: transparent;
+                border: none;
+                border-radius: 8px;
+                color: #94a3b8;
+                font-size: 0.92em;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            .config-tab:hover {
+                color: #e2e8f0;
+                background: rgba(59, 130, 246, 0.1);
+            }
+            .config-tab.active {
+                background: rgba(59, 130, 246, 0.22);
+                color: #60a5fa;
+            }
+            .config-tab-panel {
+                display: none;
+            }
+            .config-tab-panel.active {
+                display: block;
+                animation: fadeIn 0.3s ease;
+            }
+            .btn-danger {
+                background: rgba(239, 68, 68, 0.15);
+                border: 1px solid rgba(239, 68, 68, 0.4);
+                color: #fca5a5;
+            }
+            .btn-danger:hover {
+                background: rgba(239, 68, 68, 0.25);
+            }
+
+            /* ── ESTILOS CALENDARIO AVANZADO ── */
+            .hol-layout {
+                display: grid;
+                grid-template-columns: 1.2fr 0.8fr;
+                gap: 24px;
+                align-items: start;
+            }
+            @media (max-width: 992px) { .hol-layout { grid-template-columns: 1fr; } }
+            
+            .hol-cal-col { min-width: 0; }
+            .hol-list-col { min-width: 0; position: sticky; top: 20px; max-height: calc(100vh - 40px); display: flex; flex-direction: column; overflow: hidden; }
+            #holidaysList { overflow-y: auto; flex: 1; padding-right: 8px; margin-top: 10px; }
+
+            .cal-wrap {
+                background: rgba(30, 41, 59, 0.5);
+                border: 1px solid rgba(226, 232, 240, 0.1);
+                border-radius: 16px;
+                padding: 20px;
+                user-select: none;
+            }
+            .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+            .cal-title { font-size: 1.25em; font-weight: 700; color: #f1f5f9; text-transform: capitalize; }
+            .cal-nav { display: flex; gap: 8px; }
+            .cal-btn {
+                background: rgba(59, 130, 246, 0.1);
+                border: 1px solid rgba(59, 130, 246, 0.2);
+                color: #93c5fd;
+                padding: 6px 12px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 0.85em;
+                font-weight: 600;
+                transition: all 0.2s;
+            }
+            .cal-btn:hover { background: rgba(59, 130, 246, 0.2); }
+            
+            .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+            .cal-hdr { text-align: center; color: #64748b; font-size: 0.75em; font-weight: 700; text-transform: uppercase; padding: 8px 0; }
+            .cal-hdr.wknd { color: #f472b6; }
+            
+            .cal-cell {
+                aspect-ratio: 1;
+                background: rgba(15, 23, 42, 0.3);
+                border: 1px solid rgba(226, 232, 240, 0.05);
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 600;
+                font-size: 0.95em;
+                color: #f1f5f9;
+                cursor: pointer;
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                position: relative;
+            }
+            .cal-cell:not(.empty):hover {
+                transform: scale(1.08);
+                z-index: 2;
+                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+                border-color: rgba(59, 130, 246, 0.4);
+            }
+            .cal-cell.empty { background: transparent; border: none; cursor: default; }
+            .cal-cell.wknd { color: #f472b6; background: rgba(244, 114, 182, 0.05); }
+            .cal-cell.today { outline: 2px solid rgba(99,102,241,0.8); outline-offset: 1px; }
+
+            /* Estados del calendario */
+            .cal-cell.selected {
+                background: linear-gradient(135deg, #3b82f6, #2563eb);
+                border-color: #60a5fa;
+                color: white;
+                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            }
+            .cal-cell.pending {
+                background: linear-gradient(135deg, #f59e0b, #d97706);
+                border-color: #fbbf24;
+                color: white;
+                animation: pulse 2s infinite;
+            }
+            .cal-cell.removing {
+                background: rgba(239, 68, 68, 0.15);
+                border: 1px dashed #ef4444;
+                color: #fca5a5;
+                text-decoration: line-through;
+            }
+            
+            @keyframes pulse {
+                0% { opacity: 1; }
+                50% { opacity: 0.8; }
+                100% { opacity: 1; }
+            }
+
+            .cal-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 20px; font-size: 0.8em; color: #94a3b8; }
+            .cal-legend span { display: flex; align-items: center; gap: 6px; }
+            .leg-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+            .pending-badge {
+                background: rgba(245, 158, 11, 0.1);
+                border: 1px solid rgba(245, 158, 11, 0.3);
+                color: #fbbf24;
+                padding: 10px 16px;
+                border-radius: 10px;
+                margin-bottom: 16px;
+                font-size: 0.88em;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .pending-badge.hidden { display: none; }
+
+            /* Lista de feriados (derecha) */
+            .holiday-row {
+                background: rgba(30, 41, 59, 0.4);
+                border: 1px solid rgba(226, 232, 240, 0.05);
+                border-radius: 12px;
+                padding: 12px 16px;
+                margin-bottom: 8px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                transition: all 0.2s;
+            }
+            .holiday-row:hover { background: rgba(30, 41, 59, 0.6); border-color: rgba(226, 232, 240, 0.15); }
+            .holiday-info { display: flex; flex-direction: column; gap: 2px; }
+            .holiday-date { color: #f1f5f9; font-weight: 600; font-size: 0.95em; }
+            .holiday-name { color: #94a3b8; font-size: 0.85em; }
+            
+            .btn-danger.btn-sm { padding: 4px 8px; font-size: 0.85em; }
+            
+            .card-footer { border-top: 1px solid rgba(226, 232, 240, 0.05); padding-top: 20px; margin-top: 20px; display: flex; gap: 12px; }
+            .empty-state { text-align: center; color: #64748b; padding: 40px 20px; font-style: italic; font-size: 0.9em; }
         </style>
     </head>
     <body>
@@ -2776,24 +3337,32 @@ def get_dashboard_page() -> str:
             </div>
             
             <div class="nav-item active" onclick="switchSection('status')">📊 Estado</div>
-            <div class="nav-item" onclick="switchSection('users')">👥 Usuarios</div>
-            <div class="nav-item" onclick="switchSection('config')">⚙️ Configuración</div>
-            <div class="nav-item" onclick="switchSection('waha')">📡 WAHA</div>
-            <div class="nav-item" onclick="switchSection('menu')">📋 Editor Menú</div>
-            <div class="nav-item" onclick="switchSection('offhours')">🕐 Fuera de Hora</div>
             <div class="nav-item" onclick="switchSection('holidays')">📅 Feriados</div>
-            <div class="nav-item" onclick="switchSection('blocklist')">🚫 Bloqueados</div>
+            <div class="nav-item" onclick="switchSection('config')">⚙️ Configuración</div>
             
             <div class="sidebar-footer">
-                <div class="company">DOLAN SS - 2026</div>
-                <div class="version" id="dashboardVersion">v2.2.1</div>
+                <div class="sidebar-user" id="sidebarUserBox" style="display: none;">
+                    <div class="sidebar-user-avatar" id="userAvatar">A</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName">Admin</div>
+                        <div class="sidebar-user-role">Administrador</div>
+                    </div>
+                </div>
+                
+                <button class="sidebar-logout-btn" onclick="logout()">
+                    <span>🚪</span> Logout
+                </button>
+                
+                <div class="sidebar-footer-info">
+                    <div class="company" style="color: #64748b;">DOLAN SS</div>
+                    <div class="version" id="dashboardVersion" style="color: #475569;">v2.2.1</div>
+                </div>
             </div>
         </div>
         
         <div class="main">
             <div class="header">
                 <h1>Dashboard Administrativo</h1>
-                <button class="logout-btn" onclick="logout()">Desconectar</button>
             </div>
             
             <!-- ESTADO -->
@@ -2869,31 +3438,7 @@ def get_dashboard_page() -> str:
                 </div>
             </div>
             
-            <!-- USUARIOS -->
-            <div id="users" class="section">
-                <div class="card">
-                    <h2>👥 Gestión de Usuarios</h2>
-                    <div class="message" id="usersMessage"></div>
-                    <button class="btn btn-primary" onclick="openCreateUserModal()" style="margin-bottom: 20px;">➕ Crear Nuevo Usuario</button>
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
-                            <thead>
-                                <tr style="background: rgba(30, 41, 59, 0.5); border-bottom: 1px solid rgba(226, 232, 240, 0.1);">
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Usuario</th>
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Email</th>
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Rol</th>
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Activo</th>
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Pausa</th>
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="usersTable">
-                                <tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+            <!-- USUARIOS (modales globales, el contenido está en config/sistema) -->
             
             <!-- MODAL CREAR USUARIO -->
             <div class="modal" id="createUserModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 1000;">
@@ -2962,21 +3507,74 @@ def get_dashboard_page() -> str:
                 </div>
             </div>
             
-            <!-- CONFIGURACIÓN -->
+            <!-- CONFIGURACIÓN (panel con tabs) -->
             <div id="config" class="section">
-                <div class="card">
-                    <h2>⚙️ Configuración del Bot</h2>
-                    <div class="message" id="configMessage"></div>
-                    <form onsubmit="saveConfig(event)">
-                        <div class="form-group">
-                            <label>Nombre de la Solución</label>
-                            <input type="text" id="solutionName" placeholder="Clínica">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Título del Menú</label>
-                            <input type="text" id="menuTitle" placeholder="Menú Principal">
-                        </div>
+                <div class="config-tab-bar">
+                    <button class="config-tab active" onclick="switchConfigTab('chatbot', this)">📋 Chatbot</button>
+                    <button class="config-tab" onclick="switchConfigTab('sistema', this)">⚙️ Sistema</button>
+                    <button class="config-tab" onclick="switchConfigTab('usuarios', this)">👥 Usuarios</button>
+                    <button class="config-tab" onclick="switchConfigTab('bloqueos', this)">🚫 Bloqueos</button>
+                </div>
+
+                <!-- ══ TAB: CHATBOT → Editor de Menú + Fuera de Hora ══ -->
+                <div id="configTab-chatbot" class="config-tab-panel active">
+                    <div class="card">
+                        <h2>📋 Editor de Menú Principal</h2>
+                        <div class="message" id="menuMessage"></div>
+                        <form onsubmit="saveMenu(event)">
+                            <div class="form-group">
+                                <label>Contenido del Menú (Markdown)</label>
+                                <textarea id="menuContent" placeholder="# Menú Principal..." style="min-height: 400px;"></textarea>
+                            </div>
+                            <div class="buttons-group">
+                                <button type="submit" class="btn btn-primary">💾 Guardar Menú</button>
+                                <button type="button" class="btn btn-secondary" onclick="resetMenuEditor()">↺ Deshacer Cambios</button>
+                                <button type="button" class="btn btn-secondary" onclick="restoreMenuBackup()">⏮ Restaurar Versión Anterior</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h2>🕐 Mensaje Fuera de Hora</h2>
+                        <div class="message" id="offhoursMessage"></div>
+                        <form onsubmit="saveOffhours(event)">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="offhoursEnabled" onchange="toggleOffhoursState()">
+                                    ✓ Habilitar Fuera de Horario
+                                </label>
+                                <p style="color: #94a3b8; font-size: 0.85em; margin-top: 8px;">
+                                    Cuando está habilitado, responde con este mensaje fuera de horarios y feriados.
+                                </p>
+                            </div>
+                            <div class="form-group">
+                                <label>Mensaje Fuera de Horario</label>
+                                <textarea id="offhoursContent" placeholder="Lo sentimos, estamos fuera de horario..." style="min-height: 300px;"></textarea>
+                            </div>
+                            <div class="buttons-group">
+                                <button type="submit" class="btn btn-primary">💾 Guardar</button>
+                                <button type="button" class="btn btn-secondary" onclick="resetOffhoursEditor()">↺ Deshacer Cambios</button>
+                                <button type="button" class="btn btn-secondary" onclick="restoreOffhoursBackup()">⏮ Restaurar Versión Anterior</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- ══ TAB: SISTEMA → Config Bot + WAHA + Usuarios + Bloqueados ══ -->
+                <div id="configTab-sistema" class="config-tab-panel">
+                    <!-- Configuración del Bot -->
+                    <div class="card">
+                        <h2>⚙️ Configuración del Bot</h2>
+                        <div class="message" id="configMessage"></div>
+                        <form onsubmit="saveConfig(event)">
+                            <div class="form-group">
+                                <label>Nombre de la Solución</label>
+                                <input type="text" id="solutionName" placeholder="Clínica">
+                            </div>
+                            <div class="form-group">
+                                <label>Título del Menú</label>
+                                <input type="text" id="menuTitle" placeholder="Menú Principal">
+                            </div>
                         
                         <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
                             <h3 style="color: #f1f5f9; margin-bottom: 16px;">📅 Horarios Lunes - Viernes</h3>
@@ -3038,173 +3636,190 @@ def get_dashboard_page() -> str:
                         </div>
                         
                         <button type="submit" class="btn btn-primary">💾 Guardar Configuración</button>
-                    </form>
-                </div>
-            </div>
+                        </form>
+                    </div>
 
-            <!-- ESTADO DE WAHA -->
-            <div id="waha" class="section">
-                <div class="card">
-                    <h2>📡 Estado de WAHA</h2>
-                    <div id="wahaContent">
-                        <div style="text-align: center; padding: 40px;">
-                            <div class="spinner"></div>
-                            <p style="margin-top: 16px; color: #94a3b8;">Cargando información de WAHA...</p>
+                    <!-- WAHA -->
+                    <div class="card" style="margin-top: 24px;">
+                        <h2>📡 Estado de WAHA</h2>
+                        <div id="wahaContent">
+                            <div style="text-align: center; padding: 40px;">
+                                <div class="spinner"></div>
+                                <p style="margin-top: 16px; color: #94a3b8;">Cargando información de WAHA...</p>
+                            </div>
+                        </div>
+                        <div style="margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
+                            <button onclick="refreshWahaStatus()" class="btn btn-primary">🔄 Actualizar</button>
+                            <button onclick="connectWaha()" class="btn btn-secondary" id="btnConnectWaha">🔌 Conectar/Reiniciar</button>
+                            <button onclick="logoutWaha()" class="btn btn-danger" id="btnLogoutWaha">🚪 Logout (Borrar QR)</button>
+                        </div>
+                        <div style="margin-top: 20px;">
+                            <h3 style="color: #f1f5f9; margin-bottom: 10px; font-size: 1em;">📊 Información de la Sesión</h3>
+                            <pre id="wahaRawInfo" style="background: rgba(0,0,0,0.3); padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 0.82em; color: #94a3b8;"></pre>
                         </div>
                     </div>
-                    <div style="margin-top: 24px; display: flex; gap: 12px;">
-                        <button onclick="refreshWahaStatus()" class="btn btn-primary">🔄 Actualizar</button>
-                        <button onclick="connectWaha()" class="btn btn-secondary" id="btnConnectWaha">🔌 Conectar/Reiniciar</button>
-                        <button onclick="logoutWaha()" class="btn btn-danger" id="btnLogoutWaha">🚪 Logout (Borrar QR)</button>
+
+                </div>
+                <!-- fin configTab-sistema -->
+
+                <!-- ══ TAB: USUARIOS ══ -->
+                <div id="configTab-usuarios" class="config-tab-panel">
+                    <div class="card">
+                        <h2>👥 Gestión de Usuarios</h2>
+                        <div class="message" id="usersMessage"></div>
+                        <button class="btn btn-primary" onclick="openCreateUserModal()" style="margin-bottom: 20px;">➕ Crear Nuevo Usuario</button>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
+                                <thead>
+                                    <tr style="background: rgba(30, 41, 59, 0.5); border-bottom: 1px solid rgba(226, 232, 240, 0.1);">
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Usuario</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Email</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Rol</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Activo</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Pausa</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTable">
+                                    <tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
-                <div class="card" style="margin-top: 24px;">
-                    <h3>📊 Información de la Sesión</h3>
-                    <pre id="wahaRawInfo" style="background: rgba(0,0,0,0.3); padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 0.85em; color: #94a3b8;"></pre>
-                </div>
-            </div>
+                <!-- ══ TAB: BLOQUEOS ══ -->
+                <div id="configTab-bloqueos" class="config-tab-panel">
+                    <div class="card">
+                        <h2>🚫 Bloqueos</h2>
+                        <div class="message" id="blocklistMessage"></div>
 
-            <!-- EDITOR DE MENÚ -->
-            <div id="menu" class="section">
-                <div class="card">
-                    <h2>📋 Editor de Menú Principal</h2>
-                    <div class="message" id="menuMessage"></div>
-                    <form onsubmit="saveMenu(event)">
-                        <div class="form-group">
-                            <label>Contenido del Menú (Markdown)</label>
-                            <textarea id="menuContent" placeholder="# Menú Principal..." style="min-height: 400px;"></textarea>
-                        </div>
-                        <div class="buttons-group">
-                            <button type="submit" class="btn btn-primary">💾 Guardar Menú</button>
-                            <button type="button" class="btn btn-secondary" onclick="resetMenuEditor()">↺ Deshacer Cambios</button>
-                            <button type="button" class="btn btn-secondary" onclick="restoreMenuBackup()">⏮ Restaurar Versión Anterior</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-            
-            <!-- MENÚ FUERA DE HORA -->
-            <div id="offhours" class="section">
-                <div class="card">
-                    <h2>🕐 Menú Fuera de Hora</h2>
-                    <div class="message" id="offhoursMessage"></div>
-                    <form onsubmit="saveOffhours(event)">
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="offhoursEnabled" onchange="toggleOffhoursState()"> 
-                                ✓ Habilitar Fuera de Horario
-                            </label>
-                            <p style="color: #94a3b8; font-size: 0.85em; margin-top: 8px;">
-                                Cuando está habilitado, responde con este mensaje fuera de horarios y feriados.
+                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                            <h3 style="color: #f1f5f9; margin-bottom: 8px;">🌍 Filtro por País — Lista Blanca</h3>
+                            <p style="color: #94a3b8; font-size: 0.85em; margin: 0 0 12px 0; line-height: 1.5;">
+                                Cuando está <strong style="color:#22d3ee;">activo</strong>, el bot <strong style="color:#f1f5f9;">SOLO responderá</strong> a
+                                números cuyos primeros dígitos coincidan con los códigos indicados. Cualquier número de otro
+                                país será ignorado silenciosamente.<br>
+                                <em>Ejemplo: <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">+54</code>
+                                → solo números de Argentina; <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">+54, +598</code>
+                                → Argentina y Uruguay.</em>
                             </p>
+                            <div class="form-group">
+                                <label>Códigos de País permitidos (separados por coma, ej: +54, +55)</label>
+                                <input type="text" id="countryFilter" placeholder="+54, +55, +56">
+                            </div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="countryFilterEnabled" style="width: auto; margin-right: 8px;">
+                                <span>✅ Activar filtro: solo responder a números de estos países</span>
+                            </label>
                         </div>
-                        <div class="form-group">
-                            <label>Mensaje Fuera de Horario</label>
-                            <textarea id="offhoursContent" placeholder="Lo sentimos, estamos fuera de horario..." style="min-height: 300px;"></textarea>
+
+                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                            <h3 style="color: #f1f5f9; margin-bottom: 8px;">📍 Filtro por Localidad — Lista Blanca</h3>
+                            <p style="color: #94a3b8; font-size: 0.85em; margin: 0 0 12px 0; line-height: 1.5;">
+                                Cuando está <strong style="color:#22d3ee;">activo</strong>, el bot <strong style="color:#f1f5f9;">SOLO responderá</strong> a
+                                números que contengan alguno de los patrones indicados en cualquier parte del número.
+                                Permite restringir por código de área local dentro de un mismo país.<br>
+                                <em>Ejemplo: <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">351</code>
+                                → solo responde a números con el código de área 351 (Córdoba, Argentina).</em>
+                            </p>
+                            <div class="form-group">
+                                <label>Patrones de Localidad permitidos (separados por coma)</label>
+                                <input type="text" id="areaFilter" placeholder="351, 011, 0351">
+                            </div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="areaFilterEnabled" style="width: auto; margin-right: 8px;">
+                                <span>✅ Activar filtro: solo responder a números de estas localidades</span>
+                            </label>
                         </div>
-                        <div class="buttons-group">
-                            <button type="submit" class="btn btn-primary">💾 Guardar</button>
-                            <button type="button" class="btn btn-secondary" onclick="resetOffhoursEditor()">↺ Deshacer Cambios</button>
-                            <button type="button" class="btn btn-secondary" onclick="restoreOffhoursBackup()">⏮ Restaurar Versión Anterior</button>
+
+                        <div style="margin-bottom: 24px;">
+                            <button class="btn btn-primary" onclick="saveFilters()" style="width: 100%;">💾 Guardar Filtros</button>
                         </div>
-                    </form>
+
+                        <form onsubmit="blockNumber(event)" style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">🔒 Bloquear Número Manual</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Número de WhatsApp</label>
+                                    <input type="text" id="blockNumber" placeholder="5491234567890 o +5491234567890">
+                                </div>
+                                <div class="form-group">
+                                    <label>Razón</label>
+                                    <input type="text" id="blockReason" placeholder="Ej: Spam">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">🚫 Bloquear</button>
+                        </form>
+
+                        <h3 style="color: #f1f5f9; margin-bottom: 12px;">📋 Lista de Bloqueados</h3>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background: rgba(30, 41, 59, 0.5); border-bottom: 1px solid rgba(226, 232, 240, 0.1);">
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Número</th>
+                                        <th style="padding: 12px; text-align: left; color: #cbd5e1;">Razón</th>
+                                        <th style="padding: 12px; text-align: right; color: #cbd5e1;">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="blocklistTable">
+                                    <tr><td colspan="3" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
-            
-            <!-- FERIADOS -->
+            <!-- fin #config -->
+
+            <!-- FERIADOS (sección top-level) -->
             <div id="holidays" class="section">
-                <div class="card">
-                    <h2>📅 Calendario de Feriados</h2>
-                    <div class="message" id="holidaysMessage"></div>
-                    
-                    <div class="calendar">
-                        <div class="calendar-header">
-                            <button class="btn btn-secondary" style="padding: 4px 12px;" onclick="prevMonth()">◀</button>
-                            <h3 id="calendarMonth">Marzo 2026</h3>
-                            <button class="btn btn-secondary" style="padding: 4px 12px;" onclick="nextMonth()">▶</button>
+                <div class="hol-layout">
+                    <!-- Columna izquierda: Calendario -->
+                    <div class="card hol-cal-col">
+                        <h2>📅 Calendario de Feriados</h2>
+                        <p style="color:#64748b;font-size:0.88em;margin-bottom:16px;">
+                            Hacé clic en un día para marcarlo como feriado. Los días marcados en
+                            <strong style="color:#60a5fa;">azul</strong> ya están guardados;
+                            en <strong style="color:#fcd34d;">amarillo</strong> están pendientes de guardar;
+                            en <strong style="color:#f87171;">rojo tachado</strong> serán eliminados.
+                            Sábados y domingos se muestran en <strong style="color:#f472b6;">rosa</strong>.
+                        </p>
+
+                        <div id="pendingBadge" class="pending-badge hidden">
+                            ⚠️ <span id="pendingText">0 cambios pendientes</span>
                         </div>
-                        <div class="calendar-grid" id="calendarGrid"></div>
+
+                        <div class="cal-wrap">
+                            <div class="cal-header">
+                                <div class="cal-nav">
+                                    <button class="cal-btn" onclick="calPrev()">◀ Ant</button>
+                                    <button class="cal-btn" onclick="calToday()">Hoy</button>
+                                    <button class="cal-btn" onclick="calNext()">Sig ▶</button>
+                                </div>
+                                <div class="cal-title" id="calTitle">—</div>
+                            </div>
+                            <div class="cal-grid" id="calGrid"></div>
+                            <div class="cal-legend">
+                                <span><div class="leg-dot" style="background:linear-gradient(135deg,#3b82f6,#06b6d4);"></div> Feriado guardado</span>
+                                <span><div class="leg-dot" style="background:linear-gradient(135deg,#f59e0b,#d97706);"></div> Por guardar</span>
+                                <span><div class="leg-dot" style="background:rgba(239,68,68,0.3);border:1px solid #f87171;"></div> Por eliminar</span>
+                                <span><div class="leg-dot" style="background:transparent;outline:2px solid rgba(99,102,241,0.8);outline-offset:1px;"></div> Hoy</span>
+                                <span><div class="leg-dot" style="background:rgba(15,23,42,0.5);border:1px solid rgba(226,232,240,0.1);"></div> <span style="color:#f472b6">Fin de semana</span></span>
+                            </div>
+                        </div>
+
+                        <!-- Guardar / Cancelar -->
+                        <div class="card-footer">
+                            <button class="btn btn-secondary" onclick="cancelHolidays()">✖ Cancelar cambios</button>
+                            <button class="btn btn-primary" id="saveHBtn" onclick="saveHolidays()">💾 Guardar Feriados</button>
+                        </div>
                     </div>
-                    
-                    <button class="btn btn-primary" onclick="saveHolidays()" style="width: 100%; margin-bottom: 16px;">💾 Guardar Feriados</button>
-                    
-                    <form onsubmit="addHolidayManual(event)" style="margin-top: 20px;">
-                        <h3 style="color: #f1f5f9; margin-bottom: 12px;">Agregar Manual</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Fecha (YYYY-MM-DD)</label>
-                                <input type="date" id="holidayDate">
-                            </div>
-                            <div class="form-group">
-                                <label>Nombre</label>
-                                <input type="text" id="holidayName" placeholder="Ej: Navidad">
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary">➕ Agregar Feriado</button>
-                    </form>
-                </div>
-            </div>
-            
-            <!-- BLOQUEADOS -->
-            <div id="blocklist" class="section">
-                <div class="card">
-                    <h2>🚫 Números Bloqueados y Filtros</h2>
-                    <div class="message" id="blocklistMessage"></div>
-                    
-                    <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                        <h3 style="color: #f1f5f9; margin-bottom: 12px;">🌍 Filtro por País</h3>
-                        <div class="form-group">
-                            <label>Códigos de País (separados por coma, ej: +54, +55)</label>
-                            <input type="text" id="countryFilter" placeholder="+54, +55, +56">
-                        </div>
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="checkbox" id="countryFilterEnabled" style="width: auto; margin-right: 8px;">
-                            <span>Aplicar filtro: rechazar solo números con estos países</span>
-                        </label>
-                    </div>
-                    
-                    <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                        <h3 style="color: #f1f5f9; margin-bottom: 12px;">📍 Filtro por Localidad</h3>
-                        <div class="form-group">
-                            <label>Patrones de Localidad (separados por coma)</label>
-                            <input type="text" id="areaFilter" placeholder="(XXX), [XXX]">
-                        </div>
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="checkbox" id="areaFilterEnabled" style="width: auto; margin-right: 8px;">
-                            <span>Aplicar filtro: rechazar solo números con estas áreas</span>
-                        </label>
-                    </div>
-                    
-                    <form onsubmit="blockNumber(event)" style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-                        <h3 style="color: #f1f5f9; margin-bottom: 12px;">🔒 Bloquear Número Manual</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Número de WhatsApp</label>
-                                <input type="text" id="blockNumber" placeholder="5491234567890 o +5491234567890">
-                            </div>
-                            <div class="form-group">
-                                <label>Razón</label>
-                                <input type="text" id="blockReason" placeholder="Ej: Spam">
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary">🚫 Bloquear</button>
-                    </form>
-                    
-                    <h3 style="color: #f1f5f9; margin-bottom: 12px;">📋 Lista de Bloqueados</h3>
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background: rgba(30, 41, 59, 0.5); border-bottom: 1px solid rgba(226, 232, 240, 0.1);">
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Número</th>
-                                    <th style="padding: 12px; text-align: left; color: #cbd5e1;">Razón</th>
-                                    <th style="padding: 12px; text-align: right; color: #cbd5e1;">Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody id="blocklistTable">
-                                <tr><td colspan="3" style="text-align: center; padding: 20px; color: #94a3b8;">Cargando...</td></tr>
-                            </tbody>
-                        </table>
+
+                    <!-- Columna derecha: Lista resumen -->
+                    <div class="card hol-list-col">
+                        <h2>📋 Feriados Guardados</h2>
+                        <div id="holidaysList"><div class="empty-state">Cargando...</div></div>
                     </div>
                 </div>
             </div>
@@ -3300,6 +3915,26 @@ def get_dashboard_page() -> str:
         <script>
             const API_URL = '/api';
             const token = localStorage.getItem('token');
+            const userStr = localStorage.getItem('user');
+
+            // Cargar info de usuario en la sidebar
+            if (userStr) {
+                try {
+                    const user = JSON.parse(userStr);
+                    const userNameEl = document.getElementById('sidebarUserName');
+                    const userAvatarEl = document.getElementById('userAvatar');
+                    const userBoxEl = document.getElementById('sidebarUserBox');
+                    
+                    if (userNameEl) userNameEl.textContent = user.full_name || user.username || 'Usuario';
+                    if (userAvatarEl) {
+                        const name = user.full_name || user.username || 'U';
+                        userAvatarEl.textContent = name.charAt(0).toUpperCase();
+                    }
+                    if (userBoxEl) userBoxEl.style.display = 'flex';
+                } catch (e) {
+                    console.error('Error parsing user data', e);
+                }
+            }
             
             // Variables para rastrear cambios de estado
             let lastConnectedStatus = null;
@@ -3347,7 +3982,6 @@ def get_dashboard_page() -> str:
                         console.error('[STATUS_POLL] Error:', e);
                     }
                 }, 8000);
-                const userStr = localStorage.getItem('user');
                 
                 if (!token) {
                     window.location.href = '/login';
@@ -3357,17 +3991,19 @@ def get_dashboard_page() -> str:
                 try {
                     const user = JSON.parse(userStr);
                     if (!user.is_admin) {
-                        // Usuario sin permisos - redirigir a user-panel
                         window.location.href = '/user-panel';
                         return;
                     }
                 } catch (e) {
-                    // Error parsing user data
                     window.location.href = '/login';
                     return;
                 }
                 
                 refresh();
+                loadAdminParkedList();
+                loadAdminSchedList();
+                loadHolidays();
+                renderCalendar();
             });
             
             let currentMonth = new Date();
@@ -3378,22 +4014,271 @@ def get_dashboard_page() -> str:
             
             function switchSection(section) {
                 document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-                document.getElementById(section).classList.add('active');
-                event.target.classList.add('active');
-                loadSectionData(section);
+                document.querySelectorAll('.nav-item.active').forEach(n => n.classList.remove('active'));
+                
+                const targetSection = document.getElementById(section);
+                if (targetSection) {
+                    targetSection.classList.add('active');
+                }
+                
+                // Buscar el nav-item que corresponde a esta sección
+                const navItems = document.querySelectorAll('.nav-item');
+                navItems.forEach(n => {
+                    const oc = n.getAttribute('onclick');
+                    if (oc && oc.includes(`'${section}'`)) {
+                        n.classList.add('active');
+                    }
+                });
+
+                if (section === 'holidays') { 
+                    loadHolidays(); 
+                    renderCalendar(); 
+                }
+                else if (section === 'status') refresh();
+            }
+
+            // ── Toast ───────────────────────────────────────────────
+            function showToast(msg, type = 'success') {
+                const t = document.getElementById('toast') || document.createElement('div');
+                if (!document.getElementById('toast')) {
+                    t.id = 'toast';
+                    t.className = 'wa-toast';
+                    document.body.appendChild(t);
+                }
+                t.textContent = msg;
+                t.style.background = type === 'success' ? '#16a34a' : (type === 'error' ? '#dc2626' : '#3b82f6');
+                t.className = 'wa-toast show';
+                setTimeout(() => t.classList.remove('show'), 3500);
+            }
+
+            // ══════════════════════════════════════════════════════
+            //  CALENDARIO AVANZADO
+            // ══════════════════════════════════════════════════════
+            let calDate      = new Date();
+            let _savedHols   = [];        // [{id, date, name}]
+            let _savedSet    = new Set(); // fechas en BD
+            let _selSet      = new Set(); // fechas seleccionadas UI
+
+            const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                            'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const WDAYS  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+            function calPrev()  { calDate.setMonth(calDate.getMonth()-1); renderCalendar(); }
+            function calNext()  { calDate.setMonth(calDate.getMonth()+1); renderCalendar(); }
+            function calToday() { calDate = new Date(); renderCalendar(); }
+
+            function fmtDate(d) {
+                return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+            }
+            function fmtParts(y,m,d) {
+                return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+            }
+            function fmtHuman(s) {
+                if(!s) return '';
+                const [y,m,d]=s.split('-'); return d+'/'+m+'/'+y;
+            }
+
+            function renderCalendar() {
+                const yr = calDate.getFullYear();
+                const mo = calDate.getMonth();
+                const titleEl = document.getElementById('calTitle');
+                if(!titleEl) return;
+                titleEl.textContent = MONTHS[mo] + ' ' + yr;
+
+                const todayStr = fmtDate(new Date());
+                const grid = document.getElementById('calGrid');
+                if(!grid) return;
+                grid.innerHTML = '';
+
+                WDAYS.forEach((d,i) => {
+                    const h = document.createElement('div');
+                    h.className = 'cal-hdr' + (i===0||i===6?' wknd':'');
+                    h.textContent = d;
+                    grid.appendChild(h);
+                });
+
+                const firstDow = new Date(yr, mo, 1).getDay();
+                const daysInMo = new Date(yr, mo+1, 0).getDate();
+
+                for(let i=0; i<firstDow; i++) {
+                    const e=document.createElement('div'); e.className='cal-cell empty'; grid.appendChild(e);
+                }
+
+                for(let d=1; d<=daysInMo; d++) {
+                    const ds    = fmtParts(yr, mo+1, d);
+                    const dow   = new Date(yr,mo,d).getDay();
+                    const isWkd = dow===0||dow===6;
+                    const inDB  = _savedSet.has(ds);
+                    const inSel = _selSet.has(ds);
+                    const isToday = ds === todayStr;
+
+                    const cell = document.createElement('div');
+                    let cls = 'cal-cell';
+                    if(isWkd) cls += ' wknd';
+                    if(isToday) cls += ' today';
+
+                    if(inDB && inSel)      cls += ' selected';
+                    else if(!inDB && inSel) cls += ' pending';
+                    else if(inDB && !inSel) cls += ' removing';
+
+                    cell.className = cls;
+                    cell.textContent = d;
+
+                    if(inDB && inSel) cell.title = (_savedHols.find(h=>h.date===ds)?.name||'Feriado guardado');
+                    else if(!inDB && inSel) cell.title = 'Nuevo feriado — pendiente de guardar';
+                    else if(inDB && !inSel) cell.title = 'Se eliminará al guardar';
+                    else if(isWkd) cell.title = dow===6?'Sábado':'Domingo';
+
+                    cell.onclick = () => {
+                        if(_selSet.has(ds)) _selSet.delete(ds);
+                        else _selSet.add(ds);
+                        renderCalendar();
+                        updatePendingBadge();
+                    };
+                    grid.appendChild(cell);
+                }
+            }
+
+            function updatePendingBadge() {
+                const toAdd = [..._selSet].filter(d=>!_savedSet.has(d)).length;
+                const toDel = [..._savedSet].filter(d=>!_selSet.has(d)).length;
+                const total = toAdd + toDel;
+                const badge = document.getElementById('pendingBadge');
+                const text  = document.getElementById('pendingText');
+                if(!badge || !text) return;
+                if(total>0) {
+                    badge.classList.remove('hidden');
+                    const parts=[];
+                    if(toAdd>0) parts.push(`+${toAdd} por agregar`);
+                    if(toDel>0) parts.push(`-${toDel} por eliminar`);
+                    text.textContent = parts.join('  ·  ');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            }
+
+            async function loadHolidays() {
+                try {
+                    const res = await fetch('/api/holidays', {headers:{'Authorization':`Bearer ${token}`}});
+                    if(!res.ok) throw new Error('HTTP '+res.status);
+                    _savedHols = await res.json();
+                    _savedHols.sort((a,b)=>a.date.localeCompare(b.date));
+                    _savedSet = new Set(_savedHols.map(h=>h.date));
+                    _selSet   = new Set(_savedSet);
+                    updatePendingBadge();
+                    renderCalendar();
+                    renderHolidayList();
+                } catch(e) {
+                    const listEl = document.getElementById('holidaysList');
+                    if(listEl) listEl.innerHTML='<div class="empty-state">❌ Error al cargar feriados</div>';
+                }
+            }
+
+            function renderHolidayList() {
+                const el = document.getElementById('holidaysList');
+                if(!el) return;
+                if(!_savedHols.length) {
+                    el.innerHTML='<div class="empty-state">📭 No hay feriados guardados</div>'; return;
+                }
+                el.innerHTML = _savedHols.map(h => `
+                    <div class="holiday-row">
+                        <div class="holiday-info">
+                            <span class="holiday-date">📅 ${fmtHuman(h.date)}</span>
+                            <span class="holiday-name">${h.name||'Feriado'}</span>
+                        </div>
+                        <button class="btn btn-danger btn-sm" onclick="quickDelete(${h.id},'${h.date}')">🗑️</button>
+                    </div>
+                `).join('');
+            }
+
+            function cancelHolidays() {
+                _selSet = new Set(_savedSet);
+                renderCalendar();
+                updatePendingBadge();
+                showToast('↺ Cambios descartados', 'info');
+            }
+
+            async function saveHolidays() {
+                const toAdd = [..._selSet].filter(d=>!_savedSet.has(d));
+                const toDel = [..._savedSet].filter(d=>!_selSet.has(d));
+
+                if(toAdd.length===0 && toDel.length===0) {
+                    showToast('Sin cambios pendientes', 'info'); return;
+                }
+
+                const btn = document.getElementById('saveHBtn');
+                if(btn) { btn.disabled=true; btn.textContent='⏳ Guardando...'; }
+                let errors=0;
+                try {
+                    for(const date of toDel) {
+                        const h = _savedHols.find(h=>h.date===date);
+                        if(!h) continue;
+                        const r = await fetch('/api/holidays/'+h.id, {
+                            method:'DELETE', headers:{'Authorization':`Bearer ${token}`}
+                        });
+                        if(!r.ok) errors++;
+                    }
+                    for(const date of toAdd) {
+                        const r = await fetch('/api/holidays', {
+                            method:'POST',
+                            headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
+                            body: JSON.stringify({date, name:'Feriado'})
+                        });
+                        if(!r.ok) errors++;
+                    }
+                    await loadHolidays();
+                    if(errors>0) showToast(`⚠️ Guardado con ${errors} error(es)`, 'error');
+                    else showToast('✅ Feriados actualizados correctamente');
+                } catch(e) {
+                    showToast('❌ Error de conexión', 'error');
+                } finally {
+                    if(btn) { btn.disabled=false; btn.textContent='💾 Guardar Feriados'; }
+                }
+            }
+
+            async function quickDelete(id, date) {
+                if(!confirm('¿Eliminar feriado?')) return;
+                const r = await fetch('/api/holidays/'+id, {
+                    method:'DELETE', headers:{'Authorization':`Bearer ${token}`}
+                });
+                if(r.ok) {
+                    showToast('🗑️ Feriado eliminado');
+                    await loadHolidays();
+                } else {
+                    showToast('❌ Error al eliminar', 'error');
+                }
+            }
+            
+            let currentConfigTab = 'chatbot';
+
+            function switchConfigTab(tab, btn) {
+                currentConfigTab = tab;
+                document.querySelectorAll('.config-tab-panel').forEach(p => p.classList.remove('active'));
+                document.querySelectorAll('.config-tab').forEach(b => b.classList.remove('active'));
+                document.getElementById('configTab-' + tab).classList.add('active');
+                btn.classList.add('active');
+                loadConfigTabData(tab);
+            }
+
+            function loadConfigTabData(tab) {
+                if (tab === 'chatbot') {
+                    loadMenu();
+                    loadOffhours();
+                } else if (tab === 'sistema') {
+                    loadConfig();
+                    refreshWahaStatus();
+                } else if (tab === 'usuarios') {
+                    loadUsers();
+                } else if (tab === 'bloqueos') {
+                    loadBlocklist();
+                }
             }
             
             async function loadSectionData(section) {
                 switch(section) {
                     case 'status': refresh(); break;
-                    case 'users': loadUsers(); break;
-                    case 'config': loadConfig(); break;
-                    case 'waha': refreshWahaStatus(); break;
-                    case 'menu': loadMenu(); break;
-                    case 'offhours': loadOffhours(); break;
                     case 'holidays': loadHolidays(); break;
-                    case 'blocklist': loadBlocklist(); break;
+                    case 'config': loadConfigTabData(currentConfigTab); break;
                 }
             }
             
@@ -3999,13 +4884,14 @@ def get_dashboard_page() -> str:
             }
 
             async function loadUsers() {
+                const tbody = document.querySelector('#usersTable');
+                if (!tbody) return;
                 try {
                     const res = await fetch(`${API_URL}/admin/users`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const users = await res.json();
-                    
-                    const tbody = document.querySelector('#usersTable');
                     tbody.innerHTML = users.map(u => `
                         <tr style="border-bottom: 1px solid rgba(226, 232, 240, 0.05);">
                             <td style="padding: 12px; color: #cbd5e1;">${u.username}</td>
@@ -4067,6 +4953,15 @@ def get_dashboard_page() -> str:
                     document.getElementById('sunEnabled').checked = sunEnabled;
                     document.getElementById('sunFields').style.display = sunEnabled ? '' : 'none';
                     document.getElementById('debugMode').checked = !!config.debug_mode;
+                    // Bloqueados: filtros
+                    const cfEl = document.getElementById('countryFilter');
+                    const afEl = document.getElementById('areaFilter');
+                    const cfeEl = document.getElementById('countryFilterEnabled');
+                    const afeEl = document.getElementById('areaFilterEnabled');
+                    if (cfEl) cfEl.value = config.country_codes || '';
+                    if (afEl) afEl.value = config.area_codes || '';
+                    if (cfeEl) cfeEl.checked = !!config.country_filter_enabled;
+                    if (afeEl) afeEl.checked = !!config.area_filter_enabled;
                 } catch (error) {
                     console.error('Error loading config:', error);
                 }
@@ -4293,110 +5188,6 @@ def get_dashboard_page() -> str:
                 setTimeout(() => msg.classList.remove('show'), 2000);
             }
             
-            function renderCalendar() {
-                const year = currentMonth.getFullYear();
-                const month = currentMonth.getMonth();
-                
-                document.getElementById('calendarMonth').textContent = currentMonth.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' });
-                
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const daysInMonth = lastDay.getDate();
-                const startingDayOfWeek = firstDay.getDay();
-                
-                let calendarHTML = '';
-                const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sab'];
-                days.forEach(day => {
-                    calendarHTML += `<div class="calendar-day-header">${day}</div>`;
-                });
-                
-                for (let i = 0; i < startingDayOfWeek; i++) {
-                    calendarHTML += '<div class="calendar-day other-month"></div>';
-                }
-                
-                for (let day = 1; day <= daysInMonth; day++) {
-                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                    const isMarked = selectedDates.has(dateStr);
-                    calendarHTML += `
-                        <div class="calendar-day ${isMarked ? 'marked' : ''}" onclick="toggleHolidayDate('${dateStr}')" style="color: ${isMarked ? 'white' : '#f1f5f9'};">
-                            ${day}
-                        </div>
-                    `;
-                }
-                
-                document.getElementById('calendarGrid').innerHTML = calendarHTML;
-            }
-            
-            function prevMonth() {
-                currentMonth.setMonth(currentMonth.getMonth() - 1);
-                renderCalendar();
-            }
-            
-            function nextMonth() {
-                currentMonth.setMonth(currentMonth.getMonth() + 1);
-                renderCalendar();
-            }
-            
-            function toggleHolidayDate(dateStr) {
-                if (selectedDates.has(dateStr)) {
-                    selectedDates.delete(dateStr);
-                } else {
-                    selectedDates.add(dateStr);
-                }
-                renderCalendar();
-            }
-            
-            async function loadHolidays() {
-                try {
-                    const res = await fetch(`${API_URL}/holidays`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const holidays = await res.json();
-                    
-                    selectedDates.clear();
-                    holidays.forEach(h => {
-                        selectedDates.add(h.date);
-                    });
-                    
-                    currentMonth = new Date();
-                    renderCalendar();
-                } catch (error) {
-                    console.error('Error:', error);
-                }
-            }
-            
-            async function saveHolidays() {
-                try {
-                    const holidaysArray = Array.from(selectedDates).map(date => ({
-                        date: date,
-                        name: 'Feriado'
-                    }));
-                    
-                    // Aquí idealmente llamarías a un endpoint para guardar todos los feriados de una vez
-                    // Por ahora, guardo cada uno individualmente
-                    for (const h of holidaysArray) {
-                        await fetch(`${API_URL}/holidays`, {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                date: h.date,
-                                name: h.name
-                            })
-                        });
-                    }
-                    
-                    const msg = document.getElementById('holidaysMessage');
-                    msg.textContent = '✅ Feriados guardados correctamente';
-                    msg.className = 'message show success';
-                    setTimeout(() => msg.classList.remove('show'), 3000);
-                } catch (error) {
-                    console.error('Error:', error);
-                }
-            }
-            
             async function addHolidayManual(e) {
                 e.preventDefault();
                 try {
@@ -4422,6 +5213,43 @@ def get_dashboard_page() -> str:
                 }
             }
             
+            async function saveFilters() {
+                const messageEl = document.getElementById('blocklistMessage');
+                try {
+                    const country_codes = document.getElementById('countryFilter').value.trim();
+                    const area_codes = document.getElementById('areaFilter').value.trim();
+                    const country_filter_enabled = document.getElementById('countryFilterEnabled').checked;
+                    const area_filter_enabled = document.getElementById('areaFilterEnabled').checked;
+
+                    messageEl.innerHTML = '<div style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 12px; border-radius: 8px; border-left: 4px solid #3b82f6;">⏳ Guardando filtros...</div>';
+
+                    const res = await fetch(`${API_URL}/config`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            country_filter_enabled,
+                            country_codes: country_codes || null,
+                            area_filter_enabled,
+                            area_codes: area_codes || null
+                        })
+                    });
+
+                    if (res.ok) {
+                        messageEl.innerHTML = '<div style="background: rgba(34, 197, 94, 0.2); color: #86efac; padding: 12px; border-radius: 8px; border-left: 4px solid #22c55e;">✅ Filtros guardados correctamente</div>';
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        messageEl.innerHTML = `<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">❌ Error al guardar: ${err.detail || res.status}</div>`;
+                    }
+                    setTimeout(() => { if (messageEl) messageEl.innerHTML = ''; }, 4000);
+                } catch (error) {
+                    console.error('Error saving filters:', error);
+                    messageEl.innerHTML = `<div style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; border-left: 4px solid #ef4444;">❌ Error: ${error.message}</div>`;
+                }
+            }
+
             async function loadBlocklist() {
                 try {
                     const res = await fetch(`${API_URL}/blocklist`, {
@@ -4645,7 +5473,7 @@ def get_dashboard_page() -> str:
                     btn.disabled = true;
                     btn.textContent = '⏳ Conectando...';
 
-                    const res = await fetch(`${API_URL}/bot/connect`, {
+                    const res = await fetch('/bot/connect', {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
@@ -4680,7 +5508,7 @@ def get_dashboard_page() -> str:
                     btn.disabled = true;
                     btn.textContent = '⏳ Cerrando...';
 
-                    const res = await fetch(`${API_URL}/bot/logout`, {
+                    const res = await fetch('/bot/logout', {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
