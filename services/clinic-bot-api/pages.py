@@ -685,13 +685,89 @@ def get_user_panel_page() -> str:
                     <div style="color:#94a3b8; font-size:0.9em;">Cargando...</div>
                 </div>
             </div>
-            
+
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h2 style="margin-bottom:0;">🕐 Mensajes Programados</h2>
+                    <button class="btn-connect" style="width:auto; padding:8px 14px; font-size:0.9em;" onclick="openSchedModal()">➕ Nuevo</button>
+                </div>
+                <div id="schedList"><div style="color:#94a3b8; font-size:0.9em;">Cargando...</div></div>
+            </div>
+
             <div class="panel-footer">
                 <div class="company">DOLAN SS - 2026</div>
                 <div class="version" id="userPanelVersion">v2.2.1</div>
             </div>
         </div>
         
+        <!-- Modal Mensajes Programados -->
+        <div id="schedModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82); align-items:center; justify-content:center; z-index:2000;">
+            <div style="background:rgba(15,23,42,0.99); border:1px solid rgba(226,232,240,0.12); border-radius:18px; padding:28px; width:94%; max-width:480px; display:flex; flex-direction:column; gap:14px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="color:#f1f5f9; font-size:1.05em; font-weight:700;" id="schedModalTitle">🕐 Nuevo Mensaje Programado</div>
+                    <button onclick="closeSchedModal()" style="background:none; border:none; color:#94a3b8; font-size:1.3em; cursor:pointer;">&times;</button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Nombre / Descripción</label>
+                        <input id="schedName" type="text" placeholder="Ej: Recordatorio turno mañana" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
+                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Número(s) destino <span style="color:#64748b;">(separados por coma si son varios)</span></label>
+                        <input id="schedPhone" type="text" placeholder="5491112345678" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Hora de envío</label>
+                            <input id="schedTime" type="time" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
+                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Días</label>
+                            <select id="schedDays" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.85em; box-sizing:border-box;">
+                                <option value="1,2,3,4,5,6,7">Todos los días</option>
+                                <option value="1,2,3,4,5">Lunes a Viernes</option>
+                                <option value="6,7">Fin de semana</option>
+                                <option value="1">Lunes</option><option value="2">Martes</option>
+                                <option value="3">Miércoles</option><option value="4">Jueves</option>
+                                <option value="5">Viernes</option><option value="6">Sábado</option>
+                                <option value="7">Domingo</option>
+                            </select></div>
+                    </div>
+                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Mensaje</label>
+                        <textarea id="schedMsg" rows="4" placeholder="Texto del mensaje a enviar..." style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; resize:vertical; box-sizing:border-box;"></textarea></div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:4px;">
+                    <button onclick="saveSchedMsg()" style="flex:1; padding:11px; background:linear-gradient(135deg,#3b82f6,#06b6d4); border:none; border-radius:8px; color:white; font-weight:600; cursor:pointer;">💾 Guardar</button>
+                    <button onclick="closeSchedModal()" style="padding:11px 18px; background:rgba(30,41,59,0.5); border:1px solid rgba(226,232,240,0.1); border-radius:8px; color:#94a3b8; cursor:pointer;">Cancelar</button>
+                </div>
+                <div id="schedModalMsg" style="font-size:0.85em; min-height:18px; text-align:center;"></div>
+            </div>
+        </div>
+
+        <!-- Modal Chat Ticket -->
+        <div id="chatModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); align-items:center; justify-content:center; z-index:2000;">
+            <div style="background:#111b21; border-radius:16px; width:96%; max-width:560px; height:82vh; max-height:680px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,0.7);">
+                <!-- Header WA style -->
+                <div style="background:#1f2c34; padding:10px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0;">
+                    <div style="width:40px; height:40px; border-radius:50%; background:#2a3942; display:flex; align-items:center; justify-content:center; font-size:1.1em; flex-shrink:0;">👤</div>
+                    <div style="flex:1; min-width:0;">
+                        <div id="chatModalTitle" style="color:#e9edef; font-size:0.97em; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                        <div style="color:#8696a0; font-size:0.75em;">Ticket: <span id="chatModalTicket" style="color:#53bdeb; font-family:monospace;"></span></div>
+                    </div>
+                    <button onclick="closeChatModal()" style="background:none; border:none; color:#8696a0; font-size:1.3em; cursor:pointer; padding:6px; flex-shrink:0;">&times;</button>
+                </div>
+                <!-- Messages -->
+                <div id="chatMessages" style="flex:1; overflow-y:auto; padding:12px 10px; display:flex; flex-direction:column; gap:2px; background:#0b141a;"></div>
+                <!-- Compose bar -->
+                <div style="background:#1f2c34; padding:8px 12px; display:flex; align-items:flex-end; gap:8px; border-top:1px solid rgba(255,255,255,0.06); flex-shrink:0;">
+                    <div style="flex:1; background:#2a3942; border-radius:24px; padding:9px 16px; display:flex; align-items:flex-end; min-height:44px;">
+                        <textarea id="chatReplyInput" placeholder="Escribe un mensaje" rows="1"
+                            style="flex:1; background:transparent; border:none; outline:none; color:#d1d7db; font-size:0.95em; resize:none; overflow-y:hidden; max-height:110px; height:22px; font-family:inherit; line-height:22px; padding:0; display:block; width:100%;"
+                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatReply();}"
+                            oninput="_resizeChatTA(this)"></textarea>
+                    </div>
+                    <button id="chatCloseBtn" onclick="closeTicketFromModal()" title="Cerrar ticket"
+                        style="width:44px; height:44px; flex-shrink:0; background:rgba(220,38,38,0.22); border:1px solid rgba(220,38,38,0.45); border-radius:50%; color:#fca5a5; font-size:0.95em; cursor:pointer;">🔒</button>
+                    <button onclick="sendChatReply()" title="Enviar"
+                        style="width:44px; height:44px; flex-shrink:0; background:#00a884; border:none; border-radius:50%; color:white; font-size:1.1em; cursor:pointer;">➤</button>
+                </div>
+                <div id="chatReplyMsg" style="font-size:0.8em; min-height:20px; text-align:center; padding:2px 12px 5px; background:#1f2c34; color:#8696a0;"></div>
+            </div>
+        </div>
+
         <!-- Modal QR -->
         <div class="modal" id="qrModal">
             <div class="modal-content">
@@ -923,21 +999,27 @@ def get_user_panel_page() -> str:
                     const rows = data.map(item => {
                         const started = item.handoff_started_at ? new Date(item.handoff_started_at + 'Z').toLocaleString('es-AR') : '—';
                         const state = item.current_state === 'WAITING_AGENT' ? '⏳ Esperando operador' : '👤 Con operador';
+                        const ticket = item.ticket_id || '—';
                         return `<tr style="border-bottom:1px solid rgba(226,232,240,0.08);">
-                            <td style="padding:10px 8px; color:#f1f5f9; font-family:monospace; font-size:0.9em;">${item.phone_number}</td>
+                            <td style="padding:10px 8px;">
+                                <button onclick="openChatModal('${item.phone_number}','${ticket}','user')" style="background:none;border:none;color:#93c5fd;font-family:monospace;font-size:0.9em;cursor:pointer;text-decoration:underline;padding:0;">${item.phone_number}</button>
+                            </td>
+                            <td style="padding:10px 8px; color:#94a3b8; font-size:0.85em;">${ticket}</td>
                             <td style="padding:10px 8px; color:#94a3b8; font-size:0.85em;">${state}</td>
                             <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${started}</td>
                             <td style="padding:10px 8px;">
-                                <button onclick="releaseParkedUser('${item.phone_number}', this)" style="padding:6px 12px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#86efac; border-radius:6px; cursor:pointer; font-size:0.85em;">🔓 Liberar</button>
+                                <button onclick="openChatModal('${item.phone_number}','${ticket}','user')" style="padding:6px 10px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd; border-radius:6px; cursor:pointer; font-size:0.8em; margin-right:4px;">💬 Chat</button>
+                                <button onclick="releaseParkedUser('${item.phone_number}', this)" style="padding:6px 10px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#86efac; border-radius:6px; cursor:pointer; font-size:0.8em;">🔓 Liberar</button>
                             </td>
                         </tr>`;
                     }).join('');
                     container.innerHTML = `<table style="width:100%; border-collapse:collapse;">
                         <thead><tr style="background:rgba(30,41,59,0.5);">
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Número</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Ticket</th>
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Estado</th>
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Inicio</th>
-                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Acción</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Acciones</th>
                         </tr></thead>
                         <tbody>${rows}</tbody>
                     </table>`;
@@ -966,6 +1048,219 @@ def get_user_panel_page() -> str:
                 } catch(e) {
                     btn.disabled = false;
                     btn.textContent = '🔓 Liberar';
+                }
+            }
+
+            // ── MENSAJES PROGRAMADOS ─────────────────────────────────
+            let _schedEditId = null;
+
+            async function loadSchedList() {
+                const box = document.getElementById('schedList');
+                if (!box) return;
+                const token = localStorage.getItem('token');
+                try {
+                    const res = await fetch('/api/scheduled-messages', { headers: { 'Authorization': `Bearer ${token}` }});
+                    const list = await res.json();
+                    if (!list.length) { box.innerHTML = '<div style="color:#94a3b8;font-size:0.9em;">Sin mensajes programados. Crea uno con ➕ Nuevo.</div>'; return; }
+                    const DAYS_MAP = {'1':'Lu','2':'Ma','3':'Mi','4':'Ju','5':'Vi','6':'Sa','7':'Do'};
+                    box.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' + list.map(sm => {
+                        const days = (sm.days_of_week||'').split(',').map(d=>DAYS_MAP[d.trim()]||d).join(' ');
+                        const active = sm.is_active;
+                        return `<div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="color:#f1f5f9;font-weight:600;font-size:0.92em;">${sm.name}</div>
+                                <div style="color:#8696a0;font-size:0.78em;margin-top:2px;">📞 ${sm.phone_number} &nbsp;·&nbsp; 🕐 ${sm.send_time} &nbsp;·&nbsp; 📅 ${days}</div>
+                                <div style="color:#94a3b8;font-size:0.82em;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;">${sm.message}</div>
+                            </div>
+                            <div style="display:flex;gap:6px;flex-shrink:0;">
+                                <button onclick="toggleSched(${sm.id})" title="${active?'Desactivar':'Activar'}" style="padding:5px 8px;background:${active?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)'};border:1px solid ${active?'rgba(16,185,129,0.4)':'rgba(100,116,139,0.3)'};border-radius:6px;color:${active?'#86efac':'#94a3b8'};cursor:pointer;font-size:0.85em;">${active?'✅':'⏸️'}</button>
+                                <button onclick="editSched(${sm.id})" style="padding:5px 8px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:6px;color:#93c5fd;cursor:pointer;font-size:0.85em;">✏️</button>
+                                <button onclick="deleteSched(${sm.id})" style="padding:5px 8px;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.3);border-radius:6px;color:#fca5a5;cursor:pointer;font-size:0.85em;">🗑️</button>
+                            </div>
+                        </div>`;
+                    }).join('') + '</div>';
+                } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:0.9em;">Error al cargar mensajes programados</div>'; }
+            }
+
+            function openSchedModal(sm) {
+                _schedEditId = sm ? sm.id : null;
+                document.getElementById('schedModalTitle').textContent = sm ? '✏️ Editar Mensaje Programado' : '🕐 Nuevo Mensaje Programado';
+                document.getElementById('schedName').value = sm ? sm.name : '';
+                document.getElementById('schedPhone').value = sm ? sm.phone_number : '';
+                document.getElementById('schedTime').value = sm ? sm.send_time : '';
+                document.getElementById('schedDays').value = sm && sm.days_of_week ? sm.days_of_week : '1,2,3,4,5,6,7';
+                document.getElementById('schedMsg').value = sm ? sm.message : '';
+                document.getElementById('schedModalMsg').textContent = '';
+                document.getElementById('schedModal').style.display = 'flex';
+            }
+
+            function closeSchedModal() { document.getElementById('schedModal').style.display = 'none'; _schedEditId = null; }
+
+            async function saveSchedMsg() {
+                const token = localStorage.getItem('token');
+                const msgEl = document.getElementById('schedModalMsg');
+                const payload = {
+                    name: document.getElementById('schedName').value.trim(),
+                    phone_number: document.getElementById('schedPhone').value.trim(),
+                    message: document.getElementById('schedMsg').value.trim(),
+                    send_time: document.getElementById('schedTime').value.trim(),
+                    days_of_week: document.getElementById('schedDays').value,
+                };
+                if (!payload.name || !payload.phone_number || !payload.message || !payload.send_time) {
+                    msgEl.style.color='#f87171'; msgEl.textContent='Completá todos los campos obligatorios.'; return;
+                }
+                try {
+                    const url = _schedEditId ? `/api/scheduled-messages/${_schedEditId}` : '/api/scheduled-messages';
+                    const method = _schedEditId ? 'PUT' : 'POST';
+                    const res = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (res.ok) { closeSchedModal(); loadSchedList(); }
+                    else { const d = await res.json(); msgEl.style.color='#f87171'; msgEl.textContent = '❌ ' + (d.detail||'Error'); }
+                } catch(e) { msgEl.style.color='#f87171'; msgEl.textContent='❌ Error de red'; }
+            }
+
+            async function toggleSched(id) {
+                const token = localStorage.getItem('token');
+                await fetch(`/api/scheduled-messages/${id}/toggle`, { method:'POST', headers:{ 'Authorization':`Bearer ${token}` }});
+                loadSchedList();
+            }
+
+            async function editSched(id) {
+                const token = localStorage.getItem('token');
+                const res = await fetch('/api/scheduled-messages', { headers:{ 'Authorization':`Bearer ${token}` }});
+                const list = await res.json();
+                const sm = list.find(x => x.id === id);
+                if (sm) openSchedModal(sm);
+            }
+
+            async function deleteSched(id) {
+                if (!confirm('¿Eliminar este mensaje programado?')) return;
+                const token = localStorage.getItem('token');
+                await fetch(`/api/scheduled-messages/${id}`, { method:'DELETE', headers:{ 'Authorization':`Bearer ${token}` }});
+                loadSchedList();
+            }
+
+            // ── CHAT MODAL (shared user panel) ──────────────────────
+            let _chatModalPhone = '';
+            let _chatModalPanel = '';
+            let _chatMsgPollTimer = null;
+
+            function _resizeChatTA(el) {
+                el.style.height = '22px';
+                const lineH = 22;
+                const maxH = lineH * 4;
+                const newH = Math.min(maxH, el.scrollHeight);
+                el.style.height = newH + 'px';
+                el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+            }
+
+            function openChatModal(phone, ticket, panel) {
+                _chatModalPhone = phone;
+                _chatModalPanel = panel;
+                const modal = document.getElementById('chatModal');
+                document.getElementById('chatModalTitle').textContent = phone;
+                document.getElementById('chatModalTicket').textContent = ticket;
+                document.getElementById('chatMessages').innerHTML = '<div style="color:#8696a0;text-align:center;padding:30px;">Cargando mensajes...</div>';
+                const ta = document.getElementById('chatReplyInput');
+                ta.value = ''; ta.style.height = '22px'; ta.style.overflowY = 'hidden';
+                document.getElementById('chatReplyMsg').textContent = '';
+                modal.style.display = 'flex';
+                loadChatMessages();
+                _chatMsgPollTimer = setInterval(loadChatMessages, 8000);
+            }
+
+            function closeChatModal() {
+                if (_chatMsgPollTimer) { clearInterval(_chatMsgPollTimer); _chatMsgPollTimer = null; }
+                document.getElementById('chatModal').style.display = 'none';
+                _chatModalPhone = '';
+            }
+
+            async function loadChatMessages() {
+                if (!_chatModalPhone) return;
+                const token = localStorage.getItem('token');
+                try {
+                    const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(_chatModalPhone)}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    const box = document.getElementById('chatMessages');
+                    if (!data.ok || !data.messages.length) {
+                        box.innerHTML = '<div style="color:#8696a0;text-align:center;padding:30px;font-size:0.9em;">Sin mensajes disponibles</div>';
+                        return;
+                    }
+                    const sorted = [...data.messages].sort((a,b) => a.timestamp - b.timestamp);
+                    const wasAtBottom = box.scrollHeight - box.scrollTop <= box.clientHeight + 60;
+                    box.innerHTML = sorted.map(m => {
+                        const t = m.timestamp ? new Date(m.timestamp * 1000).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                        if (m.from_me) {
+                            return `<div style="display:flex;justify-content:flex-end;margin:2px 0;">
+                                <div style="background:#005c4b;border-radius:8px 2px 8px 8px;padding:7px 12px 5px;max-width:78%;color:#e9edef;font-size:0.9em;word-break:break-word;">
+                                    ${m.body || '<i style="color:#8696a0">[sin texto]</i>'}
+                                    <div style="font-size:0.68em;color:#8adfcc;text-align:right;margin-top:3px;">${t}</div>
+                                </div></div>`;
+                        } else {
+                            return `<div style="display:flex;justify-content:flex-start;margin:2px 0;">
+                                <div style="background:#202c33;border-radius:2px 8px 8px 8px;padding:7px 12px 5px;max-width:78%;color:#e9edef;font-size:0.9em;word-break:break-word;">
+                                    ${m.body || '<i style="color:#8696a0">[sin texto]</i>'}
+                                    <div style="font-size:0.68em;color:#8696a0;text-align:right;margin-top:3px;">${t}</div>
+                                </div></div>`;
+                        }
+                    }).join('');
+                    if (wasAtBottom) box.scrollTop = box.scrollHeight;
+                } catch(e) {
+                    document.getElementById('chatMessages').innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px;">Error al cargar mensajes</div>';
+                }
+            }
+
+            async function sendChatReply() {
+                const input = document.getElementById('chatReplyInput');
+                const msg   = document.getElementById('chatReplyMsg');
+                const text  = (input.value || '').trim();
+                if (!text || !_chatModalPhone) return;
+                const token = localStorage.getItem('token');
+                input.disabled = true;
+                try {
+                    const res = await fetch('/api/human-mode/reply', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: _chatModalPhone, text })
+                    });
+                    if (res.ok) {
+                        input.value = ''; input.style.height = '22px'; input.style.overflowY = 'hidden';
+                        msg.textContent = '✅ Enviado';
+                        msg.style.color = '#8adfcc';
+                        setTimeout(() => { msg.textContent = ''; }, 2000);
+                        setTimeout(loadChatMessages, 800);
+                    } else {
+                        msg.textContent = '❌ Error al enviar';
+                        msg.style.color = '#ef4444';
+                    }
+                } catch(e) {
+                    msg.textContent = '❌ Error de conexión';
+                    msg.style.color = '#ef4444';
+                } finally {
+                    input.disabled = false; input.focus();
+                }
+            }
+
+            async function closeTicketFromModal() {
+                if (!_chatModalPhone) return;
+                const reply = document.getElementById('chatReplyInput').value.trim();
+                const token = localStorage.getItem('token');
+                const btn = document.getElementById('chatCloseBtn');
+                btn.disabled = true; btn.textContent = '⏳';
+                try {
+                    const res = await fetch('/api/human-mode/close', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: _chatModalPhone, operator_reply: reply })
+                    });
+                    const data = await res.json();
+                    if (data.closed) {
+                        closeChatModal();
+                        loadParkedList();
+                    }
+                } finally {
+                    btn.disabled = false; btn.textContent = '🔒 Cerrar Ticket';
                 }
             }
             
@@ -1249,6 +1544,7 @@ def get_user_panel_page() -> str:
             loadVersion();
             loadStatus();
             loadParkedList();
+            loadSchedList();
             setInterval(loadStatus, 5000);
             setInterval(loadParkedList, 15000);
         </script>
@@ -2560,6 +2856,17 @@ def get_dashboard_page() -> str:
                         <div style="color:#94a3b8; font-size:0.9em;">Cargando...</div>
                     </div>
                 </div>
+
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h2 style="margin-bottom:0;">🕐 Mensajes Programados</h2>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn btn-secondary" onclick="loadAdminSchedList()" style="padding:8px 14px; font-size:0.9em;">🔄</button>
+                            <button class="btn btn-primary" onclick="openAdminSchedModal()" style="padding:8px 14px; font-size:0.9em;">➕ Nuevo</button>
+                        </div>
+                    </div>
+                    <div id="adminSchedList"><div style="color:#94a3b8; font-size:0.9em;">Cargando...</div></div>
+                </div>
             </div>
             
             <!-- USUARIOS -->
@@ -2903,6 +3210,74 @@ def get_dashboard_page() -> str:
             </div>
         </div>
         
+        <!-- Admin Modal Mensajes Programados -->
+        <div id="adminSchedModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82); align-items:center; justify-content:center; z-index:2000;">
+            <div style="background:rgba(15,23,42,0.99); border:1px solid rgba(226,232,240,0.12); border-radius:18px; padding:28px; width:94%; max-width:480px; display:flex; flex-direction:column; gap:14px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="color:#f1f5f9; font-size:1.05em; font-weight:700;" id="adminSchedModalTitle">🕐 Nuevo Mensaje Programado</div>
+                    <button onclick="closeAdminSchedModal()" style="background:none; border:none; color:#94a3b8; font-size:1.3em; cursor:pointer;">&times;</button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Nombre / Descripción</label>
+                        <input id="adminSchedName" type="text" placeholder="Ej: Recordatorio turno mañana" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
+                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Número(s) destino <span style="color:#64748b;">(coma si son varios)</span></label>
+                        <input id="adminSchedPhone" type="text" placeholder="5491112345678" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Hora de envío</label>
+                            <input id="adminSchedTime" type="time" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
+                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Días</label>
+                            <select id="adminSchedDays" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.85em; box-sizing:border-box;">
+                                <option value="1,2,3,4,5,6,7">Todos los días</option>
+                                <option value="1,2,3,4,5">Lunes a Viernes</option>
+                                <option value="6,7">Fin de semana</option>
+                                <option value="1">Lunes</option><option value="2">Martes</option>
+                                <option value="3">Miércoles</option><option value="4">Jueves</option>
+                                <option value="5">Viernes</option><option value="6">Sábado</option>
+                                <option value="7">Domingo</option>
+                            </select></div>
+                    </div>
+                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Mensaje</label>
+                        <textarea id="adminSchedMsg" rows="4" placeholder="Texto del mensaje a enviar..." style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; resize:vertical; box-sizing:border-box;"></textarea></div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:4px;">
+                    <button onclick="saveAdminSchedMsg()" style="flex:1; padding:11px; background:linear-gradient(135deg,#3b82f6,#06b6d4); border:none; border-radius:8px; color:white; font-weight:600; cursor:pointer;">💾 Guardar</button>
+                    <button onclick="closeAdminSchedModal()" style="padding:11px 18px; background:rgba(30,41,59,0.5); border:1px solid rgba(226,232,240,0.1); border-radius:8px; color:#94a3b8; cursor:pointer;">Cancelar</button>
+                </div>
+                <div id="adminSchedModalMsg" style="font-size:0.85em; min-height:18px; text-align:center;"></div>
+            </div>
+        </div>
+
+        <!-- Admin Chat Modal -->
+        <div id="adminChatModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); align-items:center; justify-content:center; z-index:2000;">
+            <div style="background:#111b21; border-radius:16px; width:96%; max-width:560px; height:82vh; max-height:680px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,0.7);">
+                <!-- Header WA style -->
+                <div style="background:#1f2c34; padding:10px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0;">
+                    <div style="width:40px; height:40px; border-radius:50%; background:#2a3942; display:flex; align-items:center; justify-content:center; font-size:1.1em; flex-shrink:0;">👤</div>
+                    <div style="flex:1; min-width:0;">
+                        <div id="adminChatModalTitle" style="color:#e9edef; font-size:0.97em; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                        <div style="color:#8696a0; font-size:0.75em;">Ticket: <span id="adminChatModalTicket" style="color:#53bdeb; font-family:monospace;"></span></div>
+                    </div>
+                    <button onclick="adminCloseChatModal()" style="background:none; border:none; color:#8696a0; font-size:1.3em; cursor:pointer; padding:6px; flex-shrink:0;">&times;</button>
+                </div>
+                <!-- Messages -->
+                <div id="adminChatMessages" style="flex:1; overflow-y:auto; padding:12px 10px; display:flex; flex-direction:column; gap:2px; background:#0b141a;"></div>
+                <!-- Compose bar -->
+                <div style="background:#1f2c34; padding:8px 12px; display:flex; align-items:flex-end; gap:8px; border-top:1px solid rgba(255,255,255,0.06); flex-shrink:0;">
+                    <div style="flex:1; background:#2a3942; border-radius:24px; padding:9px 16px; display:flex; align-items:flex-end; min-height:44px;">
+                        <textarea id="adminChatReplyInput" placeholder="Escribe un mensaje" rows="1"
+                            style="flex:1; background:transparent; border:none; outline:none; color:#d1d7db; font-size:0.95em; resize:none; overflow-y:hidden; max-height:110px; height:22px; font-family:inherit; line-height:22px; padding:0; display:block; width:100%;"
+                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();adminSendChatReply();}"
+                            oninput="_resizeAdminChatTA(this)"></textarea>
+                    </div>
+                    <button id="adminChatCloseBtn" onclick="adminCloseTicketFromModal()" title="Cerrar ticket"
+                        style="width:44px; height:44px; flex-shrink:0; background:rgba(220,38,38,0.22); border:1px solid rgba(220,38,38,0.45); border-radius:50%; color:#fca5a5; font-size:0.95em; cursor:pointer;">🔒</button>
+                    <button onclick="adminSendChatReply()" title="Enviar"
+                        style="width:44px; height:44px; flex-shrink:0; background:#00a884; border:none; border-radius:50%; color:white; font-size:1.1em; cursor:pointer;">➤</button>
+                </div>
+                <div id="adminChatReplyMsg" style="font-size:0.8em; min-height:20px; text-align:center; padding:2px 12px 5px; background:#1f2c34; color:#8696a0;"></div>
+            </div>
+        </div>
+
         <!-- Modal QR -->
         <div class="modal" id="qrModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 1000;">
             <div style="background: rgba(18, 24, 40, 0.95); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 20px; padding: 40px; max-width: 400px; width: 90%; text-align: center;">
@@ -3166,14 +3541,16 @@ def get_dashboard_page() -> str:
                         const expire = item.human_mode_expire ? new Date(item.human_mode_expire + 'Z').toLocaleString('es-AR') : '—';
                         const state = item.current_state === 'WAITING_AGENT' ? '⏳ Esperando operador' : '👤 Con operador';
                         const ticket = item.ticket_id || '—';
+                        const phoneSafe = item.phone_number.replace(/'/g, "\\'");
                         return `<tr style="border-bottom:1px solid rgba(226,232,240,0.08);">
                             <td style="padding:10px 8px; color:#f1f5f9; font-family:monospace; font-size:0.9em;">${item.phone_number}</td>
                             <td style="padding:10px 8px; color:#94a3b8; font-size:0.85em;">${state}</td>
                             <td style="padding:10px 8px; color:#93c5fd; font-size:0.8em; font-family:monospace;">${ticket}</td>
                             <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${started}</td>
                             <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${expire}</td>
-                            <td style="padding:10px 8px;">
-                                <button onclick="releaseAdminParked('${item.phone_number}', this)" style="padding:6px 12px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#86efac; border-radius:6px; cursor:pointer; font-size:0.85em;">🔓 Liberar</button>
+                            <td style="padding:10px 8px; display:flex; gap:6px; flex-wrap:wrap;">
+                                <button onclick="adminOpenChatModal('${phoneSafe}','${ticket}')" style="padding:6px 10px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4); color:#93c5fd; border-radius:6px; cursor:pointer; font-size:0.82em;">💬 Chat</button>
+                                <button onclick="releaseAdminParked('${phoneSafe}', this)" style="padding:6px 10px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#86efac; border-radius:6px; cursor:pointer; font-size:0.82em;">🔓 Liberar</button>
                             </td>
                         </tr>`;
                     }).join('');
@@ -3200,7 +3577,7 @@ def get_dashboard_page() -> str:
                     const res = await fetch(`${API_URL}/human-mode/close`, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone_number: phone })
+                        body: JSON.stringify({ phone_number: phone, operator_reply: '' })
                     });
                     const data = await res.json();
                     if (data.closed) {
@@ -3213,6 +3590,218 @@ def get_dashboard_page() -> str:
                     btn.disabled = false;
                     btn.textContent = '🔓 Liberar';
                 }
+            }
+
+            // --- Admin Chat Modal ---
+            let _adminChatPhone = null;
+
+            function _resizeAdminChatTA(el) {
+                el.style.height = '22px';
+                const lineH = 22;
+                const maxH = lineH * 4;
+                const newH = Math.min(maxH, el.scrollHeight);
+                el.style.height = newH + 'px';
+                el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+            }
+
+            function adminOpenChatModal(phone, ticket) {
+                _adminChatPhone = phone;
+                document.getElementById('adminChatModalTitle').textContent = phone;
+                document.getElementById('adminChatModalTicket').textContent = ticket || '—';
+                document.getElementById('adminChatModal').style.display = 'flex';
+                const ta = document.getElementById('adminChatReplyInput');
+                ta.value = ''; ta.style.height = '22px'; ta.style.overflowY = 'hidden';
+                document.getElementById('adminChatReplyMsg').textContent = '';
+                adminLoadChatMessages();
+            }
+
+            function adminCloseChatModal() {
+                document.getElementById('adminChatModal').style.display = 'none';
+                _adminChatPhone = null;
+            }
+
+            async function adminLoadChatMessages() {
+                if (!_adminChatPhone) return;
+                const box = document.getElementById('adminChatMessages');
+                try {
+                    const res = await fetch(`${API_URL}/human-mode/messages/${encodeURIComponent(_adminChatPhone)}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    const msgs = (data.messages || []).slice().sort((a, b) => a.timestamp - b.timestamp);
+                    if (!msgs.length) {
+                        box.innerHTML = '<div style="color:#8696a0; text-align:center; padding:30px; font-size:0.9em;">Sin mensajes recientes</div>';
+                        return;
+                    }
+                    const wasAtBottom = box.scrollHeight - box.scrollTop <= box.clientHeight + 60;
+                    box.innerHTML = msgs.map(m => {
+                        const t = m.timestamp ? new Date(m.timestamp * 1000).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                        if (m.from_me) {
+                            return `<div style="display:flex;justify-content:flex-end;margin:2px 0;">
+                                <div style="background:#005c4b;border-radius:8px 2px 8px 8px;padding:7px 12px 5px;max-width:78%;color:#e9edef;font-size:0.9em;word-break:break-word;">
+                                    ${m.body || '<i style="color:#8696a0">[sin texto]</i>'}
+                                    <div style="font-size:0.68em;color:#8adfcc;text-align:right;margin-top:3px;">${t}</div>
+                                </div></div>`;
+                        } else {
+                            return `<div style="display:flex;justify-content:flex-start;margin:2px 0;">
+                                <div style="background:#202c33;border-radius:2px 8px 8px 8px;padding:7px 12px 5px;max-width:78%;color:#e9edef;font-size:0.9em;word-break:break-word;">
+                                    ${m.body || '<i style="color:#8696a0">[sin texto]</i>'}
+                                    <div style="font-size:0.68em;color:#8696a0;text-align:right;margin-top:3px;">${t}</div>
+                                </div></div>`;
+                        }
+                    }).join('');
+                    if (wasAtBottom) box.scrollTop = box.scrollHeight;
+                } catch(e) {
+                    box.innerHTML = '<div style="color:#ef4444; font-size:0.9em; text-align:center;">Error al cargar mensajes</div>';
+                }
+            }
+
+            async function adminSendChatReply() {
+                if (!_adminChatPhone) return;
+                const input = document.getElementById('adminChatReplyInput');
+                const msg = document.getElementById('adminChatReplyMsg');
+                const text = input.value.trim();
+                if (!text) return;
+                input.disabled = true;
+                try {
+                    const res = await fetch(`${API_URL}/human-mode/reply`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: _adminChatPhone, text: text })
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        input.value = ''; input.style.height = '22px'; input.style.overflowY = 'hidden';
+                        msg.style.color = '#8adfcc';
+                        msg.textContent = '✅ Enviado';
+                        setTimeout(() => { msg.textContent = ''; }, 2000);
+                        setTimeout(() => adminLoadChatMessages(), 800);
+                    } else {
+                        msg.style.color = '#f87171';
+                        msg.textContent = '❌ Error al enviar';
+                    }
+                } catch(e) {
+                    msg.style.color = '#f87171';
+                    msg.textContent = '❌ Error de red';
+                } finally {
+                    input.disabled = false; input.focus();
+                }
+            }
+
+            async function adminCloseTicketFromModal() {
+                if (!_adminChatPhone) return;
+                const btn = document.getElementById('adminChatCloseBtn');
+                const msg = document.getElementById('adminChatReplyMsg');
+                const reply = document.getElementById('adminChatReplyInput').value.trim();
+                btn.disabled = true;
+                btn.textContent = '⏳';
+                msg.style.color = '#94a3b8';
+                msg.textContent = 'Cerrando ticket...';
+                try {
+                    const res = await fetch(`${API_URL}/human-mode/close`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: _adminChatPhone, operator_reply: reply })
+                    });
+                    const data = await res.json();
+                    if (data.closed) {
+                        adminCloseChatModal();
+                        loadAdminParkedList();
+                    } else {
+                        btn.disabled = false;
+                        btn.textContent = '🔒 Cerrar Ticket';
+                        msg.style.color = '#f87171';
+                        msg.textContent = '❌ No se pudo cerrar';
+                    }
+                } catch(e) {
+                    btn.disabled = false;
+                    btn.textContent = '🔒 Cerrar Ticket';
+                    msg.style.color = '#f87171';
+                    msg.textContent = '❌ Error de red';
+                }
+            }
+
+            // ── MENSAJES PROGRAMADOS (admin) ────────────────────────
+            let _adminSchedEditId = null;
+
+            async function loadAdminSchedList() {
+                const box = document.getElementById('adminSchedList');
+                if (!box) return;
+                try {
+                    const res = await fetch(`${API_URL}/scheduled-messages`, { headers: { 'Authorization': `Bearer ${token}` }});
+                    const list = await res.json();
+                    if (!list.length) { box.innerHTML = '<div style="color:#94a3b8;font-size:0.9em;">Sin mensajes programados.</div>'; return; }
+                    const DAYS_MAP = {'1':'Lu','2':'Ma','3':'Mi','4':'Ju','5':'Vi','6':'Sa','7':'Do'};
+                    box.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' + list.map(sm => {
+                        const days = (sm.days_of_week||'').split(',').map(d=>DAYS_MAP[d.trim()]||d).join(' ');
+                        const active = sm.is_active;
+                        return `<div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="color:#f1f5f9;font-weight:600;font-size:0.92em;">${sm.name}</div>
+                                <div style="color:#8696a0;font-size:0.78em;margin-top:2px;">📞 ${sm.phone_number} &nbsp;·&nbsp; 🕐 ${sm.send_time} &nbsp;·&nbsp; 📅 ${days}</div>
+                                <div style="color:#94a3b8;font-size:0.82em;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;">${sm.message}</div>
+                            </div>
+                            <div style="display:flex;gap:6px;flex-shrink:0;">
+                                <button onclick="toggleAdminSched(${sm.id})" style="padding:5px 8px;background:${active?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)'};border:1px solid ${active?'rgba(16,185,129,0.4)':'rgba(100,116,139,0.3)'};border-radius:6px;color:${active?'#86efac':'#94a3b8'};cursor:pointer;font-size:0.85em;">${active?'✅':'⏸️'}</button>
+                                <button onclick="editAdminSched(${sm.id})" style="padding:5px 8px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:6px;color:#93c5fd;cursor:pointer;font-size:0.85em;">✏️</button>
+                                <button onclick="deleteAdminSched(${sm.id})" style="padding:5px 8px;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.3);border-radius:6px;color:#fca5a5;cursor:pointer;font-size:0.85em;">🗑️</button>
+                            </div>
+                        </div>`;
+                    }).join('') + '</div>';
+                } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:0.9em;">Error al cargar</div>'; }
+            }
+
+            function openAdminSchedModal(sm) {
+                _adminSchedEditId = sm ? sm.id : null;
+                document.getElementById('adminSchedModalTitle').textContent = sm ? '✏️ Editar Mensaje Programado' : '🕐 Nuevo Mensaje Programado';
+                document.getElementById('adminSchedName').value = sm ? sm.name : '';
+                document.getElementById('adminSchedPhone').value = sm ? sm.phone_number : '';
+                document.getElementById('adminSchedTime').value = sm ? sm.send_time : '';
+                document.getElementById('adminSchedDays').value = sm && sm.days_of_week ? sm.days_of_week : '1,2,3,4,5,6,7';
+                document.getElementById('adminSchedMsg').value = sm ? sm.message : '';
+                document.getElementById('adminSchedModalMsg').textContent = '';
+                document.getElementById('adminSchedModal').style.display = 'flex';
+            }
+
+            function closeAdminSchedModal() { document.getElementById('adminSchedModal').style.display = 'none'; _adminSchedEditId = null; }
+
+            async function saveAdminSchedMsg() {
+                const msgEl = document.getElementById('adminSchedModalMsg');
+                const payload = {
+                    name: document.getElementById('adminSchedName').value.trim(),
+                    phone_number: document.getElementById('adminSchedPhone').value.trim(),
+                    message: document.getElementById('adminSchedMsg').value.trim(),
+                    send_time: document.getElementById('adminSchedTime').value.trim(),
+                    days_of_week: document.getElementById('adminSchedDays').value,
+                };
+                if (!payload.name || !payload.phone_number || !payload.message || !payload.send_time) {
+                    msgEl.style.color='#f87171'; msgEl.textContent='Completá todos los campos obligatorios.'; return;
+                }
+                try {
+                    const url = _adminSchedEditId ? `${API_URL}/scheduled-messages/${_adminSchedEditId}` : `${API_URL}/scheduled-messages`;
+                    const method = _adminSchedEditId ? 'PUT' : 'POST';
+                    const res = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (res.ok) { closeAdminSchedModal(); loadAdminSchedList(); }
+                    else { const d = await res.json(); msgEl.style.color='#f87171'; msgEl.textContent = '❌ ' + (d.detail||'Error'); }
+                } catch(e) { msgEl.style.color='#f87171'; msgEl.textContent='❌ Error de red'; }
+            }
+
+            async function toggleAdminSched(id) {
+                await fetch(`${API_URL}/scheduled-messages/${id}/toggle`, { method:'POST', headers:{ 'Authorization':`Bearer ${token}` }});
+                loadAdminSchedList();
+            }
+
+            async function editAdminSched(id) {
+                const res = await fetch(`${API_URL}/scheduled-messages`, { headers:{ 'Authorization':`Bearer ${token}` }});
+                const list = await res.json();
+                const sm = list.find(x => x.id === id);
+                if (sm) openAdminSchedModal(sm);
+            }
+
+            async function deleteAdminSched(id) {
+                if (!confirm('¿Eliminar este mensaje programado?')) return;
+                await fetch(`${API_URL}/scheduled-messages/${id}`, { method:'DELETE', headers:{ 'Authorization':`Bearer ${token}` }});
+                loadAdminSchedList();
             }
 
             let _qrPollTimer = null;
@@ -4339,17 +4928,19 @@ def get_dashboard_page() -> str:
                     const res = await fetch('/version');
                     if (res.ok) {
                         const data = await res.json();
-                        document.getElementById('dashboardVersion').textContent = data.version;
-                        document.getElementById('userPanelVersion').textContent = data.version;
+                        const dv = document.getElementById('dashboardVersion');
+                        if (dv) dv.textContent = data.version;
+                        const uv = document.getElementById('userPanelVersion');
+                        if (uv) uv.textContent = data.version;
                     }
                 } catch (e) {
                     console.log('Version not available:', e);
                 }
             }
-            
             loadVersion();
             refresh();
             loadAdminParkedList();
+            loadAdminSchedList();
             setInterval(refresh, 5000);
             setInterval(loadAdminParkedList, 15000);
         </script>

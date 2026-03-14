@@ -22,12 +22,12 @@ Indicá la especialidad:
 0. ↩️ Volver al menú principal
 ---
 
-### 1.1 Clínica Médica
-Profesionales disponibles:
+### 1.1 Problemas de Windows o Office
+{{TICKET:📋 Tu ticket es: {TKT}
 
-dejame el problema que a la brevedad te vamos a contactar
+Un operador te contactará a la brevedad.
+Escribí *98* para volver al menú.}}
 
-0. ↩️ Volver al menú principal
 ---
 
 ### 1.2 Traumatología
