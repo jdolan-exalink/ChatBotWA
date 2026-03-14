@@ -4,6 +4,22 @@
 
 Sistema integral de chatbot para WhatsApp con gestión de usuarios, administración avanzada, control de horarios y antispam.
 
+## Actualización Marzo 2026
+
+Se aplicaron mejoras para evitar menús vacíos en configuración y alinear la API de configuración:
+
+- Corrección de resolución de rutas de archivos `MenuP.MD` y `MenuF.MD`.
+- Compatibilidad completa en Docker (`/app/data`) y entorno local (`data/` en raíz del proyecto).
+- Nuevos endpoints de lectura:
+  - `GET /api/config/menu`
+  - `GET /api/config/offhours`
+- Endpoint de actualización de menú con doble método:
+  - `POST /api/config/menu`
+  - `PUT /api/config/menu`
+- Soporte de payload en dos formatos para actualización de menú:
+  - `{"content": "..."}`
+  - `{"menu": "..."}`
+
 ### Características Principales
 
 ✅ **Autenticación y Gestión de Usuarios**
@@ -244,6 +260,24 @@ PUT /api/config
   "off_hours_enabled": true,
   "off_hours_message": "Fuera de horarios"
 }
+
+# Obtener menú principal (archivo MenuP.MD)
+GET /api/config/menu
+
+# Actualizar menú principal
+POST /api/config/menu
+{
+  "content": "# Menú\n1) Turnos"
+}
+
+# También válido por compatibilidad
+PUT /api/config/menu
+{
+  "menu": "# Menú\n1) Turnos"
+}
+
+# Obtener configuración fuera de horario (MenuF.MD)
+GET /api/config/offhours
 ```
 
 ### Feriados
