@@ -191,12 +191,19 @@ curl -X GET http://localhost:8088/api/config/menu \
 
 ---
 
-### `POST /api/config/menu` - Actualizar menú
+### `POST /api/config/menu` / `PUT /api/config/menu` - Actualizar menú
 Reemplaza el menú con nuevo contenido.
 
 **Authentication:** Bearer Token (required)
 
 **Request:**
+```json
+{
+  "content": "## 1️⃣ Turnos\n### 1.1 Opción\n..."
+}
+```
+
+También acepta este formato por compatibilidad:
 ```json
 {
   "menu": "## 1️⃣ Turnos\n### 1.1 Opción\n..."
@@ -207,7 +214,7 @@ Reemplaza el menú con nuevo contenido.
 ```json
 {
   "ok": true,
-  "message": "Menú actualizado"
+  "bytes": 1234
 }
 ```
 
@@ -217,8 +224,24 @@ curl -X POST http://localhost:8088/api/config/menu \
   -H "Authorization: Bearer your-token-here" \
   -H "Content-Type: application/json" \
   -d '{
-    "menu": "## 1️⃣ Turnos\n### 1.1 Nueva opción\n..."
+    "content": "## 1️⃣ Turnos\n### 1.1 Nueva opción\n..."
   }'
+```
+
+---
+
+### `GET /api/config/offhours` - Obtener mensaje fuera de horario
+Retorna el mensaje y estado de fuera de horario.
+
+**Authentication:** Bearer Token (optional)
+
+**Response:**
+```json
+{
+  "ok": true,
+  "off_hours_enabled": true,
+  "off_hours_message": "Mensaje fuera de horario..."
+}
 ```
 
 ---

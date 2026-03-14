@@ -516,9 +516,29 @@ async def _scheduler_loop():
 def _data_path(filename: str) -> str:
     if os.path.isabs(filename):
         return filename
-    if os.path.exists("/app/data"):
-        return os.path.join("/app/data", filename)
-    return os.path.join(os.path.dirname(__file__), "data", filename)
+
+    base_dir = os.path.dirname(__file__)
+    # Orden de prioridad:
+    # 1) DATA_DIR explícito (si existe)
+    # 2) /app/data (Docker)
+    # 3) ./services/clinic-bot-api/data (legacy)
+    # 4) raíz del repo ../.. /data (desarrollo local)
+    candidates = []
+    data_dir_env = os.getenv("DATA_DIR")
+    if data_dir_env:
+        candidates.append(data_dir_env)
+    candidates.extend([
+        "/app/data",
+        os.path.join(base_dir, "data"),
+        os.path.abspath(os.path.join(base_dir, "..", "..", "data")),
+    ])
+
+    for folder in candidates:
+        if folder and os.path.isdir(folder):
+            return os.path.join(folder, filename)
+
+    # Fallback estable para permitir creación inicial de archivos en local.
+    return os.path.join(os.path.abspath(os.path.join(base_dir, "..", "..", "data")), filename)
 
 
 def _backup_file_path(path: str) -> str:
@@ -557,14 +577,17 @@ def _restore_previous_text(path: str) -> str:
     return previous
 
 def _read_menu() -> str:
+    menu_path = CLINIC_KB_PATH if os.path.exists(CLINIC_KB_PATH) else _data_path("MenuP.MD")
     try:
-        with open(CLINIC_KB_PATH, "r", encoding="utf-8") as f:
+        with open(menu_path, "r", encoding="utf-8") as f:
             return f.read()
     except Exception:
         return ""
 
 def _write_menu(text: str):
-    with open(CLINIC_KB_PATH, "w", encoding="utf-8") as f:
+    menu_path = CLINIC_KB_PATH if os.path.isabs(CLINIC_KB_PATH) else _data_path("MenuP.MD")
+    os.makedirs(os.path.dirname(menu_path), exist_ok=True)
+    with open(menu_path, "w", encoding="utf-8") as f:
         f.write(text)
 
 
@@ -1914,9 +1937,21 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     _invalidate_cfg_cache()    # limpia caché para próxima lectura
     return BotConfigResponse.from_orm(cfg)
 
+@app.get("/api/config/menu")
+async def get_menu_file():
+    p = _data_path("MenuP.MD")
+    menu = ""
+    if os.path.exists(p):
+        with open(p, "r", encoding="utf-8") as f:
+            menu = f.read()
+    return {"ok": True, "menu": menu}
+
 @app.put("/api/config/menu")
+@app.post("/api/config/menu")
 async def update_menu_file(req: Request, ca=Depends(get_current_admin)):
     body = await req.json(); content = body.get("content", "")
+    if not content.strip() and body.get("menu"):
+        content = body.get("menu", "")
     if not content.strip(): raise HTTPException(400, "Vacío")
     p = _data_path("MenuP.MD")
     _write_text_with_backup(p, content)
@@ -1951,6 +1986,22 @@ async def update_offhours_file(req: Request, ca=Depends(get_current_admin), db: 
     _invalidate_cfg_cache()
 
     return {"ok": True, "bytes": len(content)}
+
+
+@app.get("/api/config/offhours")
+async def get_offhours_file(db: Session = Depends(get_db)):
+    p = _data_path("MenuF.MD")
+    content = ""
+    if os.path.exists(p):
+        with open(p, "r", encoding="utf-8") as f:
+            content = f.read()
+
+    cfg = _get_cfg(db)
+    return {
+        "ok": True,
+        "off_hours_enabled": bool(getattr(cfg, "off_hours_enabled", False)),
+        "off_hours_message": content,
+    }
 
 
 @app.post("/api/config/offhours/restore")
