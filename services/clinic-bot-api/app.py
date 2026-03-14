@@ -259,7 +259,7 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-APP_VERSION = "2.2.15"  # fuente única de verdad — actualizar sólo aquí
+APP_VERSION = "2.2.19"  # fuente única de verdad — actualizar solo aqui
 app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(

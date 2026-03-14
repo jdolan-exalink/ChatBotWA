@@ -7,7 +7,7 @@ set -e
 # ── Preservar archivos de menú personalizados ────────────────────────────────
 # Estos archivos se editan por cada instalación y NO deben pisarse con git pull.
 echo "💾 Preservando archivos de configuración de menú..."
-for f in data/MenuP.MD data/MenuF.MD; do
+for f in data/MenuP.MD data/MenuF.MD data/MenuP.md data/MenuF.md; do
     if [ -f "$f" ]; then
         cp "$f" "/tmp/$(basename $f).bak"
         echo "   ✅ $f guardado"
@@ -19,7 +19,7 @@ git pull
 
 # ── Restaurar menús personalizados (si existían antes del pull) ─────────────
 echo "🔁 Restaurando archivos de menú personalizados..."
-for f in data/MenuP.MD data/MenuF.MD; do
+for f in data/MenuP.MD data/MenuF.MD data/MenuP.md data/MenuF.md; do
     bak="/tmp/$(basename $f).bak"
     if [ -f "$bak" ]; then
         cp "$bak" "$f"
