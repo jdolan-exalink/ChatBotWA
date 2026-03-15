@@ -518,27 +518,39 @@ def _data_path(filename: str) -> str:
         return filename
 
     base_dir = os.path.dirname(__file__)
+    repo_data_dir = os.path.abspath(os.path.join(base_dir, "..", "..", "data"))
+    legacy_data_dir = os.path.join(base_dir, "data")
+
     # Orden de prioridad:
     # 1) DATA_DIR explícito (si existe)
     # 2) /app/data (Docker)
-    # 3) ./services/clinic-bot-api/data (legacy)
-    # 4) raíz del repo ../.. /data (desarrollo local)
+    # 3) raíz del repo ../.. /data (desarrollo local)
+    # 4) ./services/clinic-bot-api/data (legacy)
     candidates = []
     data_dir_env = os.getenv("DATA_DIR")
     if data_dir_env:
         candidates.append(data_dir_env)
     candidates.extend([
         "/app/data",
-        os.path.join(base_dir, "data"),
-        os.path.abspath(os.path.join(base_dir, "..", "..", "data")),
+        repo_data_dir,
+        legacy_data_dir,
     ])
 
+    # Primero intentamos leer desde un archivo existente respetando prioridad.
+    for folder in candidates:
+        if not folder:
+            continue
+        candidate_file = os.path.join(folder, filename)
+        if os.path.isfile(candidate_file):
+            return candidate_file
+
+    # Si aún no existe el archivo, escribimos en el primer directorio válido.
     for folder in candidates:
         if folder and os.path.isdir(folder):
             return os.path.join(folder, filename)
 
     # Fallback estable para permitir creación inicial de archivos en local.
-    return os.path.join(os.path.abspath(os.path.join(base_dir, "..", "..", "data")), filename)
+    return os.path.join(repo_data_dir, filename)
 
 
 def _backup_file_path(path: str) -> str:
