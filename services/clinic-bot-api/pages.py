@@ -4101,6 +4101,7 @@ def get_dashboard_page() -> str:
                     renderCalendar(); 
                 }
                 else if (section === 'status') refresh();
+                else if (section === 'config') loadConfigTabData(currentConfigTab);
             }
 
             // ── Toast ───────────────────────────────────────────────
@@ -5237,11 +5238,11 @@ def get_dashboard_page() -> str:
             
             async function loadMenu() {
                 try {
-                    const res = await fetch(`${API_URL}/config`, {
+                    const res = await fetch(`${API_URL}/config/menu`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
-                    const config = await res.json();
-                    originalMenuContent = config.menu_content || '# Menú Principal\\n\\nBienvenido a nuestro menú.';
+                    const data = await res.json();
+                    originalMenuContent = data.menu || '# Menú Principal\\n\\nBienvenido a nuestro menú.';
                     document.getElementById('menuContent').value = originalMenuContent;
                 } catch (error) {
                     console.error('Error:', error);
@@ -5323,12 +5324,12 @@ def get_dashboard_page() -> str:
             
             async function loadOffhours() {
                 try {
-                    const res = await fetch(`${API_URL}/config`, {
+                    const res = await fetch(`${API_URL}/config/offhours`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
-                    const config = await res.json();
-                    originalOffhoursContent = config.off_hours_message || 'Lo sentimos, estamos fuera de horario.';
-                    originalOffhoursEnabled = config.off_hours_enabled || false;
+                    const data = await res.json();
+                    originalOffhoursContent = data.off_hours_message || 'Lo sentimos, estamos fuera de horario.';
+                    originalOffhoursEnabled = data.off_hours_enabled || false;
                     document.getElementById('offhoursContent').value = originalOffhoursContent;
                     document.getElementById('offhoursEnabled').checked = originalOffhoursEnabled;
                     toggleOffhoursState();
