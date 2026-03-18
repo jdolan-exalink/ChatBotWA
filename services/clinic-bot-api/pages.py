@@ -239,7 +239,7 @@ def get_login_page() -> str:
                         DOLAN SS - 2026
                     </p>
                     <p style="color: #64748b; font-size: 0.7em; text-align: center; margin-top: 4px;">
-                        Ver: <span id="versionDisplay">2.2.21</span>
+                        Ver: <span id="versionDisplay">""" + _GIT_VERSION + """</span>
                     </p>
                 </div>
             </div>
