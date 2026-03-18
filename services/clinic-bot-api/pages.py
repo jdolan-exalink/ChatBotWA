@@ -1016,7 +1016,7 @@ def get_user_panel_page() -> str:
 
                 <div class="sidebar-footer-info">
                     <div class="company">DOLAN SS · 2026</div>
-                    <div class="version" id="userPanelVersion">v2.2.21</div>
+                    <div class="version" id="userPanelVersion">v2.3.0</div>
                 </div>
             </div>
         </div>
@@ -4050,7 +4050,7 @@ def get_dashboard_page() -> str:
                 
                 <div class="sidebar-footer-info">
                     <div class="company" style="color: #64748b;">DOLAN SS</div>
-                    <div class="version" id="dashboardVersion" style="color: #475569;">v2.2.21</div>
+                    <div class="version" id="dashboardVersion" style="color: #475569;">v2.3.0</div>
                 </div>
             </div>
         </div>
