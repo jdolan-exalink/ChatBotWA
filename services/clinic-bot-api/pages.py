@@ -2,6 +2,14 @@
 Funciones para renderizar las HTML pages del sistema
 Diseño moderno, minimalista y tecnológico
 """
+import subprocess
+try:
+    _GIT_VERSION = subprocess.check_output(
+        ["git", "--git-dir=/app/.git", "describe", "--tags", "--always"],
+        stderr=subprocess.DEVNULL
+    ).decode("utf-8").strip()
+except Exception:
+    _GIT_VERSION = "v2.3.0"
 
 def get_login_page() -> str:
     """Login minimalista y moderno"""
@@ -1016,7 +1024,7 @@ def get_user_panel_page() -> str:
 
                 <div class="sidebar-footer-info">
                     <div class="company">DOLAN SS · 2026</div>
-                    <div class="version" id="userPanelVersion">v2.3.0</div>
+                    <div class="version" id="userPanelVersion">""" + _GIT_VERSION + """</div>
                 </div>
             </div>
         </div>
@@ -4050,7 +4058,7 @@ def get_dashboard_page() -> str:
                 
                 <div class="sidebar-footer-info">
                     <div class="company" style="color: #64748b;">DOLAN SS</div>
-                    <div class="version" id="dashboardVersion" style="color: #475569;">v2.3.0</div>
+                    <div class="version" id="dashboardVersion" style="color: #475569;">""" + _GIT_VERSION + """</div>
                 </div>
             </div>
         </div>
