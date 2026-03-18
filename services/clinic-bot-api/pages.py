@@ -4030,6 +4030,10 @@ def get_dashboard_page() -> str:
             
             .card-footer { border-top: 1px solid rgba(226, 232, 240, 0.05); padding-top: 20px; margin-top: 20px; display: flex; gap: 12px; }
             .empty-state { text-align: center; color: #64748b; padding: 40px 20px; font-style: italic; font-size: 0.9em; }
+            .btn-sm { padding: 6px 12px; font-size: 0.85em; }
+            .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); align-items: center; justify-content: center; z-index: 1000; }
+            .modal.show { display: flex; }
+            .modal-content { background: rgba(18,24,40,0.97); border: 1px solid rgba(226,232,240,0.12); border-radius: 16px; padding: 32px; max-width: 640px; width: 95%; max-height: 90vh; overflow-y: auto; }
         </style>
     </head>
     <body>
@@ -4040,6 +4044,7 @@ def get_dashboard_page() -> str:
             </div>
             
             <div class="nav-item active" onclick="switchSection('status')">📊 Estado</div>
+            <div class="nav-item" onclick="switchSection('ticketsAdmin')">🎫 Tickets</div>
             <div class="nav-item" onclick="switchSection('holidays')">📅 Feriados</div>
             <div class="nav-item" onclick="switchSection('config')">⚙️ Configuración</div>
             
@@ -4138,6 +4143,65 @@ def get_dashboard_page() -> str:
                         </div>
                     </div>
                     <div id="adminSchedList"><div style="color:#94a3b8; font-size:0.9em;">Cargando...</div></div>
+                </div>
+            </div>
+
+            <!-- ────── SECCIÓN TICKETS ADMIN ────── -->
+            <div id="ticketsAdmin" class="section">
+                <div style="margin-bottom: 20px;">
+                    <h2 style="color: #f1f5f9; margin: 0;">🎫 Tickets</h2>
+                    <p style="color: #94a3b8; margin-top: 6px; font-size: 0.9em;">Gestión de conversaciones y turnos derivados a operadores.</p>
+                </div>
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin:0;">Listado de Tickets</h2>
+                        <button class="btn btn-primary btn-sm" onclick="loadAdminTickets()">🔄 Refrescar</button>
+                    </div>
+                    <div id="adminTicketsGrid" style="display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; padding-right: 10px;">
+                        <div class="empty-state">Cargando tickets...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Chat Admin -->
+            <div id="adminChatModal" class="modal">
+                <div class="modal-content" style="max-width: 600px; width: 95%;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(226,232,240,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                        <h3 id="adminChatModalTitle" style="margin: 0;">Conversación</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="closeAdminChatModal()" style="margin: 0;">X</button>
+                    </div>
+                    <div id="adminChatContent" style="height: 350px; overflow-y: auto; text-align: left; background: rgba(15,23,42,0.5); padding: 15px; border-radius: 8px; font-size: 0.9em;"></div>
+                    <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; gap: 10px;" id="adminChatModalActions"></div>
+                        <button class="btn btn-primary btn-sm" id="btnAdminSched" onclick="openAdminTicketScheduleModal()">Agendar Mensaje</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Agendar Admin Ticket -->
+            <div id="adminTicketSchedModal" class="modal">
+                <div class="modal-content">
+                    <h3 style="margin-top:0;">Agendar Mensaje</h3>
+                    <div class="form-group" style="text-align: left;">
+                        <label>Teléfono</label>
+                        <input type="text" id="adminSchedTicketPhone" readonly style="opacity: 0.7;">
+                    </div>
+                    <div class="form-group" style="text-align: left;">
+                        <label>Nombre del Recordatorio</label>
+                        <input type="text" id="adminSchedTicketName" placeholder="Ej: Recordatorio Turno">
+                    </div>
+                    <div class="form-group" style="text-align: left;">
+                        <label>Hora (HH:MM)</label>
+                        <input type="time" id="adminSchedTicketTime">
+                    </div>
+                    <div class="form-group" style="text-align: left;">
+                        <label>Mensaje</label>
+                        <textarea id="adminSchedTicketMessage" rows="4" placeholder="Contenido del mensaje..."></textarea>
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                        <button class="btn btn-secondary" onclick="closeAdminTicketScheduleModal()">Cancelar</button>
+                        <button class="btn btn-primary" onclick="saveAdminTicketScheduledMessage()">Guardar</button>
+                    </div>
                 </div>
             </div>
             
@@ -4801,7 +4865,151 @@ def get_dashboard_page() -> str:
                 }
                 else if (section === 'status') refresh();
                 else if (section === 'config') loadConfigTabData(currentConfigTab);
+                else if (section === 'ticketsAdmin') loadAdminTickets();
             }
+
+            // ── TICKETS ADMIN JS ────────────────────────────────────────────────────────
+            let adminCurrentTickets = [];
+            let adminCurrentChatPhone = '';
+            let adminCurrentChatTicketId = '';
+
+            async function loadAdminTickets() {
+                try {
+                    const res = await fetch('/api/tickets/list', {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    if (res.ok) {
+                        adminCurrentTickets = await res.json();
+                        renderAdminTickets();
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            function renderAdminTickets() {
+                const grid = document.getElementById('adminTicketsGrid');
+                if (!adminCurrentTickets.length) {
+                    grid.innerHTML = '<div class="empty-state">No hay tickets</div>';
+                    return;
+                }
+                let html = '';
+                adminCurrentTickets.forEach(t => {
+                    let badgeColor = '#64748b';
+                    if (t.status === 'pendiente') badgeColor = '#f59e0b';
+                    if (t.status === 'confirmado') badgeColor = '#10b981';
+                    if (t.status === 'cancelado') badgeColor = '#ef4444';
+                    if (t.status === 'cerrado')    badgeColor = '#3b82f6';
+
+                    let statusLabel = t.status.toUpperCase();
+                    if (t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
+
+                    let schedBadge = t.has_scheduled_message
+                        ? '<span style="background:rgba(139,92,246,0.2);color:#c4b5fd;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:8px;">\u23F3 Programado</span>'
+                        : '';
+
+                    html += `
+                        <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:600;color:#f1f5f9;font-size:0.95em;">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
+                                <div style="color:${badgeColor};font-weight:500;font-size:0.88em;margin-top:4px;">${statusLabel} | Origen: ${t.menu_section || '-'}</div>
+                                <div style="font-size:0.75em;color:#64748b;margin-top:3px;">Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}</div>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-shrink:0;">
+                                <button class="btn btn-secondary btn-sm" onclick="adminViewTicket('${t.id}')">Ver Chat</button>
+                            </div>
+                        </div>`;
+                });
+                grid.innerHTML = html;
+            }
+
+            async function adminViewTicket(tid) {
+                const t = adminCurrentTickets.find(x => x.id === tid);
+                if (!t) return;
+                adminCurrentChatPhone = t.phone_number;
+                adminCurrentChatTicketId = tid;
+
+                document.getElementById('adminChatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
+                document.getElementById('adminChatContent').innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">Cargando mensajes...</div>';
+                document.getElementById('adminChatModal').classList.add('show');
+
+                let actionsHtml = '';
+                if (!t.is_deleted) {
+                    if (t.status === 'pendiente') actionsHtml += `<button class="btn btn-primary btn-sm" onclick="adminActionTicket('confirm')">Confirmar</button>`;
+                    if (t.status === 'timeout')   actionsHtml += `<button class="btn btn-primary btn-sm" onclick="adminActionTicket('resume')">Retomar</button>`;
+                    actionsHtml += `<button class="btn btn-danger btn-sm" onclick="adminActionTicket('delete')">Borrar</button>`;
+                }
+                document.getElementById('adminChatModalActions').innerHTML = actionsHtml;
+
+                try {
+                    const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    if (res.ok) {
+                        const msgs = await res.json();
+                        let chtml = '';
+                        if (!msgs.length) {
+                            chtml = '<div style="color:#94a3b8;text-align:center;padding:20px;">No hay mensajes recientes</div>';
+                        } else {
+                            msgs.forEach(m => {
+                                const isBot = m.fromMe;
+                                const align = isBot ? 'right' : 'left';
+                                const bg    = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
+                                const text  = m.body || m.text || JSON.stringify(m);
+                                chtml += `<div style="text-align:${align};margin-bottom:8px;">
+                                    <div style="display:inline-block;background:${bg};padding:8px 12px;border-radius:8px;max-width:80%;word-break:break-word;">${text}</div>
+                                </div>`;
+                            });
+                        }
+                        document.getElementById('adminChatContent').innerHTML = chtml;
+                        const cc = document.getElementById('adminChatContent');
+                        cc.scrollTop = cc.scrollHeight;
+                    } else {
+                        document.getElementById('adminChatContent').innerHTML = '<div style="color:#94a3b8;text-align:center;">No se pudieron cargar los mensajes.</div>';
+                    }
+                } catch(e) {
+                    document.getElementById('adminChatContent').innerHTML = '<div style="color:#94a3b8;text-align:center;">Error cargando mensajes.</div>';
+                }
+            }
+
+            function closeAdminChatModal() { document.getElementById('adminChatModal').classList.remove('show'); }
+
+            async function adminActionTicket(action) {
+                if (action === 'delete' && !confirm('\u00bfSeguro que quieres borrar este ticket?')) return;
+                try {
+                    const res = await fetch('/api/tickets/action', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ action: action, id: adminCurrentChatTicketId })
+                    });
+                    if (res.ok) { closeAdminChatModal(); loadAdminTickets(); }
+                    else        alert('Error ejecutando accion');
+                } catch(e) { console.error(e); }
+            }
+
+            function openAdminTicketScheduleModal() {
+                document.getElementById('adminSchedTicketPhone').value   = adminCurrentChatPhone;
+                document.getElementById('adminSchedTicketName').value    = '';
+                document.getElementById('adminSchedTicketTime').value    = '';
+                document.getElementById('adminSchedTicketMessage').value = '';
+                document.getElementById('adminTicketSchedModal').classList.add('show');
+            }
+            function closeAdminTicketScheduleModal() { document.getElementById('adminTicketSchedModal').classList.remove('show'); }
+
+            async function saveAdminTicketScheduledMessage() {
+                const phone = document.getElementById('adminSchedTicketPhone').value;
+                const name  = document.getElementById('adminSchedTicketName').value;
+                const time  = document.getElementById('adminSchedTicketTime').value;
+                const msg   = document.getElementById('adminSchedTicketMessage').value;
+                if (!name || !time || !msg) { alert('Completar todos los campos'); return; }
+                try {
+                    const res = await fetch('/api/scheduled-messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ name, phone_number: phone, send_time: time, message: msg, days_of_week: '1,2,3,4,5,6,7', is_active: true })
+                    });
+                    if (res.ok) { closeAdminTicketScheduleModal(); loadAdminTickets(); showToast('Mensaje agendado'); }
+                } catch(e) { console.error(e); }
+            }
+            // ── FIN TICKETS ADMIN ──────────────────────────────────────────────────────────────
 
             // ── Toast ───────────────────────────────────────────────
             function showToast(msg, type = 'success') {
