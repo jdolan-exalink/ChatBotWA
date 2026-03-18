@@ -161,6 +161,7 @@ class ConversationState(Base):
     # Datos recolectados (JSON o texto)
     collected_data = Column(Text)  # JSON con datos del usuario
     last_bot_menu = Column(String(100))  # Último menú que vio
+    menu_breadcrumb = Column(Text)  # Ruta con descripciones para el ticket
     
     # Timestamps
     started_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -258,6 +259,7 @@ class TicketHistory(Base):
     
     # Sección del menú que originó el ticket
     menu_section = Column(String(100))
+    menu_breadcrumb = Column(Text)
 
     def __repr__(self):
         return f"<TicketHistory {self.ticket_id} reason={self.close_reason}>"
@@ -272,6 +274,7 @@ class ScheduledMessage(Base):
     phone_number = Column(String(30), nullable=False)   # destinatario (puede ser múltiples, CSV)
     message = Column(Text, nullable=False)              # texto del mensaje
     send_time = Column(String(5), nullable=False)       # "HH:MM" hora local configurada
+    send_date = Column(String(10), nullable=True)        # "YYYY-MM-DD" fecha específica (None = recurrente)
     days_of_week = Column(String(20), default="1,2,3,4,5,6,7")  # 1=Lun … 7=Dom (CSV)
     is_active = Column(Boolean, default=True)
     last_sent_date = Column(String(10), nullable=True)  # "YYYY-MM-DD" evita doble envío

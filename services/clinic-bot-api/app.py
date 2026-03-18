@@ -270,7 +270,7 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    APP_VERSION = "v2.3.0"
+    APP_VERSION = "v2.3.1"
 app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
@@ -497,9 +497,14 @@ async def _scheduler_loop():
                 for sm in pending:
                     if sm.last_sent_date == today:
                         continue
-                    days = [d.strip() for d in (sm.days_of_week or "1,2,3,4,5,6,7").split(",")]
-                    if dow not in days:
+                    # Si tiene fecha específica, solo enviar ese día
+                    if sm.send_date and sm.send_date != today:
                         continue
+                    # Si no tiene fecha específica, respetar days_of_week
+                    if not sm.send_date:
+                        days = [d.strip() for d in (sm.days_of_week or "1,2,3,4,5,6,7").split(",")]
+                        if dow not in days:
+                            continue
                     # send to each phone (CSV support)
                     for raw_phone in sm.phone_number.split(","):
                         phone = raw_phone.strip()
@@ -1123,6 +1128,7 @@ def _archive_ticket(db: Session, row: ConversationState, reason: str, closed_by:
             closed_at=now,
             duration_seconds=duration,
             menu_section=row.last_bot_menu,
+            menu_breadcrumb=row.menu_breadcrumb,
             ticket_status=t_status,
         )
         db.add(hist)
@@ -1276,6 +1282,38 @@ def _menu_nav(choice: str, section: str) -> tuple[str, str]:
 
     return f"❌ Opción {choice} no disponible. Escribe *0* para volver al menú.", section
 
+
+def _get_menu_breadcrumb(section: str) -> str:
+    """Retorna la jerarquía de títulos del menú para una sección dada."""
+    if not section or section == "main":
+        return "Bot Principal"
+    
+    path = section.replace("menu_", "").split("_")
+    lines = _get_menu_cached().split("\n")
+    breadcrumb = []
+    
+    for length in range(1, len(path) + 1):
+        sub_path = path[:length]
+        marker = ".".join(sub_path)
+        depth = length + 1
+        hpfx = "#" * depth + " "
+        
+        for ln in lines:
+            if ln.startswith(hpfx) and ln[depth:].strip().startswith(marker):
+                item_title = ln[depth:].strip()
+                breadcrumb.append(item_title)
+                break
+    
+    # El usuario quiere las últimas dos secuencias
+    # "1.2 -> 1️⃣ Problemas de sistemas -> 2. 🦴 problemas de sistema de obra social"
+    # Reconstruyo el path numérico para el prefijo
+    num_path = ".".join(path)
+    if len(breadcrumb) >= 2:
+        return f"{num_path} -> {breadcrumb[-2]} -> {breadcrumb[-1]}"
+    elif breadcrumb:
+        return f"{num_path} -> {breadcrumb[-1]}"
+    return num_path
+
 # ──────────────────────────────────────────────────────────────
 #  WEBHOOK  — motor del bot (WAHA-DOC §3, §5, §8, §9)
 # ──────────────────────────────────────────────────────────────
@@ -1377,6 +1415,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
                 row = db.query(ConversationState).filter(ConversationState.phone_number == chat_id).first()
                 if row:
                     row.last_bot_menu = current_section
+                    row.menu_breadcrumb = _get_menu_breadcrumb(current_section)
                     db.commit()
                 _chat_nav.pop(chat_id, None)
                 
@@ -1640,6 +1679,8 @@ async def list_parked_chats(cu=Depends(get_current_user), db: Session = Depends(
             "phone_number": r.phone_number,
             "current_state": r.current_state,
             "ticket_id": r.ticket_id,
+            "ticket_status": getattr(r, "ticket_status", "pendiente"),
+            "menu_breadcrumb": r.menu_breadcrumb or r.last_bot_menu,
             "handoff_started_at": r.handoff_started_at.isoformat() if r.handoff_started_at else None,
             "human_mode_expire": r.human_mode_expire.isoformat() if r.human_mode_expire else None,
         })
@@ -1755,6 +1796,7 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
             "deleted_by": None,
             "has_scheduled_message": has_sm,
             "menu_section": r.last_bot_menu,
+            "menu_breadcrumb": getattr(r, "menu_breadcrumb", r.last_bot_menu),
             "opened_at": r.handoff_started_at.isoformat() if r.handoff_started_at else None,
             "closed_at": None,
             "duration": None,
@@ -1772,6 +1814,7 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
             "deleted_by": getattr(r, "deleted_by", None),
             "has_scheduled_message": has_sm,
             "menu_section": r.menu_section,
+            "menu_breadcrumb": getattr(r, "menu_breadcrumb", r.menu_section),
             "opened_at": r.opened_at.isoformat() if r.opened_at else None,
             "closed_at": r.closed_at.isoformat() if r.closed_at else None,
             "duration": r.duration_seconds,
@@ -1852,6 +1895,8 @@ async def ticket_history(cu=Depends(get_current_user), db: Session = Depends(get
             "closed_at": r.closed_at.isoformat() if r.closed_at else None,
             "duration_seconds": r.duration_seconds,
             "menu_section": r.menu_section,
+            "menu_breadcrumb": r.menu_breadcrumb or r.menu_section,
+            "ticket_status": r.ticket_status,
         } for r in rows]
     }
 
@@ -1866,6 +1911,7 @@ def _sm_to_dict(sm: ScheduledMessage) -> dict:
         "phone_number": sm.phone_number,
         "message": sm.message,
         "send_time": sm.send_time,
+        "send_date": sm.send_date,          # YYYY-MM-DD o None
         "days_of_week": sm.days_of_week,
         "is_active": sm.is_active,
         "last_sent_date": sm.last_sent_date,
@@ -1885,6 +1931,7 @@ async def create_scheduled(req: Request, cu=Depends(get_current_user), db: Sessi
     phone = str(body.get("phone_number") or "").strip()
     message = str(body.get("message") or "").strip()
     send_time = str(body.get("send_time") or "").strip()
+    send_date = str(body.get("send_date") or "").strip() or None
     days = str(body.get("days_of_week") or "1,2,3,4,5,6,7").strip()
     if not name or not phone or not message or not send_time:
         raise HTTPException(400, "name, phone_number, message y send_time son requeridos")
@@ -1893,7 +1940,7 @@ async def create_scheduled(req: Request, cu=Depends(get_current_user), db: Sessi
         raise HTTPException(400, "send_time debe tener formato HH:MM")
     sm = ScheduledMessage(
         name=name, phone_number=phone, message=message,
-        send_time=send_time, days_of_week=days, is_active=True,
+        send_time=send_time, send_date=send_date, days_of_week=days, is_active=True,
         created_by=cu["username"]
     )
     db.add(sm); db.commit(); db.refresh(sm)
@@ -1905,9 +1952,9 @@ async def update_scheduled(sid: int, req: Request, cu=Depends(get_current_user),
     if not sm:
         raise HTTPException(404, "No encontrado")
     body = await req.json()
-    for field in ("name", "phone_number", "message", "send_time", "days_of_week"):
+    for field in ("name", "phone_number", "message", "send_time", "days_of_week", "send_date"):
         if field in body and body[field] is not None:
-            setattr(sm, field, str(body[field]).strip())
+            setattr(sm, field, str(body[field]).strip() or None if field == "send_date" else str(body[field]).strip())
     if "is_active" in body:
         sm.is_active = bool(body["is_active"])
     db.commit(); db.refresh(sm)
@@ -2345,6 +2392,7 @@ async def status(cu=Depends(get_current_user), db: Session = Depends(get_db)):
         "solution_name": cfg.solution_name,
         "off_hours": _is_off_hours(db),
         "chats_today": _count_chats_today(db),
+        "version": APP_VERSION,
         "info": {"name": info.get("name", WAHA_SESSION), "status": info.get("status")},
     }
 

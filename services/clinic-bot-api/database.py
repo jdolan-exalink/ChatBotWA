@@ -28,7 +28,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 SCHEMA_VERSION_TABLE = "schema_version"
-TARGET_SCHEMA_VERSION = 4
+TARGET_SCHEMA_VERSION = 6
 
 def get_db():
     db = SessionLocal()
@@ -192,12 +192,31 @@ def _migration_v4_ticket_fields() -> None:
             _add_column_if_missing("ticket_history", col, ddl)
 
 
+def _migration_v5_scheduled_date() -> None:
+    """Agrega columna send_date a scheduled_messages para mensajes de fecha específica."""
+    if _table_exists("scheduled_messages"):
+        _add_column_if_missing(
+            "scheduled_messages", "send_date",
+            "send_date VARCHAR(10) DEFAULT NULL"
+        )
+
+
+def _migration_v6_ticket_breadcrumb() -> None:
+    """Agrega columna menu_breadcrumb para historial y estado actual."""
+    if _table_exists("conversation_states"):
+        _add_column_if_missing("conversation_states", "menu_breadcrumb", "TEXT")
+    if _table_exists("ticket_history"):
+        _add_column_if_missing("ticket_history", "menu_breadcrumb", "TEXT")
+
+
 def _run_schema_migrations() -> int:
     migrations = [
         (1, _migration_v1_bot_config_columns),
         (2, _migration_v2_conversation_and_runtime),
         (3, _migration_v3_external_integrations),
         (4, _migration_v4_ticket_fields),
+        (5, _migration_v5_scheduled_date),
+        (6, _migration_v6_ticket_breadcrumb),
     ]
 
     current = _get_schema_version()

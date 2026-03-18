@@ -379,7 +379,7 @@ def get_login_page() -> str:
                             <div class="ticket-info">
                                 <div class="ticket-id">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
                                 <div class="ticket-status" style="color: ${badgeColor}; font-weight: 500;">
-                                    ${statusLabel} | Origen: ${t.menu_section || '-'}
+                                    ${statusLabel} | Origen: ${t.menu_breadcrumb || t.menu_section || '-'}
                                 </div>
                                 <div style="font-size: 0.75em; color: #64748b; margin-top: 4px;">
                                     Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}
@@ -489,10 +489,18 @@ def get_login_page() -> str:
             async function saveScheduledMessage() {
                 const phone = document.getElementById('schedPhone').value;
                 const name = document.getElementById('schedName').value;
-                const time = document.getElementById('schedTime').value;
+                const val = document.getElementById('schedTime').value;
                 const msg = document.getElementById('schedMessage').value;
+
+                let send_time = '';
+                let send_date = null;
+                if (val) {
+                    const parts = val.split('T');
+                    send_date = parts[0];
+                    send_time = parts[1];
+                }
                 
-                if(!name || !time || !msg) { alert("Completar todos los campos"); return; }
+                if(!name || !send_time || !msg) { alert("Completar todos los campos"); return; }
                 
                 try {
                     const res = await fetch('/api/scheduled-messages', {
@@ -504,7 +512,8 @@ def get_login_page() -> str:
                         body: JSON.stringify({
                             name: name,
                             phone_number: phone,
-                            send_time: time,
+                            send_time: send_time,
+                            send_date: send_date,
                             message: msg,
                             days_of_week: "1,2,3,4,5,6,7",
                             is_active: true
@@ -1141,8 +1150,8 @@ def get_user_panel_page() -> str:
                         <input type="text" id="schedName" placeholder="Ej: Recordatorio Turno">
                     </div>
                     <div class="form-group" style="text-align: left;">
-                        <label>Hora (HH:MM)</label>
-                        <input type="time" id="schedTime">
+                        <label>Fecha y Hora</label>
+                        <input type="datetime-local" id="schedTime">
                     </div>
                     <div class="form-group" style="text-align: left;">
                         <label>Mensaje</label>
@@ -4191,8 +4200,8 @@ def get_dashboard_page() -> str:
                         <input type="text" id="adminSchedTicketName" placeholder="Ej: Recordatorio Turno">
                     </div>
                     <div class="form-group" style="text-align: left;">
-                        <label>Hora (HH:MM)</label>
-                        <input type="time" id="adminSchedTicketTime">
+                        <label>Fecha y Hora</label>
+                        <input type="datetime-local" id="adminSchedTicketTime">
                     </div>
                     <div class="form-group" style="text-align: left;">
                         <label>Mensaje</label>
@@ -4678,8 +4687,8 @@ def get_dashboard_page() -> str:
                     <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Número(s) destino <span style="color:#64748b;">(coma si son varios)</span></label>
                         <input id="adminSchedPhone" type="text" placeholder="5491112345678" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
                     <div style="display:flex; gap:10px;">
-                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Hora de envío</label>
-                            <input id="adminSchedTime" type="time" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
+                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Fecha y Hora</label>
+                            <input id="adminSchedTime" type="datetime-local" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
                         <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Días</label>
                             <select id="adminSchedDays" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.85em; box-sizing:border-box;">
                                 <option value="1,2,3,4,5,6,7">Todos los días</option>
@@ -4921,7 +4930,7 @@ def get_dashboard_page() -> str:
                         <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
                             <div style="flex:1;min-width:0;">
                                 <div style="font-weight:600;color:#f1f5f9;font-size:0.95em;">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
-                                <div style="color:${badgeColor};font-weight:500;font-size:0.88em;margin-top:4px;">${statusLabel} | Origen: ${t.menu_section || '-'}</div>
+                                <div style="color:${badgeColor};font-weight:500;font-size:0.88em;margin-top:4px;">${statusLabel} | Origen: ${t.menu_breadcrumb || t.menu_section || '-'}</div>
                                 <div style="font-size:0.75em;color:#64748b;margin-top:3px;">Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}</div>
                             </div>
                             <div style="display:flex;gap:8px;flex-shrink:0;">
@@ -5008,14 +5017,23 @@ def get_dashboard_page() -> str:
             async function saveAdminTicketScheduledMessage() {
                 const phone = document.getElementById('adminSchedTicketPhone').value;
                 const name  = document.getElementById('adminSchedTicketName').value;
-                const time  = document.getElementById('adminSchedTicketTime').value;
+                const val   = document.getElementById('adminSchedTicketTime').value;
                 const msg   = document.getElementById('adminSchedTicketMessage').value;
-                if (!name || !time || !msg) { alert('Completar todos los campos'); return; }
+                
+                let send_time = '';
+                let send_date = null;
+                if (val) {
+                    const parts = val.split('T');
+                    send_date = parts[0];
+                    send_time = parts[1];
+                }
+                
+                if (!name || !send_time || !msg) { alert('Completar todos los campos'); return; }
                 try {
                     const res = await fetch('/api/scheduled-messages', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                        body: JSON.stringify({ name, phone_number: phone, send_time: time, message: msg, days_of_week: '1,2,3,4,5,6,7', is_active: true })
+                        body: JSON.stringify({ name, phone_number: phone, send_time, send_date, message: msg, days_of_week: '1,2,3,4,5,6,7', is_active: true })
                     });
                     if (res.ok) { closeAdminTicketScheduleModal(); loadAdminTickets(); showToast('Mensaje agendado'); }
                 } catch(e) { console.error(e); }
@@ -5582,6 +5600,7 @@ def get_dashboard_page() -> str:
                             <td style="padding:10px 8px; color:#f1f5f9; font-family:monospace; font-size:0.9em;">${item.phone_number}</td>
                             <td style="padding:10px 8px; color:#94a3b8; font-size:0.85em;">${state}</td>
                             <td style="padding:10px 8px; color:#93c5fd; font-size:0.8em; font-family:monospace;">${ticket}</td>
+                            <td style="padding:10px 8px; color:#cbd5e1; font-size:0.8em; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${item.menu_breadcrumb||'—'}">${item.menu_breadcrumb||'—'}</td>
                             <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${started}</td>
                             <td style="padding:10px 8px; color:#94a3b8; font-size:0.8em;">${expire}</td>
                             <td style="padding:10px 8px; display:flex; gap:6px; flex-wrap:wrap;">
@@ -5595,6 +5614,7 @@ def get_dashboard_page() -> str:
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Número</th>
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Estado</th>
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Ticket</th>
+                            <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Origen</th>
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Inicio</th>
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Vence</th>
                             <th style="padding:10px 8px; text-align:left; color:#cbd5e1; font-size:0.85em;">Acción</th>
@@ -5792,7 +5812,13 @@ def get_dashboard_page() -> str:
                 document.getElementById('adminSchedModalTitle').textContent = sm ? '✏️ Editar Mensaje Programado' : '🕐 Nuevo Mensaje Programado';
                 document.getElementById('adminSchedName').value = sm ? sm.name : '';
                 document.getElementById('adminSchedPhone').value = sm ? sm.phone_number : '';
-                document.getElementById('adminSchedTime').value = sm ? sm.send_time : '';
+                let dtVal = '';
+                if (sm && sm.send_date && sm.send_time) {
+                    dtVal = `${sm.send_date}T${sm.send_time}`;
+                } else if (sm && sm.send_time) {
+                    dtVal = `${new Date().toISOString().split('T')[0]}T${sm.send_time}`;
+                }
+                document.getElementById('adminSchedTime').value = dtVal;
                 document.getElementById('adminSchedDays').value = sm && sm.days_of_week ? sm.days_of_week : '1,2,3,4,5,6,7';
                 document.getElementById('adminSchedMsg').value = sm ? sm.message : '';
                 document.getElementById('adminSchedModalMsg').textContent = '';
@@ -5803,11 +5829,20 @@ def get_dashboard_page() -> str:
 
             async function saveAdminSchedMsg() {
                 const msgEl = document.getElementById('adminSchedModalMsg');
+                const val = document.getElementById('adminSchedTime').value;
+                let send_time = '';
+                let send_date = null;
+                if (val) {
+                    const parts = val.split('T');
+                    send_date = parts[0];
+                    send_time = parts[1];
+                }
                 const payload = {
                     name: document.getElementById('adminSchedName').value.trim(),
                     phone_number: document.getElementById('adminSchedPhone').value.trim(),
                     message: document.getElementById('adminSchedMsg').value.trim(),
-                    send_time: document.getElementById('adminSchedTime').value.trim(),
+                    send_time: send_time,
+                    send_date: send_date,
                     days_of_week: document.getElementById('adminSchedDays').value,
                 };
                 if (!payload.name || !payload.phone_number || !payload.message || !payload.send_time) {
