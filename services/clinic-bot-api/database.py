@@ -28,7 +28,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 SCHEMA_VERSION_TABLE = "schema_version"
-TARGET_SCHEMA_VERSION = 3
+TARGET_SCHEMA_VERSION = 4
 
 def get_db():
     db = SessionLocal()
@@ -178,12 +178,26 @@ def _migration_v3_external_integrations() -> None:
         for col, ddl in cols:
             _add_column_if_missing("external_access_tokens", col, ddl)
 
+def _migration_v4_ticket_fields() -> None:
+    if _table_exists("conversation_states"):
+        _add_column_if_missing("conversation_states", "ticket_status", "ticket_status VARCHAR(50) DEFAULT 'pendiente'")
+
+    if _table_exists("ticket_history"):
+        cols = [
+            ("ticket_status", "ticket_status VARCHAR(50) DEFAULT 'cerrado'"),
+            ("is_deleted", "is_deleted BOOLEAN DEFAULT 0"),
+            ("deleted_by", "deleted_by VARCHAR(255)"),
+        ]
+        for col, ddl in cols:
+            _add_column_if_missing("ticket_history", col, ddl)
+
 
 def _run_schema_migrations() -> int:
     migrations = [
         (1, _migration_v1_bot_config_columns),
         (2, _migration_v2_conversation_and_runtime),
         (3, _migration_v3_external_integrations),
+        (4, _migration_v4_ticket_fields),
     ]
 
     current = _get_schema_version()

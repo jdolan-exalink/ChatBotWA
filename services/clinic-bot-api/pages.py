@@ -329,7 +329,209 @@ def get_login_page() -> str:
             // Focus en username al cargar
             document.getElementById('username').focus();
             loadVersion();
-        </script>
+        
+            // TICKETS LOGIC
+            let currentTickets = [];
+            let currentChatPhone = "";
+            let currentChatTicketId = "";
+
+            async function loadTickets() {
+                try {
+                    const res = await fetch('/api/tickets/list', {
+                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
+                    });
+                    if(res.ok) {
+                        currentTickets = await res.json();
+                        renderTickets();
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            function renderTickets() {
+                const grid = document.getElementById('ticketsGrid');
+                if(!currentTickets.length) {
+                    grid.innerHTML = '<div class="empty-state">No hay tickets</div>';
+                    return;
+                }
+                
+                let html = '';
+                currentTickets.forEach(t => {
+                    let badgeColor = '#64748b';
+                    if (t.status === 'pendiente') badgeColor = '#f59e0b';
+                    if (t.status === 'confirmado') badgeColor = '#10b981';
+                    if (t.status === 'cancelado') badgeColor = '#ef4444';
+                    
+                    let statusLabel = t.status.toUpperCase();
+                    if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
+                    
+                    let schedBadge = t.has_scheduled_message ? '<span style="background: rgba(139,92,246,0.2); color: #c4b5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
+
+                    html += `
+                        <div class="ticket-row">
+                            <div class="ticket-info">
+                                <div class="ticket-id">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
+                                <div class="ticket-status" style="color: ${badgeColor}; font-weight: 500;">
+                                    ${statusLabel} | Origen: ${t.menu_section || '-'}
+                                </div>
+                                <div style="font-size: 0.75em; color: #64748b; margin-top: 4px;">
+                                    Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}
+                                </div>
+                            </div>
+                            <div class="ticket-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="viewTicket('${t.id}')">Ver Chat</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                grid.innerHTML = html;
+            }
+
+            async function viewTicket(tid) {
+                const t = currentTickets.find(x => x.id === tid);
+                if(!t) return;
+                
+                currentChatPhone = t.phone_number;
+                currentChatTicketId = tid;
+                
+                document.getElementById('chatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
+                document.getElementById('chatContent').innerHTML = '<div class="spinner-text">Cargando mensajes desde WAHA...</div>';
+                document.getElementById('chatModal').classList.add('show');
+                
+                // Actions
+                let actionsHtml = '';
+                if (!t.is_deleted) {
+                    if (t.status === 'pendiente') {
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('confirm')">Confirmar</button>`;
+                    }
+                    if (t.status === 'timeout') {
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('resume')">Retomar</button>`;
+                    }
+                    actionsHtml += `<button class="btn btn-danger btn-sm" onclick="actionTicket('delete')">Borrar (Cancelar)</button>`;
+                }
+                document.getElementById('chatModalActions').innerHTML = actionsHtml;
+                
+                // fetch messages
+                try {
+                    const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
+                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
+                    });
+                    if(res.ok) {
+                        const msgs = await res.json();
+                        let chtml = '';
+                        if(msgs.length === 0) {
+                            chtml = '<div class="empty-state">No hay mensajes recientes en WAHA</div>';
+                        } else {
+                            // msgs might be an array of Waha message objects
+                            msgs.forEach(m => {
+                                const isBot = m.fromMe;
+                                const align = isBot ? 'right' : 'left';
+                                const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
+                                const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
+                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px;">
+                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word;">
+                                        ${text}
+                                    </div>
+                                </div>`;
+                            });
+                        }
+                        document.getElementById('chatContent').innerHTML = chtml;
+                        document.getElementById('chatContent').scrollTop = document.getElementById('chatContent').scrollHeight;
+                    } else {
+                        document.getElementById('chatContent').innerHTML = '<div class="empty-state">No se pudieron cargar los mensajes.</div>';
+                    }
+                } catch(e) {
+                    document.getElementById('chatContent').innerHTML = '<div class="empty-state">Error cargando mensajes.</div>';
+                }
+            }
+
+            function closeChatModal() { document.getElementById('chatModal').classList.remove('show'); }
+
+            async function actionTicket(action) {
+                if(action === 'delete') {
+                    if(!confirm("¿Seguro que quieres borrar este ticket?")) return;
+                }
+                try {
+                    const res = await fetch('/api/tickets/action', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({ action: action, id: currentChatTicketId })
+                    });
+                    if(res.ok) {
+                        closeChatModal();
+                        loadTickets();
+                    } else {
+                        alert("Error ejecutando accion");
+                    }
+                } catch(e){ console.error(e); }
+            }
+
+            function openScheduleModal() {
+                document.getElementById('schedPhone').value = currentChatPhone;
+                document.getElementById('schedName').value = '';
+                document.getElementById('schedTime').value = '';
+                document.getElementById('schedMessage').value = '';
+                document.getElementById('scheduleModal').classList.add('show');
+            }
+
+            function closeScheduleModal() { document.getElementById('scheduleModal').classList.remove('show'); }
+
+            async function saveScheduledMessage() {
+                const phone = document.getElementById('schedPhone').value;
+                const name = document.getElementById('schedName').value;
+                const time = document.getElementById('schedTime').value;
+                const msg = document.getElementById('schedMessage').value;
+                
+                if(!name || !time || !msg) { alert("Completar todos los campos"); return; }
+                
+                try {
+                    const res = await fetch('/api/scheduled-messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({
+                            name: name,
+                            phone_number: phone,
+                            send_time: time,
+                            message: msg,
+                            days_of_week: "1,2,3,4,5,6,7",
+                            is_active: true
+                        })
+                    });
+                    if(res.ok) {
+                        closeScheduleModal();
+                        loadTickets(); // refresh to show scheduled message badge
+                        showToast("Mensaje agendado");
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            // Hook loadTickets into switchSection if section is tickets
+            const originalSwitchSection = window.switchSection || function(){};
+            window.switchSection = function(sectionId, el) {
+                // update navigation UI if using elements
+                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                if(el) el.classList.add('active');
+                else {
+                    const selector = document.querySelector(`.nav-item[onclick*="'${sectionId}'"]`);
+                    if(selector) selector.classList.add('active');
+                }
+                // hide all sections
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                
+                // show target
+                const target = document.getElementById(sectionId + 'Section') || document.getElementById(sectionId);
+                if(target) target.classList.add('active');
+                
+                if(sectionId === 'tickets') loadTickets();
+                else originalSwitchSection(sectionId, el);
+            };
+
+            </script>
     </body>
     </html>
     """
@@ -787,6 +989,7 @@ def get_user_panel_page() -> str:
 
             <div class="sidebar-nav">
                 <div class="nav-item active" id="navEstado" onclick="switchSection('estado')">📊 Estado</div>
+                <div class="nav-item" id="navTickets" onclick="switchSection('tickets')">🎫 Tickets</div>
                 <div class="nav-item" id="navFeriados" onclick="switchSection('feriados')">📅 Feriados</div>
                 <div class="nav-item" id="navBloqueados" onclick="switchSection('bloqueados')">🚫 Bloqueados</div>
             </div>
@@ -880,6 +1083,70 @@ def get_user_panel_page() -> str:
             <!-- ═══  FERIADOS  ═══ -->
             <div id="feriados" class="section">
                 <div class="page-header">
+                    
+            <div id="ticketsSection" class="section">
+                <div class="page-header">
+                    <h1>🎫 Tickets (Chats)</h1>
+                    <p style="color: #94a3b8;">Gestiona las conversaciones de los usuarios con el bot o el operador.</p>
+                </div>
+                
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2>Listado de Tickets</h2>
+                        <button class="btn btn-primary btn-sm" onclick="loadTickets()"><i class="fas fa-sync"></i> Refrescar</button>
+                    </div>
+                    
+                    <div id="ticketsGrid" style="display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; padding-right: 10px;">
+                        <div class="empty-state">Cargando tickets...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modales -->
+            <div id="chatModal" class="modal">
+                <div class="modal-content" style="max-width: 600px; width: 95%;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(226,232,240,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                        <h3 id="chatModalTitle" style="margin: 0;">Conversación</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-secondary btn-sm modal-close" onclick="closeChatModal()" style="margin: 0;">X</button>
+                        </div>
+                    </div>
+                    <div id="chatContent" style="height: 350px; overflow-y: auto; text-align: left; background: rgba(15,23,42,0.5); padding: 15px; border-radius: 8px; font-size: 0.9em;">
+                    </div>
+                    <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; gap: 10px;" id="chatModalActions">
+                        </div>
+                        <button class="btn btn-primary btn-sm" id="btnSched" onclick="openScheduleModal()">Agendar Mensaje</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="scheduleModal" class="modal">
+                <div class="modal-content">
+                    <h3 style="margin-top:0;">Agendar Mensaje</h3>
+                    <div class="form-group" style="text-align: left;">
+                        <label>Teléfono</label>
+                        <input type="text" id="schedPhone" readonly style="opacity: 0.7;">
+                    </div>
+                    <div class="form-group" style="text-align: left;">
+                        <label>Nombre del Recordatorio</label>
+                        <input type="text" id="schedName" placeholder="Ej: Recordatorio Turno">
+                    </div>
+                    <div class="form-group" style="text-align: left;">
+                        <label>Hora (HH:MM)</label>
+                        <input type="time" id="schedTime">
+                    </div>
+                    <div class="form-group" style="text-align: left;">
+                        <label>Mensaje</label>
+                        <textarea id="schedMessage" rows="4" placeholder="Contenido del mensaje..."></textarea>
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                        <button class="btn btn-secondary" onclick="closeScheduleModal()">Cancelar</button>
+                        <button class="btn btn-primary" onclick="saveScheduledMessage()">Guardar</button>
+                    </div>
+                </div>
+            </div>
+
                     <h1>📅 Feriados</h1>
                 </div>
 
@@ -1869,7 +2136,209 @@ def get_user_panel_page() -> str:
                     if (res.ok) { const d = await res.json(); const el = document.getElementById('userPanelVersion'); if(el) el.textContent = d.version; }
                 } catch(e) {}
             }
-        </script>
+        
+            // TICKETS LOGIC
+            let currentTickets = [];
+            let currentChatPhone = "";
+            let currentChatTicketId = "";
+
+            async function loadTickets() {
+                try {
+                    const res = await fetch('/api/tickets/list', {
+                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
+                    });
+                    if(res.ok) {
+                        currentTickets = await res.json();
+                        renderTickets();
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            function renderTickets() {
+                const grid = document.getElementById('ticketsGrid');
+                if(!currentTickets.length) {
+                    grid.innerHTML = '<div class="empty-state">No hay tickets</div>';
+                    return;
+                }
+                
+                let html = '';
+                currentTickets.forEach(t => {
+                    let badgeColor = '#64748b';
+                    if (t.status === 'pendiente') badgeColor = '#f59e0b';
+                    if (t.status === 'confirmado') badgeColor = '#10b981';
+                    if (t.status === 'cancelado') badgeColor = '#ef4444';
+                    
+                    let statusLabel = t.status.toUpperCase();
+                    if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
+                    
+                    let schedBadge = t.has_scheduled_message ? '<span style="background: rgba(139,92,246,0.2); color: #c4b5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
+
+                    html += `
+                        <div class="ticket-row">
+                            <div class="ticket-info">
+                                <div class="ticket-id">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
+                                <div class="ticket-status" style="color: ${badgeColor}; font-weight: 500;">
+                                    ${statusLabel} | Origen: ${t.menu_section || '-'}
+                                </div>
+                                <div style="font-size: 0.75em; color: #64748b; margin-top: 4px;">
+                                    Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}
+                                </div>
+                            </div>
+                            <div class="ticket-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="viewTicket('${t.id}')">Ver Chat</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                grid.innerHTML = html;
+            }
+
+            async function viewTicket(tid) {
+                const t = currentTickets.find(x => x.id === tid);
+                if(!t) return;
+                
+                currentChatPhone = t.phone_number;
+                currentChatTicketId = tid;
+                
+                document.getElementById('chatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
+                document.getElementById('chatContent').innerHTML = '<div class="spinner-text">Cargando mensajes desde WAHA...</div>';
+                document.getElementById('chatModal').classList.add('show');
+                
+                // Actions
+                let actionsHtml = '';
+                if (!t.is_deleted) {
+                    if (t.status === 'pendiente') {
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('confirm')">Confirmar</button>`;
+                    }
+                    if (t.status === 'timeout') {
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('resume')">Retomar</button>`;
+                    }
+                    actionsHtml += `<button class="btn btn-danger btn-sm" onclick="actionTicket('delete')">Borrar (Cancelar)</button>`;
+                }
+                document.getElementById('chatModalActions').innerHTML = actionsHtml;
+                
+                // fetch messages
+                try {
+                    const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
+                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
+                    });
+                    if(res.ok) {
+                        const msgs = await res.json();
+                        let chtml = '';
+                        if(msgs.length === 0) {
+                            chtml = '<div class="empty-state">No hay mensajes recientes en WAHA</div>';
+                        } else {
+                            // msgs might be an array of Waha message objects
+                            msgs.forEach(m => {
+                                const isBot = m.fromMe;
+                                const align = isBot ? 'right' : 'left';
+                                const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
+                                const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
+                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px;">
+                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word;">
+                                        ${text}
+                                    </div>
+                                </div>`;
+                            });
+                        }
+                        document.getElementById('chatContent').innerHTML = chtml;
+                        document.getElementById('chatContent').scrollTop = document.getElementById('chatContent').scrollHeight;
+                    } else {
+                        document.getElementById('chatContent').innerHTML = '<div class="empty-state">No se pudieron cargar los mensajes.</div>';
+                    }
+                } catch(e) {
+                    document.getElementById('chatContent').innerHTML = '<div class="empty-state">Error cargando mensajes.</div>';
+                }
+            }
+
+            function closeChatModal() { document.getElementById('chatModal').classList.remove('show'); }
+
+            async function actionTicket(action) {
+                if(action === 'delete') {
+                    if(!confirm("¿Seguro que quieres borrar este ticket?")) return;
+                }
+                try {
+                    const res = await fetch('/api/tickets/action', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({ action: action, id: currentChatTicketId })
+                    });
+                    if(res.ok) {
+                        closeChatModal();
+                        loadTickets();
+                    } else {
+                        alert("Error ejecutando accion");
+                    }
+                } catch(e){ console.error(e); }
+            }
+
+            function openScheduleModal() {
+                document.getElementById('schedPhone').value = currentChatPhone;
+                document.getElementById('schedName').value = '';
+                document.getElementById('schedTime').value = '';
+                document.getElementById('schedMessage').value = '';
+                document.getElementById('scheduleModal').classList.add('show');
+            }
+
+            function closeScheduleModal() { document.getElementById('scheduleModal').classList.remove('show'); }
+
+            async function saveScheduledMessage() {
+                const phone = document.getElementById('schedPhone').value;
+                const name = document.getElementById('schedName').value;
+                const time = document.getElementById('schedTime').value;
+                const msg = document.getElementById('schedMessage').value;
+                
+                if(!name || !time || !msg) { alert("Completar todos los campos"); return; }
+                
+                try {
+                    const res = await fetch('/api/scheduled-messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({
+                            name: name,
+                            phone_number: phone,
+                            send_time: time,
+                            message: msg,
+                            days_of_week: "1,2,3,4,5,6,7",
+                            is_active: true
+                        })
+                    });
+                    if(res.ok) {
+                        closeScheduleModal();
+                        loadTickets(); // refresh to show scheduled message badge
+                        showToast("Mensaje agendado");
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            // Hook loadTickets into switchSection if section is tickets
+            const originalSwitchSection = window.switchSection || function(){};
+            window.switchSection = function(sectionId, el) {
+                // update navigation UI if using elements
+                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                if(el) el.classList.add('active');
+                else {
+                    const selector = document.querySelector(`.nav-item[onclick*="'${sectionId}'"]`);
+                    if(selector) selector.classList.add('active');
+                }
+                // hide all sections
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                
+                // show target
+                const target = document.getElementById(sectionId + 'Section') || document.getElementById(sectionId);
+                if(target) target.classList.add('active');
+                
+                if(sectionId === 'tickets') loadTickets();
+                else originalSwitchSection(sectionId, el);
+            };
+
+            </script>
     </body>
     </html>
     """
@@ -2149,6 +2618,18 @@ def get_user_config_page() -> str:
                 border-radius: 12px; padding: 20px; margin-bottom: 20px;
             }
             .add-form h3 { font-size: 0.95em; color: #cbd5e1; margin-bottom: 14px; }
+
+            /* TICKETS */
+            .ticket-row {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 11px 14px; background: rgba(30,41,59,0.4);
+                border: 1px solid rgba(226,232,240,0.08);
+                border-radius: 9px; margin-bottom: 8px;
+            }
+            .ticket-info { display: flex; flex-direction: column; gap: 2px; }
+            .ticket-id { font-size: 0.93em; color: #f1f5f9; font-weight: 600; }
+            .ticket-status { font-size: 0.82em; color: #64748b; }
+            .ticket-actions { display: flex; gap: 6px; }
 
             @media (max-width: 768px) {
                 .sidebar { width: 100%; height: auto; position: relative; flex-direction: row; flex-wrap: wrap; padding: 12px; }
@@ -2649,7 +3130,209 @@ def get_user_config_page() -> str:
             document.getElementById('newPw').value = '';
             document.getElementById('confirmPw').value = '';
         }
-    </script>
+    
+            // TICKETS LOGIC
+            let currentTickets = [];
+            let currentChatPhone = "";
+            let currentChatTicketId = "";
+
+            async function loadTickets() {
+                try {
+                    const res = await fetch('/api/tickets/list', {
+                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
+                    });
+                    if(res.ok) {
+                        currentTickets = await res.json();
+                        renderTickets();
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            function renderTickets() {
+                const grid = document.getElementById('ticketsGrid');
+                if(!currentTickets.length) {
+                    grid.innerHTML = '<div class="empty-state">No hay tickets</div>';
+                    return;
+                }
+                
+                let html = '';
+                currentTickets.forEach(t => {
+                    let badgeColor = '#64748b';
+                    if (t.status === 'pendiente') badgeColor = '#f59e0b';
+                    if (t.status === 'confirmado') badgeColor = '#10b981';
+                    if (t.status === 'cancelado') badgeColor = '#ef4444';
+                    
+                    let statusLabel = t.status.toUpperCase();
+                    if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
+                    
+                    let schedBadge = t.has_scheduled_message ? '<span style="background: rgba(139,92,246,0.2); color: #c4b5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
+
+                    html += `
+                        <div class="ticket-row">
+                            <div class="ticket-info">
+                                <div class="ticket-id">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
+                                <div class="ticket-status" style="color: ${badgeColor}; font-weight: 500;">
+                                    ${statusLabel} | Origen: ${t.menu_section || '-'}
+                                </div>
+                                <div style="font-size: 0.75em; color: #64748b; margin-top: 4px;">
+                                    Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}
+                                </div>
+                            </div>
+                            <div class="ticket-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="viewTicket('${t.id}')">Ver Chat</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                grid.innerHTML = html;
+            }
+
+            async function viewTicket(tid) {
+                const t = currentTickets.find(x => x.id === tid);
+                if(!t) return;
+                
+                currentChatPhone = t.phone_number;
+                currentChatTicketId = tid;
+                
+                document.getElementById('chatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
+                document.getElementById('chatContent').innerHTML = '<div class="spinner-text">Cargando mensajes desde WAHA...</div>';
+                document.getElementById('chatModal').classList.add('show');
+                
+                // Actions
+                let actionsHtml = '';
+                if (!t.is_deleted) {
+                    if (t.status === 'pendiente') {
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('confirm')">Confirmar</button>`;
+                    }
+                    if (t.status === 'timeout') {
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('resume')">Retomar</button>`;
+                    }
+                    actionsHtml += `<button class="btn btn-danger btn-sm" onclick="actionTicket('delete')">Borrar (Cancelar)</button>`;
+                }
+                document.getElementById('chatModalActions').innerHTML = actionsHtml;
+                
+                // fetch messages
+                try {
+                    const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
+                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
+                    });
+                    if(res.ok) {
+                        const msgs = await res.json();
+                        let chtml = '';
+                        if(msgs.length === 0) {
+                            chtml = '<div class="empty-state">No hay mensajes recientes en WAHA</div>';
+                        } else {
+                            // msgs might be an array of Waha message objects
+                            msgs.forEach(m => {
+                                const isBot = m.fromMe;
+                                const align = isBot ? 'right' : 'left';
+                                const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
+                                const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
+                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px;">
+                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word;">
+                                        ${text}
+                                    </div>
+                                </div>`;
+                            });
+                        }
+                        document.getElementById('chatContent').innerHTML = chtml;
+                        document.getElementById('chatContent').scrollTop = document.getElementById('chatContent').scrollHeight;
+                    } else {
+                        document.getElementById('chatContent').innerHTML = '<div class="empty-state">No se pudieron cargar los mensajes.</div>';
+                    }
+                } catch(e) {
+                    document.getElementById('chatContent').innerHTML = '<div class="empty-state">Error cargando mensajes.</div>';
+                }
+            }
+
+            function closeChatModal() { document.getElementById('chatModal').classList.remove('show'); }
+
+            async function actionTicket(action) {
+                if(action === 'delete') {
+                    if(!confirm("¿Seguro que quieres borrar este ticket?")) return;
+                }
+                try {
+                    const res = await fetch('/api/tickets/action', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({ action: action, id: currentChatTicketId })
+                    });
+                    if(res.ok) {
+                        closeChatModal();
+                        loadTickets();
+                    } else {
+                        alert("Error ejecutando accion");
+                    }
+                } catch(e){ console.error(e); }
+            }
+
+            function openScheduleModal() {
+                document.getElementById('schedPhone').value = currentChatPhone;
+                document.getElementById('schedName').value = '';
+                document.getElementById('schedTime').value = '';
+                document.getElementById('schedMessage').value = '';
+                document.getElementById('scheduleModal').classList.add('show');
+            }
+
+            function closeScheduleModal() { document.getElementById('scheduleModal').classList.remove('show'); }
+
+            async function saveScheduledMessage() {
+                const phone = document.getElementById('schedPhone').value;
+                const name = document.getElementById('schedName').value;
+                const time = document.getElementById('schedTime').value;
+                const msg = document.getElementById('schedMessage').value;
+                
+                if(!name || !time || !msg) { alert("Completar todos los campos"); return; }
+                
+                try {
+                    const res = await fetch('/api/scheduled-messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({
+                            name: name,
+                            phone_number: phone,
+                            send_time: time,
+                            message: msg,
+                            days_of_week: "1,2,3,4,5,6,7",
+                            is_active: true
+                        })
+                    });
+                    if(res.ok) {
+                        closeScheduleModal();
+                        loadTickets(); // refresh to show scheduled message badge
+                        showToast("Mensaje agendado");
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            // Hook loadTickets into switchSection if section is tickets
+            const originalSwitchSection = window.switchSection || function(){};
+            window.switchSection = function(sectionId, el) {
+                // update navigation UI if using elements
+                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                if(el) el.classList.add('active');
+                else {
+                    const selector = document.querySelector(`.nav-item[onclick*="'${sectionId}'"]`);
+                    if(selector) selector.classList.add('active');
+                }
+                // hide all sections
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                
+                // show target
+                const target = document.getElementById(sectionId + 'Section') || document.getElementById(sectionId);
+                if(target) target.classList.add('active');
+                
+                if(sectionId === 'tickets') loadTickets();
+                else originalSwitchSection(sectionId, el);
+            };
+
+            </script>
     </body>
     </html>
     """
@@ -3645,6 +4328,14 @@ def get_dashboard_page() -> str:
                                     </p>
                                 </div>
                             </label>
+                        </div>
+                        
+                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">🎟️ Mensaje de Creación de Ticket</h3>
+                            <div class="form-group">
+                                <label>Mensaje Base (Usa {TKT} para número de ticket y {HOURS} para tiempo estimado)</label>
+                                <textarea id="handoffMessage" rows="8" placeholder="Ocurrirá al derivar a humano..."></textarea>
+                            </div>
                         </div>
                         
                         <button type="submit" class="btn btn-primary">💾 Guardar Configuración</button>
@@ -5186,6 +5877,10 @@ def get_dashboard_page() -> str:
                     document.getElementById('sunEnabled').checked = sunEnabled;
                     document.getElementById('sunFields').style.display = sunEnabled ? '' : 'none';
                     document.getElementById('debugMode').checked = !!config.debug_mode;
+                    
+                    if (document.getElementById('handoffMessage')) {
+                        document.getElementById('handoffMessage').value = config.handoff_message || '';
+                    }
                     // Bloqueados: filtros
                     const cfEl = document.getElementById('countryFilter');
                     const afEl = document.getElementById('areaFilter');
@@ -5218,7 +5913,8 @@ def get_dashboard_page() -> str:
                             sat_closing_time: document.getElementById('satClosingTime').value,
                             sat_enabled: document.getElementById('satEnabled').checked,
                             sun_enabled: document.getElementById('sunEnabled').checked,
-                            debug_mode: document.getElementById('debugMode').checked
+                            debug_mode: document.getElementById('debugMode').checked,
+                            handoff_message: document.getElementById('handoffMessage').value
                         })
                     });
                     
@@ -6004,7 +6700,209 @@ def get_dashboard_page() -> str:
             loadAdminSchedList();
             setInterval(refresh, 5000);
             setInterval(loadAdminParkedList, 15000);
-        </script>
+        
+            // TICKETS LOGIC
+            let currentTickets = [];
+            let currentChatPhone = "";
+            let currentChatTicketId = "";
+
+            async function loadTickets() {
+                try {
+                    const res = await fetch('/api/tickets/list', {
+                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
+                    });
+                    if(res.ok) {
+                        currentTickets = await res.json();
+                        renderTickets();
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            function renderTickets() {
+                const grid = document.getElementById('ticketsGrid');
+                if(!currentTickets.length) {
+                    grid.innerHTML = '<div class="empty-state">No hay tickets</div>';
+                    return;
+                }
+                
+                let html = '';
+                currentTickets.forEach(t => {
+                    let badgeColor = '#64748b';
+                    if (t.status === 'pendiente') badgeColor = '#f59e0b';
+                    if (t.status === 'confirmado') badgeColor = '#10b981';
+                    if (t.status === 'cancelado') badgeColor = '#ef4444';
+                    
+                    let statusLabel = t.status.toUpperCase();
+                    if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
+                    
+                    let schedBadge = t.has_scheduled_message ? '<span style="background: rgba(139,92,246,0.2); color: #c4b5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
+
+                    html += `
+                        <div class="ticket-row">
+                            <div class="ticket-info">
+                                <div class="ticket-id">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
+                                <div class="ticket-status" style="color: ${badgeColor}; font-weight: 500;">
+                                    ${statusLabel} | Origen: ${t.menu_section || '-'}
+                                </div>
+                                <div style="font-size: 0.75em; color: #64748b; margin-top: 4px;">
+                                    Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}
+                                </div>
+                            </div>
+                            <div class="ticket-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="viewTicket('${t.id}')">Ver Chat</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                grid.innerHTML = html;
+            }
+
+            async function viewTicket(tid) {
+                const t = currentTickets.find(x => x.id === tid);
+                if(!t) return;
+                
+                currentChatPhone = t.phone_number;
+                currentChatTicketId = tid;
+                
+                document.getElementById('chatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
+                document.getElementById('chatContent').innerHTML = '<div class="spinner-text">Cargando mensajes desde WAHA...</div>';
+                document.getElementById('chatModal').classList.add('show');
+                
+                // Actions
+                let actionsHtml = '';
+                if (!t.is_deleted) {
+                    if (t.status === 'pendiente') {
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('confirm')">Confirmar</button>`;
+                    }
+                    if (t.status === 'timeout') {
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('resume')">Retomar</button>`;
+                    }
+                    actionsHtml += `<button class="btn btn-danger btn-sm" onclick="actionTicket('delete')">Borrar (Cancelar)</button>`;
+                }
+                document.getElementById('chatModalActions').innerHTML = actionsHtml;
+                
+                // fetch messages
+                try {
+                    const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
+                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
+                    });
+                    if(res.ok) {
+                        const msgs = await res.json();
+                        let chtml = '';
+                        if(msgs.length === 0) {
+                            chtml = '<div class="empty-state">No hay mensajes recientes en WAHA</div>';
+                        } else {
+                            // msgs might be an array of Waha message objects
+                            msgs.forEach(m => {
+                                const isBot = m.fromMe;
+                                const align = isBot ? 'right' : 'left';
+                                const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
+                                const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
+                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px;">
+                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word;">
+                                        ${text}
+                                    </div>
+                                </div>`;
+                            });
+                        }
+                        document.getElementById('chatContent').innerHTML = chtml;
+                        document.getElementById('chatContent').scrollTop = document.getElementById('chatContent').scrollHeight;
+                    } else {
+                        document.getElementById('chatContent').innerHTML = '<div class="empty-state">No se pudieron cargar los mensajes.</div>';
+                    }
+                } catch(e) {
+                    document.getElementById('chatContent').innerHTML = '<div class="empty-state">Error cargando mensajes.</div>';
+                }
+            }
+
+            function closeChatModal() { document.getElementById('chatModal').classList.remove('show'); }
+
+            async function actionTicket(action) {
+                if(action === 'delete') {
+                    if(!confirm("¿Seguro que quieres borrar este ticket?")) return;
+                }
+                try {
+                    const res = await fetch('/api/tickets/action', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({ action: action, id: currentChatTicketId })
+                    });
+                    if(res.ok) {
+                        closeChatModal();
+                        loadTickets();
+                    } else {
+                        alert("Error ejecutando accion");
+                    }
+                } catch(e){ console.error(e); }
+            }
+
+            function openScheduleModal() {
+                document.getElementById('schedPhone').value = currentChatPhone;
+                document.getElementById('schedName').value = '';
+                document.getElementById('schedTime').value = '';
+                document.getElementById('schedMessage').value = '';
+                document.getElementById('scheduleModal').classList.add('show');
+            }
+
+            function closeScheduleModal() { document.getElementById('scheduleModal').classList.remove('show'); }
+
+            async function saveScheduledMessage() {
+                const phone = document.getElementById('schedPhone').value;
+                const name = document.getElementById('schedName').value;
+                const time = document.getElementById('schedTime').value;
+                const msg = document.getElementById('schedMessage').value;
+                
+                if(!name || !time || !msg) { alert("Completar todos los campos"); return; }
+                
+                try {
+                    const res = await fetch('/api/scheduled-messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({
+                            name: name,
+                            phone_number: phone,
+                            send_time: time,
+                            message: msg,
+                            days_of_week: "1,2,3,4,5,6,7",
+                            is_active: true
+                        })
+                    });
+                    if(res.ok) {
+                        closeScheduleModal();
+                        loadTickets(); // refresh to show scheduled message badge
+                        showToast("Mensaje agendado");
+                    }
+                } catch(e) { console.error(e); }
+            }
+
+            // Hook loadTickets into switchSection if section is tickets
+            const originalSwitchSection = window.switchSection || function(){};
+            window.switchSection = function(sectionId, el) {
+                // update navigation UI if using elements
+                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                if(el) el.classList.add('active');
+                else {
+                    const selector = document.querySelector(`.nav-item[onclick*="'${sectionId}'"]`);
+                    if(selector) selector.classList.add('active');
+                }
+                // hide all sections
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                
+                // show target
+                const target = document.getElementById(sectionId + 'Section') || document.getElementById(sectionId);
+                if(target) target.classList.add('active');
+                
+                if(sectionId === 'tickets') loadTickets();
+                else originalSwitchSection(sectionId, el);
+            };
+
+            </script>
     </body>
     </html>
     """

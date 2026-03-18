@@ -173,6 +173,8 @@ class ConversationState(Base):
     block_reason = Column(String(255))
     extra_data = Column(Text)  # JSON para datos extra
     
+    ticket_status = Column(String(50), default="pendiente") # pendiente, confirmado, etc.
+    
     def __repr__(self):
         return f"<ConversationState {self.phone_number} ({self.current_state})>"
 
@@ -249,6 +251,11 @@ class TicketHistory(Base):
     closed_at = Column(DateTime(timezone=True), server_default=func.now())
     duration_seconds = Column(Integer)            # segundos desde apertura a cierre
 
+    # Nuevos estados unificados
+    ticket_status = Column(String(50), default="cerrado") # cerrado, cancelado, timeout
+    is_deleted = Column(Boolean, default=False)
+    deleted_by = Column(String(255))
+    
     # Sección del menú que originó el ticket
     menu_section = Column(String(100))
 

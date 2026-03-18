@@ -1098,6 +1098,14 @@ def _archive_ticket(db: Session, row: ConversationState, reason: str, closed_by:
         now = datetime.utcnow()
         opened = row.handoff_started_at or row.started_at or now
         duration = int((now - opened).total_seconds()) if opened else 0
+        t_status = "cerrado"
+        if reason == "expired":
+            t_status = "timeout"
+        elif reason == "escrito_saludos":
+            t_status = "cerrado"
+        elif reason == "cancelado":
+            t_status = "cancelado"
+
         hist = TicketHistory(
             ticket_id=row.ticket_id or "",
             phone_number=row.phone_number,
@@ -1108,6 +1116,7 @@ def _archive_ticket(db: Session, row: ConversationState, reason: str, closed_by:
             closed_at=now,
             duration_seconds=duration,
             menu_section=row.last_bot_menu,
+            ticket_status=t_status,
         )
         db.add(hist)
         db.flush()
@@ -1116,17 +1125,18 @@ def _archive_ticket(db: Session, row: ConversationState, reason: str, closed_by:
         _logc(f"[TICKET] Error archivando {getattr(row,'ticket_id','')} : {e}")
 
 
-def _exit_human_mode(db: Session, chat_id: str, closed_by: str = "system", operator_reply: str = ""):
+def _exit_human_mode(db: Session, chat_id: str, closed_by: str = "system", operator_reply: str = "", reason: str = "manual"):
     """Desactiva modo humano (opción 98 o liberación manual)."""
     row = db.query(ConversationState).filter(
         ConversationState.phone_number == chat_id
     ).first()
     if row:
-        _archive_ticket(db, row, reason="manual", closed_by=closed_by, operator_reply=operator_reply)
+        _archive_ticket(db, row, reason=reason, closed_by=closed_by, operator_reply=operator_reply)
         row.human_mode        = False
         row.human_mode_expire = None
         row.handoff_active    = False
         row.current_state     = "BOT_MENU"
+        row.ticket_status     = "pendiente"
         row.last_message_at   = datetime.utcnow()
         db.commit()
         _logc(f"[HUMAN] Desactivado {chat_id}")
@@ -1146,6 +1156,7 @@ def _start_human_mode_silent(db: Session, chat_id: str):
     row.human_mode_expire = now + timedelta(hours=12)
     row.handoff_active = True
     row.current_state = "IN_AGENT"
+    row.ticket_status = "pendiente"
     if not row.handoff_started_at:
         row.handoff_started_at = now
     row.last_message_at = now
@@ -1206,14 +1217,14 @@ def _extract_operator_target_chat_id(msg: dict) -> str:
 # El mensaje puede contener {TKT} que se reemplaza con el número de ticket.
 _TICKET_WILDCARD_RE = re.compile(r'\{\{TICKET(?::([\s\S]*?))?\}\}', re.DOTALL)
 
-def _extract_ticket_wildcard(text: str) -> tuple[bool, str]:
+def _extract_ticket_wildcard(text: str) -> tuple[bool, str, str]:
     """Detecta {{TICKET}} o {{TICKET:msg}} en el texto del menú.
-    Retorna (encontrado, mensaje_personalizado)."""
+    Retorna (encontrado, texto_previo, mensaje_personalizado)."""
     m = _TICKET_WILDCARD_RE.search(text)
     if not m:
-        return False, ""
+        return False, text, ""
     custom = (m.group(1) or "").strip()
-    return True, custom
+    return True, text[:m.start()].strip(), custom
 
 def _menu_main() -> str:
     """Devuelve el bloque inicial del menú (hasta primer ---)."""
@@ -1301,15 +1312,11 @@ def _sync_process_message(chat_id: str, text: str) -> str:
             duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS if _is_turnos_waiting_section(current_section) else HUMAN_MODE_DEFAULT_HOURS
             ticket = _start_human_mode(db, chat_id, duration_hours=duration_hours)
             _chat_nav.pop(chat_id, None)
-            return (
-                "📞 *Se ha iniciado transferencia a un operador*\n\n"
-                f"✅ Tu número de ticket: *{ticket}*\n\n"
-                "⏳ Por favor espera a que un operario se comunique contigo.\n"
-                "Esto generalmente toma unos minutos.\n\n"
-                f"⌛ Tiempo máximo de espera en este estado: *{duration_hours} horas*.\n\n"
-                "Gracias por tu paciencia 😊\n\n"
-                "_(Escribe *98* en cualquier momento para volver al menú automático)_"
-            )
+            
+            cfg = _get_cfg_cached(db)
+            base_msg = cfg.handoff_message or "📞 *Se ha iniciado transferencia a un operador*\n\n✅ Tu número de ticket: *{TKT}*\n\n⏳ Por favor espera a que un operario se comunique contigo.\nEsto generalmente toma unos minutos.\n\n⌛ Tiempo máximo de espera en este estado: *{HOURS} horas*.\n\nGracias por tu paciencia 😊\n\n_(Escribe *98* en cualquier momento para volver al menú automático)_"
+            
+            return base_msg.replace("{TKT}", ticket).replace("{HOURS}", str(duration_hours))
 
         # 8. Filtros de acceso
         cfg = _get_cfg_cached(db)
@@ -1354,7 +1361,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
             nav["section"] = new_section
 
             # Detectar comodín {{TICKET}} en la respuesta del menú
-            has_ticket, custom_msg = _extract_ticket_wildcard(answer)
+            has_ticket, before_text, custom_msg = _extract_ticket_wildcard(answer)
             if has_ticket:
                 current_section = new_section
                 duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS if _is_turnos_waiting_section(current_section) else HUMAN_MODE_DEFAULT_HOURS
@@ -1365,19 +1372,16 @@ def _sync_process_message(chat_id: str, text: str) -> str:
                     row.last_bot_menu = current_section
                     db.commit()
                 _chat_nav.pop(chat_id, None)
+                
+                cfg = _get_cfg_cached(db)
                 if custom_msg:
-                    # Mensaje personalizado del menú: reemplazar {TKT} con el ticket real
-                    answer = custom_msg.replace("{TKT}", f"*{ticket}*")
+                    ticket_msg = custom_msg.replace("{TKT}", f"*{ticket}*").replace("{HOURS}", str(duration_hours))
                 else:
-                    answer = (
-                        "📞 *Se ha iniciado transferencia a un operador*\n\n"
-                        f"✅ Tu número de ticket: *{ticket}*\n\n"
-                        "⏳ Por favor espera a que un operario se comunique contigo.\n"
-                        "Esto generalmente toma unos minutos.\n\n"
-                        f"⌛ Tiempo máximo de espera en este estado: *{duration_hours} horas*.\n\n"
-                        "Gracias por tu paciencia 😊\n\n"
-                        "_(Escribe *98* en cualquier momento para volver al menú automático)_"
-                    )
+                    base_msg = cfg.handoff_message or "📞 *Se ha iniciado transferencia a un operador*\n\n✅ Tu número de ticket: *{TKT}*\n\n⏳ Por favor espera a que un operario se comunique contigo.\nEsto generalmente toma unos minutos.\n\n⌛ Tiempo máximo de espera en este estado: *{HOURS} horas*.\n\nGracias por tu paciencia 😊\n\n_(Escribe *98* en cualquier momento para volver al menú automático)_"
+                    ticket_msg = base_msg.replace("{TKT}", ticket).replace("{HOURS}", str(duration_hours))
+                
+                answer = f"{before_text}\n\n{ticket_msg}".strip() if before_text else ticket_msg
+                
                 nav["ts"] = now_ts
                 _chat_nav[chat_id] = nav
                 return answer
@@ -1430,10 +1434,22 @@ async def webhook(req: Request):
         op_chat_id = _extract_operator_target_chat_id(msg)
         if not op_chat_id:
             return {"ok": True, "i": "from_me_no_chat"}
+        
+        raw_txt = msg.get("body") or msg.get("text") or ""
+        if not isinstance(raw_txt, str):
+            raw_txt = ""
+        op_text = raw_txt.strip()
+
         db = SessionLocal()
         try:
-            _start_human_mode_silent(db, op_chat_id)
-            _chat_nav.pop(op_chat_id, None)
+            if op_text == "SALUDOS":
+                _exit_human_mode(db, op_chat_id, closed_by="Operador", operator_reply="SALUDOS", reason="escrito_saludos")
+                _chat_nav.pop(op_chat_id, None)
+                _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
+                return {"ok": True, "i": "from_me_saludos", "chat": op_chat_id}
+            else:
+                _start_human_mode_silent(db, op_chat_id)
+                _chat_nav.pop(op_chat_id, None)
         finally:
             db.close()
         return {"ok": True, "i": "from_me_human_mode", "chat": op_chat_id}
@@ -1450,6 +1466,34 @@ async def webhook(req: Request):
     text = raw_txt.strip()
 
     msg_log = f"[CHAT] ← {chat_id!r}: {text!r}"
+    # --- Deduplicación simple: usar id de mensaje si viene (WAHA),
+    # o fallback a combinación chat_id:timestamp:text para evitar re-procesos.
+    if '_recent_msg_ids' not in globals():
+        globals()['_recent_msg_ids'] = {}
+        globals()['_RECENT_MSG_TTL'] = 120  # segundos
+
+    # helper prune
+    def _prune_recent(now_ts: float):
+        d = globals()['_recent_msg_ids']
+        ttl = globals()['_RECENT_MSG_TTL']
+        # eliminar keys viejas
+        to_del = [k for k, v in d.items() if now_ts - v > ttl]
+        for k in to_del:
+            d.pop(k, None)
+
+    # intentar extraer id nativo del mensaje
+    msg_id = msg.get('id') or msg.get('idMessage') or msg.get('messageId') or msg.get('msgId') or (msg.get('key') or {}).get('id')
+    if not msg_id:
+        ts = msg.get('timestamp') or msg.get('t') or int(time.time())
+        msg_id = f"{chat_id}:{ts}:{text[:200]}"
+
+    now_ts = time.time()
+    _prune_recent(now_ts)
+    if msg_id in globals()['_recent_msg_ids']:
+        _log(f"[WEBHOOK] Duplicate msg {msg_id} for {chat_id} - skipping")
+        return {"ok": True, "i": "duplicate"}
+    globals()['_recent_msg_ids'][msg_id] = now_ts
+
     print(msg_log, flush=True)
     sys.stdout.flush()
 
@@ -1657,6 +1701,110 @@ async def reply_to_chat(req: Request, cu=Depends(get_current_user)):
         raise HTTPException(400, "phone_number y text requeridos")
     chat_id = phone if "@c.us" in phone else f"{_normalize_phone(phone)}@c.us"
     await _send_wha(chat_id, text)
+    return {"ok": True}
+
+
+@app.get("/api/tickets/list")
+async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    is_admin = cu.get("is_admin", False)
+    
+    active_rows = db.query(ConversationState).filter(ConversationState.human_mode == True).all()
+    if is_admin:
+        history_rows = db.query(TicketHistory).all()
+    else:
+        history_rows = db.query(TicketHistory).filter(TicketHistory.is_deleted == False).all()
+        
+    scheduled_pn = {sm.phone_number for sm in db.query(ScheduledMessage.phone_number).filter(ScheduledMessage.is_active == True).all()}
+    
+    tickets = []
+    
+    for r in active_rows:
+        has_sm = r.phone_number in scheduled_pn
+        tickets.append({
+            "id": f"act_{r.id}",
+            "ticket_id": r.ticket_id,
+            "phone_number": r.phone_number,
+            "status": getattr(r, "ticket_status", "pendiente"),
+            "is_deleted": False,
+            "deleted_by": None,
+            "has_scheduled_message": has_sm,
+            "menu_section": r.last_bot_menu,
+            "opened_at": r.handoff_started_at.isoformat() if r.handoff_started_at else None,
+            "closed_at": None,
+            "duration": None,
+            "type": "active"
+        })
+        
+    for r in history_rows:
+        has_sm = r.phone_number in scheduled_pn
+        tickets.append({
+            "id": f"hist_{r.id}",
+            "ticket_id": r.ticket_id,
+            "phone_number": r.phone_number,
+            "status": getattr(r, "ticket_status", "cerrado"),
+            "is_deleted": getattr(r, "is_deleted", False),
+            "deleted_by": getattr(r, "deleted_by", None),
+            "has_scheduled_message": has_sm,
+            "menu_section": r.menu_section,
+            "opened_at": r.opened_at.isoformat() if r.opened_at else None,
+            "closed_at": r.closed_at.isoformat() if r.closed_at else None,
+            "duration": r.duration_seconds,
+            "type": "history"
+        })
+        
+    tickets.sort(key=lambda x: x["opened_at"] or "", reverse=True)
+    return tickets
+
+@app.post("/api/tickets/action")
+async def post_ticket_action(req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    body = await req.json()
+    action = body.get("action")
+    t_id = body.get("id")
+    
+    if not t_id or not action:
+        raise HTTPException(400, "Missing data")
+        
+    target_type, row_id = t_id.split("_", 1)
+    row_id = int(row_id)
+    
+    if action == "delete":
+        if target_type == "act":
+            r = db.query(ConversationState).filter(ConversationState.id == row_id).first()
+            if r:
+                _archive_ticket(db, r, reason="manual", closed_by=cu["username"])
+                hist = db.query(TicketHistory).filter(TicketHistory.phone_number == r.phone_number).order_by(TicketHistory.id.desc()).first()
+                if hist:
+                    hist.is_deleted = True
+                    hist.deleted_by = cu["username"]
+                r.human_mode = False
+                r.current_state = "BOT_MENU"
+                if hasattr(r, "ticket_status"): r.ticket_status = "pendiente"
+                db.commit()
+        else:
+            hist = db.query(TicketHistory).filter(TicketHistory.id == row_id).first()
+            if hist:
+                hist.is_deleted = True
+                hist.deleted_by = cu["username"]
+                db.commit()
+    elif action == "resume":
+        if target_type == "hist":
+            hist = db.query(TicketHistory).filter(TicketHistory.id == row_id).first()
+            if hist:
+                _start_human_mode_silent(db, hist.phone_number)
+                hist.is_deleted = True
+                hist.deleted_by = "system_resume"
+                db.commit()
+    elif action == "confirm":
+        if target_type == "act":
+            r = db.query(ConversationState).filter(ConversationState.id == row_id).first()
+            if r:
+                r.ticket_status = "confirmado"
+                db.commit()
+        else:
+            hist = db.query(TicketHistory).filter(TicketHistory.id == row_id).first()
+            if hist:
+                hist.ticket_status = "confirmado"
+                db.commit()
     return {"ok": True}
 
 
@@ -1935,7 +2083,7 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     for f in ["solution_name","menu_title","opening_time","closing_time","sat_opening_time",
               "sat_closing_time","sat_enabled","sun_enabled","off_hours_enabled","off_hours_message",
               "country_filter_enabled","country_codes","area_filter_enabled","area_codes",
-              "ollama_url","ollama_model","admin_idle_timeout_sec","debug_mode"]:
+              "ollama_url","ollama_model","admin_idle_timeout_sec","debug_mode","handoff_message"]:
         v = getattr(data, f, None)
         if v is not None: setattr(cfg, f, v)
 
