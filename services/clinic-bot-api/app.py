@@ -1454,6 +1454,25 @@ async def webhook(req: Request):
                 _chat_nav.pop(op_chat_id, None)
                 _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
                 return {"ok": True, "i": "from_me_saludos", "chat": op_chat_id}
+            elif op_text == "/fin":
+                # Cerrar ticket con mensaje de despedida configurable
+                cfg_fin = _get_cfg(db)
+                farewell = cfg_fin.closed_message or "Gracias por contactarte. Tu atención ha finalizado. \u00a1Que tengas un buen día! 😊"
+                # Enviar mensaje de despedida al cliente antes de cerrar
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.ensure_future(_send_wha(op_chat_id, farewell))
+                    else:
+                        loop.run_until_complete(_send_wha(op_chat_id, farewell))
+                except Exception as _e_fin:
+                    _logc(f"[FIN] Error enviando despedida: {_e_fin}")
+                _exit_human_mode(db, op_chat_id, closed_by="Operador", operator_reply="/fin", reason="escrito_saludos")
+                _chat_nav.pop(op_chat_id, None)
+                _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
+                _logc(f"[FIN] Ticket cerrado con /fin para {op_chat_id}")
+                return {"ok": True, "i": "from_me_fin", "chat": op_chat_id}
             else:
                 _start_human_mode_silent(db, op_chat_id)
                 _chat_nav.pop(op_chat_id, None)
@@ -2082,6 +2101,7 @@ async def get_config(db: Session = Depends(get_db)):
     for key, fname in [("menu_content", "MenuP.MD"), ("off_hours_message", "MenuF.MD")]:
         p = _data_path(fname)
         r[key] = open(p, encoding="utf-8").read() if os.path.exists(p) else ""
+    r["farewell_message"] = cfg.closed_message or ""
     return r
 
 @app.put("/api/config")
@@ -2093,6 +2113,9 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
               "ollama_url","ollama_model","admin_idle_timeout_sec","debug_mode","handoff_message"]:
         v = getattr(data, f, None)
         if v is not None: setattr(cfg, f, v)
+    # farewell_message es alias de closed_message
+    if data.farewell_message is not None:
+        cfg.closed_message = data.farewell_message
 
     # Mantener sincronizado el archivo que usa el runtime para mensaje fuera de horario
     if data.off_hours_message is not None:
@@ -2102,7 +2125,10 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     db.commit(); db.refresh(cfg)
     _sync_debug_mode(db)   # actualiza el global en memoria
     _invalidate_cfg_cache()    # limpia caché para próxima lectura
-    return BotConfigResponse.from_orm(cfg)
+    # Rellenar farewell_message en la respuesta a partir de closed_message
+    resp = BotConfigResponse.from_orm(cfg)
+    resp.farewell_message = cfg.closed_message
+    return resp
 
 @app.get("/api/config/menu")
 async def get_menu_file():

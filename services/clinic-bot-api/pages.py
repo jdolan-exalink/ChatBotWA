@@ -4409,7 +4409,18 @@ def get_dashboard_page() -> str:
                                 <textarea id="handoffMessage" rows="8" placeholder="Ocurrirá al derivar a humano..."></textarea>
                             </div>
                         </div>
-                        
+
+                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">👋 Mensaje de Cierre de Ticket (/fin)</h3>
+                            <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
+                                Este mensaje se envía automáticamente al cliente cuando el operador escribe <strong>/fin</strong> para cerrar el ticket.
+                            </p>
+                            <div class="form-group">
+                                <label>Mensaje de Despedida</label>
+                                <textarea id="farewellMessage" rows="5" placeholder="Gracias por contactarte. ¡Que tengas un buen día! 😊"></textarea>
+                            </div>
+                        </div>
+
                         <button type="submit" class="btn btn-primary">💾 Guardar Configuración</button>
                         </form>
                     </div>
@@ -6097,6 +6108,9 @@ def get_dashboard_page() -> str:
                     if (document.getElementById('handoffMessage')) {
                         document.getElementById('handoffMessage').value = config.handoff_message || '';
                     }
+                    if (document.getElementById('farewellMessage')) {
+                        document.getElementById('farewellMessage').value = config.farewell_message || '';
+                    }
                     // Bloqueados: filtros
                     const cfEl = document.getElementById('countryFilter');
                     const afEl = document.getElementById('areaFilter');
@@ -6130,7 +6144,8 @@ def get_dashboard_page() -> str:
                             sat_enabled: document.getElementById('satEnabled').checked,
                             sun_enabled: document.getElementById('sunEnabled').checked,
                             debug_mode: document.getElementById('debugMode').checked,
-                            handoff_message: document.getElementById('handoffMessage').value
+                            handoff_message: document.getElementById('handoffMessage').value,
+                            farewell_message: document.getElementById('farewellMessage') ? document.getElementById('farewellMessage').value : undefined
                         })
                     });
                     
