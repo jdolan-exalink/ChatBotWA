@@ -204,9 +204,9 @@ def _migration_v5_scheduled_date() -> None:
 def _migration_v6_ticket_breadcrumb() -> None:
     """Agrega columna menu_breadcrumb para historial y estado actual."""
     if _table_exists("conversation_states"):
-        _add_column_if_missing("conversation_states", "menu_breadcrumb", "TEXT")
+        _add_column_if_missing("conversation_states", "menu_breadcrumb", "menu_breadcrumb TEXT")
     if _table_exists("ticket_history"):
-        _add_column_if_missing("ticket_history", "menu_breadcrumb", "TEXT")
+        _add_column_if_missing("ticket_history", "menu_breadcrumb", "menu_breadcrumb TEXT")
 
 
 def _run_schema_migrations() -> int:
