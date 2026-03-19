@@ -9,12 +9,229 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    _GIT_VERSION = "v2.3.0"
+    _GIT_VERSION = "v2.3.2"
+
+
+def _scheduled_messages_shared_js() -> str:
+    return """
+            function _scheduledMessagesNextAt(sm) {
+                const now = new Date();
+                const timeParts = String(sm.send_time || '').split(':');
+                const hh = Number(timeParts[0]);
+                const mm = Number(timeParts[1]);
+                if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+
+                if (sm.send_date) {
+                    const exact = new Date(`${sm.send_date}T${sm.send_time}`);
+                    return Number.isNaN(exact.getTime()) ? null : exact;
+                }
+
+                const allowedDays = String(sm.days_of_week || '1,2,3,4,5,6,7')
+                    .split(',')
+                    .map(d => Number(d.trim()))
+                    .filter(Boolean);
+
+                for (let offset = 0; offset < 8; offset++) {
+                    const candidate = new Date(now);
+                    candidate.setSeconds(0, 0);
+                    candidate.setHours(hh, mm, 0, 0);
+                    candidate.setDate(now.getDate() + offset);
+                    const dayNumber = candidate.getDay() === 0 ? 7 : candidate.getDay();
+                    if (!allowedDays.includes(dayNumber)) continue;
+                    if (offset === 0 && candidate < now) continue;
+                    return candidate;
+                }
+
+                return null;
+            }
+
+            function _scheduledMessagesGroupKey(date) {
+                if (!date) return 'sin-fecha';
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+
+            function _scheduledMessagesGroupTitle(date) {
+                if (!date) return 'Sin fecha';
+                const label = date.toLocaleDateString('es-AR', {
+                    weekday: 'long',
+                    day: '2-digit',
+                    month: 'long'
+                });
+                return label.charAt(0).toUpperCase() + label.slice(1);
+            }
+
+            function _formatScheduledDateTimeInput(sm) {
+                if (sm && sm.send_date && sm.send_time) {
+                    return `${sm.send_date}T${sm.send_time}`;
+                }
+                if (sm && sm.send_time) {
+                    const today = new Date().toISOString().split('T')[0];
+                    return `${today}T${sm.send_time}`;
+                }
+                return '';
+            }
+
+            function _renderScheduledMessagesHTML(list, actions) {
+                if (!list.length) {
+                    return '<div style="color:#94a3b8;font-size:0.88em;">Sin mensajes programados. Usá ➕ Nuevo para crear uno.</div>';
+                }
+
+                const enriched = list.map(sm => ({ ...sm, _nextAt: _scheduledMessagesNextAt(sm) }))
+                    .sort((a, b) => {
+                        const at = a._nextAt ? a._nextAt.getTime() : Number.MAX_SAFE_INTEGER;
+                        const bt = b._nextAt ? b._nextAt.getTime() : Number.MAX_SAFE_INTEGER;
+                        return at - bt;
+                    });
+
+                const groups = new Map();
+                enriched.forEach(sm => {
+                    const key = _scheduledMessagesGroupKey(sm._nextAt);
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key).push(sm);
+                });
+
+                let html = '<div style="display:flex;flex-direction:column;gap:14px;">';
+                groups.forEach(items => {
+                    const groupDate = items[0]._nextAt;
+                    html += `<div style="background:rgba(15,23,42,0.55);border:1px solid rgba(148,163,184,0.14);border-radius:16px;padding:14px;">
+                        <div style="position:sticky;top:0;background:rgba(15,23,42,0.96);backdrop-filter:blur(10px);padding-bottom:10px;margin-bottom:12px;z-index:1;">
+                            <div style="color:#f8fafc;font-weight:700;font-size:0.96em;">${_scheduledMessagesGroupTitle(groupDate)}</div>
+                            <div style="color:#64748b;font-size:0.78em;margin-top:3px;">${items.length} mensaje(s)</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:10px;">`;
+                    items.forEach(sm => {
+                        const active = sm.is_active;
+                        const nextAtLabel = sm._nextAt
+                            ? sm._nextAt.toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+                            : 'Sin próxima fecha';
+                        html += `<div style="background:rgba(30,41,59,0.58);border:1px solid rgba(226,232,240,0.08);border-radius:14px;padding:14px;display:flex;align-items:flex-start;gap:12px;justify-content:space-between;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                    <div style="color:#f1f5f9;font-weight:600;font-size:0.92em;">${sm.name}</div>
+                                    <span style="padding:3px 8px;border-radius:999px;font-size:0.74em;font-weight:700;background:${active?'rgba(16,185,129,0.15)':'rgba(239,68,68,0.14)'};color:${active?'#86efac':'#fca5a5'};">${active?'Activo':'Pausado'}</span>
+                                </div>
+                                <div style="color:#8696a0;font-size:0.8em;margin-top:4px;">📞 ${sm.phone_number}</div>
+                                <div style="color:#cbd5e1;font-size:0.82em;margin-top:6px;">🕐 Próximo envío: ${nextAtLabel}</div>
+                                <div style="color:#64748b;font-size:0.78em;margin-top:4px;">📅 Programado para ${sm.send_date || 'fecha no definida'}</div>
+                                <div style="color:#94a3b8;font-size:0.82em;margin-top:8px;line-height:1.45;">${sm.message}</div>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;">
+                                <button onclick="${actions.editFn}(${sm.id})" style="padding:7px 10px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:8px;color:#93c5fd;cursor:pointer;font-size:0.82em;">✏️ Editar</button>
+                                <button onclick="${actions.deleteFn}(${sm.id})" style="padding:7px 10px;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.3);border-radius:8px;color:#fca5a5;cursor:pointer;font-size:0.82em;">✖ Cancelar</button>
+                            </div>
+                        </div>`;
+                    });
+                    html += '</div></div>';
+                });
+                html += '</div>';
+                return html;
+            }
+
+            async function _loadScheduledMessagesList(config) {
+                const box = document.getElementById(config.listId);
+                if (!box) return;
+                try {
+                    const res = await fetch(config.url, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (config.checkUnauth && config.checkUnauth(res)) return;
+                    const list = await res.json();
+                    box.innerHTML = _renderScheduledMessagesHTML(list, config.actions);
+                } catch (e) {
+                    box.innerHTML = `<div style="color:#ef4444;font-size:0.88em;">${config.errorText}</div>`;
+                }
+            }
+
+            function _openScheduledMessagesModal(config, sm, editIdSetter) {
+                editIdSetter(sm ? sm.id : null);
+                document.getElementById(config.titleId).textContent = sm ? '✏️ Editar Mensaje Programado' : '🕐 Nuevo Mensaje Programado';
+                document.getElementById(config.nameId).value = sm ? sm.name : '';
+                document.getElementById(config.phoneId).value = sm ? sm.phone_number : '';
+                document.getElementById(config.timeId).value = sm ? _formatScheduledDateTimeInput(sm) : '';
+                document.getElementById(config.messageId).value = sm ? sm.message : '';
+                document.getElementById(config.feedbackId).textContent = '';
+                document.getElementById(config.modalId).style.display = 'flex';
+            }
+
+            function _closeScheduledMessagesModal(config, editIdSetter) {
+                document.getElementById(config.modalId).style.display = 'none';
+                editIdSetter(null);
+            }
+
+            async function _saveScheduledMessage(config, editId, onSuccess) {
+                const msgEl = document.getElementById(config.feedbackId);
+                const dateTimeVal = document.getElementById(config.timeId).value.trim();
+                let send_date = null;
+                let send_time = '';
+                if (dateTimeVal) {
+                    const parts = dateTimeVal.split('T');
+                    send_date = parts[0] || null;
+                    send_time = parts[1] || '';
+                }
+
+                const payload = {
+                    name: document.getElementById(config.nameId).value.trim(),
+                    phone_number: document.getElementById(config.phoneId).value.trim(),
+                    message: document.getElementById(config.messageId).value.trim(),
+                    send_time: send_time,
+                    send_date: send_date,
+                    days_of_week: '',
+                };
+
+                if (!payload.name || !payload.phone_number || !payload.message || !payload.send_time) {
+                    msgEl.style.color = '#f87171';
+                    msgEl.textContent = 'Completá todos los campos obligatorios.';
+                    return;
+                }
+
+                try {
+                    const url = editId ? `${config.url}/${editId}` : config.url;
+                    const method = editId ? 'PUT' : 'POST';
+                    const res = await fetch(url, {
+                        method,
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (config.checkUnauth && config.checkUnauth(res)) return;
+                    if (res.ok) {
+                        onSuccess();
+                    } else {
+                        const d = await res.json();
+                        msgEl.style.color = '#f87171';
+                        msgEl.textContent = '❌ ' + (d.detail || 'Error');
+                    }
+                } catch (e) {
+                    msgEl.style.color = '#f87171';
+                    msgEl.textContent = '❌ Error de red';
+                }
+            }
+
+            async function _editScheduledMessage(config, id, openModal) {
+                const res = await fetch(config.url, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (config.checkUnauth && config.checkUnauth(res)) return;
+                const list = await res.json();
+                const sm = list.find(x => x.id === id);
+                if (sm) openModal(sm);
+            }
+
+            async function _deleteScheduledMessage(config, id, reloadFn) {
+                if (!confirm('¿Eliminar este mensaje programado?')) return;
+                const res = await fetch(`${config.url}/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+                if (config.checkUnauth && config.checkUnauth(res)) return;
+                reloadFn();
+            }
+
+            async function _toggleScheduledMessage(config, id, reloadFn) {
+                const res = await fetch(`${config.url}/${id}/toggle`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                if (config.checkUnauth && config.checkUnauth(res)) return;
+                reloadFn();
+            }
+"""
 
 def get_login_page() -> str:
     """Login minimalista y moderno"""
-    return """
-    <!DOCTYPE html>
+    return """<!DOCTYPE html>
     <html lang="es">
     <head>
         <meta charset="UTF-8">
@@ -31,6 +248,7 @@ def get_login_page() -> str:
                 align-items: center;
                 justify-content: center;
                 padding: 20px;
+                color: #f1f5f9;
             }
             
             .login-wrapper {
@@ -153,10 +371,6 @@ def get_login_page() -> str:
                 box-shadow: 0 10px 25px rgba(59, 130, 246, 0.4);
             }
             
-            .submit-btn:active {
-                transform: translateY(0);
-            }
-            
             .submit-btn:disabled {
                 opacity: 0.7;
                 cursor: not-allowed;
@@ -175,29 +389,26 @@ def get_login_page() -> str:
             
             .error.show { display: block; }
             
-            .loading { 
+            .loading {
                 display: none;
-                text-align: center;
-                color: #3b82f6;
                 margin-top: 20px;
-                font-size: 0.95em;
+                text-align: center;
+                color: #94a3b8;
+                font-size: 0.9em;
             }
             
             .spinner {
                 display: inline-block;
                 width: 20px;
                 height: 20px;
-                border: 3px solid rgba(59, 130, 246, 0.2);
-                border-top-color: #3b82f6;
+                border: 3px solid rgba(255,255,255,.3);
                 border-radius: 50%;
-                animation: spin 1s linear infinite;
-                margin-right: 8px;
+                border-top-color: #fff;
+                animation: spin 1s ease-in-out infinite;
+                margin-right: 10px;
                 vertical-align: middle;
             }
-            
-            @keyframes spin {
-                to { transform: rotate(360deg); }
-            }
+            @keyframes spin { to { transform: rotate(360deg); } }
         </style>
     </head>
     <body>
@@ -278,7 +489,6 @@ def get_login_page() -> str:
                     
                     console.log('[LOGIN] Status:', response.status);
                     
-                    // Intentar parsear JSON
                     let data = null;
                     let errorDetail = 'Error desconocido';
                     
@@ -287,7 +497,6 @@ def get_login_page() -> str:
                         errorDetail = data.detail || data.message || 'Error en el servidor';
                     } catch (parseError) {
                         console.error('[LOGIN] No se puede parsear JSON:', parseError);
-                        // Si no es JSON válido, es un error del servidor
                         errorDetail = 'Error de servidor. Intenta de nuevo.';
                     }
                     
@@ -303,7 +512,6 @@ def get_login_page() -> str:
                     
                     console.log('[LOGIN] Token guardado, redirigiendo...');
                     
-                    // Redirigir según rol
                     setTimeout(() => {
                         if (data.user.is_admin) {
                             window.location.href = '/dashboard';
@@ -321,7 +529,6 @@ def get_login_page() -> str:
                 }
             });
             
-            // Obtener versión del servidor
             async function loadVersion() {
                 try {
                     const res = await fetch('/version');
@@ -334,229 +541,16 @@ def get_login_page() -> str:
                 }
             }
             
-            // Focus en username al cargar
             document.getElementById('username').focus();
             loadVersion();
-        
-            // TICKETS LOGIC
-            let currentTickets = [];
-            let currentChatPhone = "";
-            let currentChatTicketId = "";
-
-            async function loadTickets() {
-                try {
-                    const res = await fetch('/api/tickets/list', {
-                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
-                    });
-                    if(res.ok) {
-                        currentTickets = await res.json();
-                        renderTickets();
-                    }
-                } catch(e) { console.error(e); }
-            }
-
-            function renderTickets() {
-                const grid = document.getElementById('ticketsGrid');
-                if(!currentTickets.length) {
-                    grid.innerHTML = '<div class="empty-state">No hay tickets</div>';
-                    return;
-                }
-                
-                let html = '';
-                currentTickets.forEach(t => {
-                    let badgeColor = '#64748b';
-                    if (t.status === 'pendiente') badgeColor = '#f59e0b';
-                    if (t.status === 'confirmado') badgeColor = '#10b981';
-                    if (t.status === 'cancelado') badgeColor = '#ef4444';
-                    
-                    let statusLabel = t.status.toUpperCase();
-                    if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
-                    
-                    let schedBadge = t.has_scheduled_message ? '<span style="background: rgba(139,92,246,0.2); color: #c4b5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
-
-                    html += `
-                        <div class="ticket-row">
-                            <div class="ticket-info">
-                                <div class="ticket-id">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
-                                <div class="ticket-status" style="color: ${badgeColor}; font-weight: 500;">
-                                    ${statusLabel} | Origen: ${t.menu_breadcrumb || t.menu_section || '-'}
-                                </div>
-                                <div style="font-size: 0.75em; color: #64748b; margin-top: 4px;">
-                                    Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}
-                                </div>
-                            </div>
-                            <div class="ticket-actions">
-                                <button class="btn btn-secondary btn-sm" onclick="viewTicket('${t.id}')">Ver Chat</button>
-                            </div>
-                        </div>
-                    `;
-                });
-                grid.innerHTML = html;
-            }
-
-            async function viewTicket(tid) {
-                const t = currentTickets.find(x => x.id === tid);
-                if(!t) return;
-                
-                currentChatPhone = t.phone_number;
-                currentChatTicketId = tid;
-                
-                document.getElementById('chatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
-                document.getElementById('chatContent').innerHTML = '<div class="spinner-text">Cargando mensajes desde WAHA...</div>';
-                document.getElementById('chatModal').classList.add('show');
-                
-                // Actions
-                let actionsHtml = '';
-                if (!t.is_deleted) {
-                    if (t.status === 'pendiente') {
-                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('confirm')">Confirmar</button>`;
-                    }
-                    if (t.status === 'timeout') {
-                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('resume')">Retomar</button>`;
-                    }
-                    actionsHtml += `<button class="btn btn-danger btn-sm" onclick="actionTicket('delete')">Borrar (Cancelar)</button>`;
-                }
-                document.getElementById('chatModalActions').innerHTML = actionsHtml;
-                
-                // fetch messages
-                try {
-                    const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
-                        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
-                    });
-                    if(res.ok) {
-                        const msgs = await res.json();
-                        let chtml = '';
-                        if(msgs.length === 0) {
-                            chtml = '<div class="empty-state">No hay mensajes recientes en WAHA</div>';
-                        } else {
-                            // msgs might be an array of Waha message objects
-                            msgs.forEach(m => {
-                                const isBot = m.fromMe;
-                                const align = isBot ? 'right' : 'left';
-                                const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
-                                const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
-                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px;">
-                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word;">
-                                        ${text}
-                                    </div>
-                                </div>`;
-                            });
-                        }
-                        document.getElementById('chatContent').innerHTML = chtml;
-                        document.getElementById('chatContent').scrollTop = document.getElementById('chatContent').scrollHeight;
-                    } else {
-                        document.getElementById('chatContent').innerHTML = '<div class="empty-state">No se pudieron cargar los mensajes.</div>';
-                    }
-                } catch(e) {
-                    document.getElementById('chatContent').innerHTML = '<div class="empty-state">Error cargando mensajes.</div>';
-                }
-            }
-
-            function closeChatModal() { document.getElementById('chatModal').classList.remove('show'); }
-
-            async function actionTicket(action) {
-                if(action === 'delete') {
-                    if(!confirm("¿Seguro que quieres borrar este ticket?")) return;
-                }
-                try {
-                    const res = await fetch('/api/tickets/action', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + localStorage.getItem('token')
-                        },
-                        body: JSON.stringify({ action: action, id: currentChatTicketId })
-                    });
-                    if(res.ok) {
-                        closeChatModal();
-                        loadTickets();
-                    } else {
-                        alert("Error ejecutando accion");
-                    }
-                } catch(e){ console.error(e); }
-            }
-
-            function openScheduleModal() {
-                document.getElementById('schedPhone').value = currentChatPhone;
-                document.getElementById('schedName').value = '';
-                document.getElementById('schedTime').value = '';
-                document.getElementById('schedMessage').value = '';
-                document.getElementById('scheduleModal').classList.add('show');
-            }
-
-            function closeScheduleModal() { document.getElementById('scheduleModal').classList.remove('show'); }
-
-            async function saveScheduledMessage() {
-                const phone = document.getElementById('schedPhone').value;
-                const name = document.getElementById('schedName').value;
-                const val = document.getElementById('schedTime').value;
-                const msg = document.getElementById('schedMessage').value;
-
-                let send_time = '';
-                let send_date = null;
-                if (val) {
-                    const parts = val.split('T');
-                    send_date = parts[0];
-                    send_time = parts[1];
-                }
-                
-                if(!name || !send_time || !msg) { alert("Completar todos los campos"); return; }
-                
-                try {
-                    const res = await fetch('/api/scheduled-messages', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + localStorage.getItem('token')
-                        },
-                        body: JSON.stringify({
-                            name: name,
-                            phone_number: phone,
-                            send_time: send_time,
-                            send_date: send_date,
-                            message: msg,
-                            days_of_week: "1,2,3,4,5,6,7",
-                            is_active: true
-                        })
-                    });
-                    if(res.ok) {
-                        closeScheduleModal();
-                        loadTickets(); // refresh to show scheduled message badge
-                        showToast("Mensaje agendado");
-                    }
-                } catch(e) { console.error(e); }
-            }
-
-            // Hook loadTickets into switchSection if section is tickets
-            const originalSwitchSection = window.switchSection || function(){};
-            window.switchSection = function(sectionId, el) {
-                // update navigation UI if using elements
-                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-                if(el) el.classList.add('active');
-                else {
-                    const selector = document.querySelector(`.nav-item[onclick*="'${sectionId}'"]`);
-                    if(selector) selector.classList.add('active');
-                }
-                // hide all sections
-                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-                
-                // show target
-                const target = document.getElementById(sectionId + 'Section') || document.getElementById(sectionId);
-                if(target) target.classList.add('active');
-                
-                if(sectionId === 'tickets') loadTickets();
-                else originalSwitchSection(sectionId, el);
-            };
-
-            </script>
+        </script>
     </body>
     </html>
     """
 
 def get_user_panel_page() -> str:
     """Panel de usuario rediseñado - misma estética que admin con sidebar"""
-    return """
-    <!DOCTYPE html>
+    return """<!DOCTYPE html>
     <html lang="es">
     <head>
         <meta charset="UTF-8">
@@ -1007,6 +1001,7 @@ def get_user_panel_page() -> str:
             <div class="sidebar-nav">
                 <div class="nav-item active" id="navEstado" onclick="switchSection('estado')">📊 Estado</div>
                 <div class="nav-item" id="navTickets" onclick="switchSection('tickets')">🎫 Tickets</div>
+                <div class="nav-item" id="navProgramados" onclick="switchSection('programados')">🕐 Programados</div>
                 <div class="nav-item" id="navFeriados" onclick="switchSection('feriados')">📅 Feriados</div>
                 <div class="nav-item" id="navBloqueados" onclick="switchSection('bloqueados')">🚫 Bloqueados</div>
             </div>
@@ -1088,20 +1083,10 @@ def get_user_panel_page() -> str:
                     <div id="parkedListUser"><div style="color:#94a3b8;font-size:0.88em;">Cargando...</div></div>
                 </div>
 
-                <div class="card">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                        <h2 style="margin-bottom:0;">🕐 Mensajes Programados</h2>
-                        <button class="btn btn-primary" style="padding:7px 13px;font-size:0.85em;" onclick="openSchedModal()">➕ Nuevo</button>
-                    </div>
-                    <div id="schedList"><div style="color:#94a3b8;font-size:0.88em;">Cargando...</div></div>
-                </div>
             </div>
 
-            <!-- ═══  FERIADOS  ═══ -->
-            <div id="feriados" class="section">
-                <div class="page-header">
-                    
-            <div id="ticketsSection" class="section">
+            <!-- ═══  TICKETS  ═══ -->
+            <div id="tickets" class="section">
                 <div class="page-header">
                     <h1>🎫 Tickets (Chats)</h1>
                     <p style="color: #94a3b8;">Gestiona las conversaciones de los usuarios con el bot o el operador.</p>
@@ -1117,53 +1102,83 @@ def get_user_panel_page() -> str:
                         <div class="empty-state">Cargando tickets...</div>
                     </div>
                 </div>
+
             </div>
 
-            <!-- Modales -->
-            <div id="chatModal" class="modal">
-                <div class="modal-content" style="max-width: 600px; width: 95%;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(226,232,240,0.1); padding-bottom: 15px; margin-bottom: 15px;">
-                        <h3 id="chatModalTitle" style="margin: 0;">Conversación</h3>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-secondary btn-sm modal-close" onclick="closeChatModal()" style="margin: 0;">X</button>
+            <div id="programados" class="section">
+                <div class="page-header">
+                    <h1>🕐 Mensajes Programados</h1>
+                    <p style="color:#94a3b8;">Ordenados de más cerca a más lejos y agrupados por día.</p>
+                </div>
+
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:12px;flex-wrap:wrap;">
+                        <div>
+                            <h2 style="margin:0;">Listado Programado</h2>
+                            <p style="color:#94a3b8;margin-top:6px;font-size:0.88em;">Editá o cancelá cualquier envío desde esta vista.</p>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="loadSchedList()">🔄 Refrescar</button>
+                            <button class="btn btn-primary btn-sm" onclick="openSchedModal()">➕ Nuevo</button>
                         </div>
                     </div>
-                    <div id="chatContent" style="height: 350px; overflow-y: auto; text-align: left; background: rgba(15,23,42,0.5); padding: 15px; border-radius: 8px; font-size: 0.9em;">
+                    <div id="schedList" style="max-height:62vh;overflow-y:auto;padding-right:8px;">
+                        <div style="color:#94a3b8;font-size:0.88em;">Cargando...</div>
                     </div>
-                    <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: space-between; align-items: center;">
-                        <div style="display: flex; gap: 10px;" id="chatModalActions">
+                </div>
+            </div>
+
+            <!-- Modales Tickets -->
+            <div id="ticketChatModal" class="modal">
+                <div style="background:#111b21; border-radius:16px; width:96%; max-width:560px; height:82vh; max-height:680px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,0.7);">
+                    <div style="background:#1f2c34; padding:10px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0;">
+                        <div style="width:40px; height:40px; border-radius:50%; background:#2a3942; display:flex; align-items:center; justify-content:center; font-size:1.1em; flex-shrink:0;">👤</div>
+                        <div style="flex:1; min-width:0;">
+                            <div id="ticketChatModalTitle" style="color:#e9edef; font-size:0.97em; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                            <div style="color:#8696a0; font-size:0.75em;">Ticket: <span id="ticketChatModalTicket" style="color:#53bdeb; font-family:monospace;"></span></div>
                         </div>
-                        <button class="btn btn-primary btn-sm" id="btnSched" onclick="openScheduleModal()">Agendar Mensaje</button>
+                        <button onclick="closeTicketChatModal()" style="background:none; border:none; color:#8696a0; font-size:1.3em; cursor:pointer; padding:6px; flex-shrink:0;">&times;</button>
+                    </div>
+                    <div id="ticketChatMessages" style="flex:1; overflow-y:auto; padding:12px 10px; display:flex; flex-direction:column; gap:2px; background:#0b141a;"></div>
+                    <div style="background:#1f2c34; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px; border-top:1px solid rgba(255,255,255,0.06); flex-shrink:0;">
+                        <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;" id="ticketChatModalActions"></div>
+                            <div style="font-size:0.78em; color:#94a3b8;">Seleccioná uno o más mensajes del chat para llevarlos al programado.</div>
+                        </div>
+                        <button class="btn btn-primary btn-sm" id="ticketBtnSched" onclick="openTicketScheduleModal()">Agendar Mensaje</button>
                     </div>
                 </div>
             </div>
             
-            <div id="scheduleModal" class="modal">
+            <div id="ticketScheduleModal" class="modal">
                 <div class="modal-content">
                     <h3 style="margin-top:0;">Agendar Mensaje</h3>
                     <div class="form-group" style="text-align: left;">
                         <label>Teléfono</label>
-                        <input type="text" id="schedPhone" readonly style="opacity: 0.7;">
+                        <input type="text" id="ticketSchedPhone" readonly style="opacity: 0.7;">
                     </div>
                     <div class="form-group" style="text-align: left;">
                         <label>Nombre del Recordatorio</label>
-                        <input type="text" id="schedName" placeholder="Ej: Recordatorio Turno">
+                        <input type="text" id="ticketSchedName" placeholder="Ej: Recordatorio Turno">
                     </div>
                     <div class="form-group" style="text-align: left;">
                         <label>Fecha y Hora</label>
-                        <input type="datetime-local" id="schedTime">
+                        <input type="datetime-local" id="ticketSchedTime">
                     </div>
                     <div class="form-group" style="text-align: left;">
                         <label>Mensaje</label>
-                        <textarea id="schedMessage" rows="4" placeholder="Contenido del mensaje..."></textarea>
+                        <textarea id="ticketSchedMessage" rows="4" placeholder="Contenido del mensaje..."></textarea>
                     </div>
                     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-                        <button class="btn btn-secondary" onclick="closeScheduleModal()">Cancelar</button>
-                        <button class="btn btn-primary" onclick="saveScheduledMessage()">Guardar</button>
+                        <button class="btn btn-secondary" onclick="closeTicketScheduleModal()">Cancelar</button>
+                        <button class="btn btn-primary" onclick="saveTicketScheduledMessage()">Guardar</button>
                     </div>
                 </div>
             </div>
 
+            <!-- ═══  FERIADOS  ═══ -->
+            <div id="feriados" class="section">
+                <div class="page-header">
                     <h1>📅 Feriados</h1>
                 </div>
 
@@ -1287,20 +1302,8 @@ def get_user_panel_page() -> str:
                         <input id="schedName" type="text" placeholder="Ej: Recordatorio turno mañana" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;box-sizing:border-box;"></div>
                     <div><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Número(s) destino</label>
                         <input id="schedPhone" type="text" placeholder="5491112345678" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;box-sizing:border-box;"></div>
-                    <div style="display:flex;gap:10px;">
-                        <div style="flex:1;"><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Hora de envío</label>
-                            <input id="schedTime" type="time" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;box-sizing:border-box;"></div>
-                        <div style="flex:1;"><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Días</label>
-                            <select id="schedDays" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.85em;box-sizing:border-box;">
-                                <option value="1,2,3,4,5,6,7">Todos los días</option>
-                                <option value="1,2,3,4,5">Lunes a Viernes</option>
-                                <option value="6,7">Fin de semana</option>
-                                <option value="1">Lunes</option><option value="2">Martes</option>
-                                <option value="3">Miércoles</option><option value="4">Jueves</option>
-                                <option value="5">Viernes</option><option value="6">Sábado</option>
-                                <option value="7">Domingo</option>
-                            </select></div>
-                    </div>
+                    <div><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Fecha y Hora</label>
+                        <input id="schedTime" type="datetime-local" style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;box-sizing:border-box;"></div>
                     <div><label style="color:#94a3b8;font-size:0.82em;display:block;margin-bottom:4px;">Mensaje</label>
                         <textarea id="schedMsg" rows="4" placeholder="Texto del mensaje a enviar..." style="width:100%;padding:9px 12px;background:rgba(30,41,59,0.7);border:1px solid rgba(226,232,240,0.15);border-radius:8px;color:#f1f5f9;font-size:0.9em;resize:vertical;box-sizing:border-box;"></textarea></div>
                 </div>
@@ -1430,7 +1433,7 @@ def get_user_panel_page() -> str:
                 const cap = id.charAt(0).toUpperCase() + id.slice(1);
                 const navEl = document.getElementById('nav' + cap);
                 if (navEl) navEl.classList.add('active');
-                if (id === 'feriados')  { loadHolidays(); renderCalendar(); }
+                if (id === 'feriados')  { loadHolidays(); }
                 if (id === 'bloqueados') { loadBlocklist(); }
             }
 
@@ -1464,7 +1467,7 @@ def get_user_panel_page() -> str:
                 } catch(e) {}
             }
 
-            async function loadStatus() {
+            window.loadStatus = async function loadStatus() {
                 try {
                     const res = await fetch('/status', { headers: { 'Authorization': `Bearer ${token}` } });
                     if (!res.ok) { if (res.status === 403) { window.location.href = '/login'; } return; }
@@ -1604,85 +1607,35 @@ def get_user_panel_page() -> str:
             }
 
             // ── Scheduled messages ───────────────────────────────
+""" + _scheduled_messages_shared_js() + """
             let _schedEditId = null;
 
-            async function loadSchedList() {
-                const box = document.getElementById('schedList');
-                if (!box) return;
-                try {
-                    const res  = await fetch('/api/scheduled-messages', { headers: { 'Authorization': `Bearer ${token}` } });
-                    if (_checkUnauth(res)) return;
-                    const list = await res.json();
-                    if (!list.length) { box.innerHTML = '<div style="color:#94a3b8;font-size:0.88em;">Sin mensajes programados. Usá ➕ Nuevo para crear uno.</div>'; return; }
-                    const DAYS_MAP = {'1':'Lu','2':'Ma','3':'Mi','4':'Ju','5':'Vi','6':'Sa','7':'Do'};
-                    box.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' + list.map(sm => {
-                        const days   = (sm.days_of_week||'').split(',').map(d=>DAYS_MAP[d.trim()]||d).join(' ');
-                        const active = sm.is_active;
-                        return `<div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
-                            <div style="flex:1;min-width:0;">
-                                <div style="color:#f1f5f9;font-weight:600;font-size:0.9em;">${sm.name}</div>
-                                <div style="color:#8696a0;font-size:0.78em;margin-top:2px;">📞 ${sm.phone_number} · 🕐 ${sm.send_time} · 📅 ${days}</div>
-                                <div style="color:#94a3b8;font-size:0.8em;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;">${sm.message}</div>
-                            </div>
-                            <div style="display:flex;gap:6px;flex-shrink:0;">
-                                <button onclick="toggleSched(${sm.id})" style="padding:5px 8px;background:${active?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)'};border:1px solid ${active?'rgba(16,185,129,0.4)':'rgba(100,116,139,0.3)'};border-radius:6px;color:${active?'#86efac':'#94a3b8'};cursor:pointer;font-size:0.85em;">${active?'✅':'⏸️'}</button>
-                                <button onclick="editSched(${sm.id})" style="padding:5px 8px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:6px;color:#93c5fd;cursor:pointer;font-size:0.85em;">✏️</button>
-                                <button onclick="deleteSched(${sm.id})" style="padding:5px 8px;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.3);border-radius:6px;color:#fca5a5;cursor:pointer;font-size:0.85em;">🗑️</button>
-                            </div>
-                        </div>`;
-                    }).join('') + '</div>';
-                } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:0.88em;">Error al cargar mensajes programados</div>'; }
-            }
+            const _userSchedConfig = {
+                url: '/api/scheduled-messages',
+                listId: 'schedList',
+                errorText: 'Error al cargar mensajes programados',
+                checkUnauth: _checkUnauth,
+                actions: {
+                    editFn: 'editSched',
+                    deleteFn: 'deleteSched'
+                },
+                modalId: 'schedModal',
+                titleId: 'schedModalTitle',
+                nameId: 'schedName',
+                phoneId: 'schedPhone',
+                timeId: 'schedTime',
+                messageId: 'schedMsg',
+                feedbackId: 'schedModalMsg'
+            };
 
-            function openSchedModal(sm) {
-                _schedEditId = sm ? sm.id : null;
-                document.getElementById('schedModalTitle').textContent = sm ? '✏️ Editar Mensaje Programado' : '🕐 Nuevo Mensaje Programado';
-                document.getElementById('schedName').value    = sm ? sm.name : '';
-                document.getElementById('schedPhone').value   = sm ? sm.phone_number : '';
-                document.getElementById('schedTime').value    = sm ? sm.send_time : '';
-                document.getElementById('schedDays').value    = sm && sm.days_of_week ? sm.days_of_week : '1,2,3,4,5,6,7';
-                document.getElementById('schedMsg').value     = sm ? sm.message : '';
-                document.getElementById('schedModalMsg').textContent = '';
-                document.getElementById('schedModal').style.display = 'flex';
-            }
-            function closeSchedModal() { document.getElementById('schedModal').style.display = 'none'; _schedEditId = null; }
-
-            async function saveSchedMsg() {
-                const msgEl   = document.getElementById('schedModalMsg');
-                const payload = {
-                    name:        document.getElementById('schedName').value.trim(),
-                    phone_number: document.getElementById('schedPhone').value.trim(),
-                    message:     document.getElementById('schedMsg').value.trim(),
-                    send_time:   document.getElementById('schedTime').value.trim(),
-                    days_of_week: document.getElementById('schedDays').value,
-                };
-                if (!payload.name || !payload.phone_number || !payload.message || !payload.send_time) {
-                    msgEl.style.color = '#f87171'; msgEl.textContent = 'Completá todos los campos.'; return;
-                }
-                try {
-                    const url    = _schedEditId ? `/api/scheduled-messages/${_schedEditId}` : '/api/scheduled-messages';
-                    const method = _schedEditId ? 'PUT' : 'POST';
-                    const res    = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (res.ok) { closeSchedModal(); loadSchedList(); }
-                    else { const d = await res.json(); msgEl.style.color = '#f87171'; msgEl.textContent = '❌ ' + (d.detail || 'Error'); }
-                } catch(e) { msgEl.style.color = '#f87171'; msgEl.textContent = '❌ Error de red'; }
-            }
-
-            async function toggleSched(id) {
-                await fetch(`/api/scheduled-messages/${id}/toggle`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-                loadSchedList();
-            }
-            async function editSched(id) {
-                const res  = await fetch('/api/scheduled-messages', { headers: { 'Authorization': `Bearer ${token}` } });
-                const list = await res.json();
-                const sm   = list.find(x => x.id === id);
-                if (sm) openSchedModal(sm);
-            }
-            async function deleteSched(id) {
-                if (!confirm('¿Eliminar este mensaje programado?')) return;
-                await fetch(`/api/scheduled-messages/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-                loadSchedList();
-            }
+            function _setUserSchedEditId(value) { _schedEditId = value; }
+            async function loadSchedList() { return _loadScheduledMessagesList(_userSchedConfig); }
+            function openSchedModal(sm) { _openScheduledMessagesModal(_userSchedConfig, sm, _setUserSchedEditId); }
+            function closeSchedModal() { _closeScheduledMessagesModal(_userSchedConfig, _setUserSchedEditId); }
+            async function saveSchedMsg() { return _saveScheduledMessage(_userSchedConfig, _schedEditId, () => { closeSchedModal(); loadSchedList(); }); }
+            async function toggleSched(id) { return _toggleScheduledMessage(_userSchedConfig, id, loadSchedList); }
+            async function editSched(id) { return _editScheduledMessage(_userSchedConfig, id, openSchedModal); }
+            async function deleteSched(id) { return _deleteScheduledMessage(_userSchedConfig, id, loadSchedList); }
 
             // ── Chat Modal ───────────────────────────────────────
             let _chatModalPhone  = '';
@@ -1717,12 +1670,13 @@ def get_user_panel_page() -> str:
                 if (!_chatModalPhone) return;
                 try {
                     const res  = await fetch(`/api/human-mode/messages/${encodeURIComponent(_chatModalPhone)}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                    const data = await res.json();
-                    const box  = document.getElementById('chatMessages');
-                    if (!data.ok || !data.messages.length) {
-                        box.innerHTML = '<div style="color:#8696a0;text-align:center;padding:30px;font-size:0.9em;">Sin mensajes disponibles</div>'; return;
-                    }
-                    const sorted     = [...data.messages].sort((a,b) => a.timestamp - b.timestamp);
+                        const data = await res.json();
+                        const box  = document.getElementById('chatMessages');
+                        const msgs = Array.isArray(data) ? data : (data.messages || []);
+                        if (!msgs || !msgs.length) {
+                            box.innerHTML = '<div style="color:#8696a0;text-align:center;padding:30px;font-size:0.9em;">Sin mensajes disponibles</div>'; return;
+                        }
+                        const sorted     = [...msgs].sort((a,b) => a.timestamp - b.timestamp);
                     const wasAtBottom = box.scrollHeight - box.scrollTop <= box.clientHeight + 60;
                     box.innerHTML = sorted.map(m => {
                         const t = m.timestamp ? new Date(m.timestamp*1000).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
@@ -2138,23 +2092,23 @@ def get_user_panel_page() -> str:
                         setTimeout(() => closeChangePwModal(), 1500);
                     } else {
                         const err = await res.json();
-                        msgEl.style.color = '#f87171'; msgEl.textContent = '❌ '+(err.detail||'Contraseña actual incorrecta');
+                        msgEl.style.color = '#f87171'; msgEl.textContent = '❌ ' + (err.detail || 'Contraseña actual incorrecta');
                     }
                 } catch(e) { msgEl.style.color='#f87171'; msgEl.textContent='❌ Error de conexión'; }
                 finally { saveBtns.forEach(b => { b.disabled=false; b.textContent='💾 Guardar'; }); }
             }
 
-            // ── Misc ─────────────────────────────────────────────
             function logout() { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/login'; }
-
             async function loadVersion() {
                 try {
                     const res = await fetch('/version');
-                    if (res.ok) { const d = await res.json(); const el = document.getElementById('userPanelVersion'); if(el) el.textContent = d.version; }
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const el = document.getElementById('userPanelVersion');
+                    if (el) el.textContent = data.version || '—';
                 } catch(e) {}
             }
-        
-            // TICKETS LOGIC
+
             let currentTickets = [];
             let currentChatPhone = "";
             let currentChatTicketId = "";
@@ -2173,35 +2127,34 @@ def get_user_panel_page() -> str:
 
             function renderTickets() {
                 const grid = document.getElementById('ticketsGrid');
+                if(!grid) return;
                 if(!currentTickets.length) {
                     grid.innerHTML = '<div class="empty-state">No hay tickets</div>';
                     return;
                 }
-                
+
                 let html = '';
                 currentTickets.forEach(t => {
                     let badgeColor = '#64748b';
                     if (t.status === 'pendiente') badgeColor = '#f59e0b';
                     if (t.status === 'confirmado') badgeColor = '#10b981';
                     if (t.status === 'cancelado') badgeColor = '#ef4444';
-                    
+                    if (t.status === 'timeout')   badgeColor = '#ef4444';
+                    if (t.status === 'cerrado')    badgeColor = '#3b82f6';
+
                     let statusLabel = t.status.toUpperCase();
                     if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
-                    
-                    let schedBadge = t.has_scheduled_message ? '<span style="background: rgba(139,92,246,0.2); color: #c4b5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
+
+                    const schedBadge = t.has_scheduled_message ? '<span style="background: rgba(139,92,246,0.2); color: #c4b5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
 
                     html += `
-                        <div class="ticket-row">
-                            <div class="ticket-info">
-                                <div class="ticket-id">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
-                                <div class="ticket-status" style="color: ${badgeColor}; font-weight: 500;">
-                                    ${statusLabel} | Origen: ${t.menu_section || '-'}
-                                </div>
-                                <div style="font-size: 0.75em; color: #64748b; margin-top: 4px;">
-                                    Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}
-                                </div>
+                        <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:600;color:#f1f5f9;font-size:0.95em;">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
+                                <div style="color:${badgeColor};font-weight:500;font-size:0.88em;margin-top:4px;">${statusLabel} | Origen: ${t.menu_breadcrumb || t.menu_section || '-'}</div>
+                                <div style="font-size:0.75em;color:#64748b;margin-top:3px;">Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}</div>
                             </div>
-                            <div class="ticket-actions">
+                            <div style="display:flex;gap:8px;flex-shrink:0;">
                                 <button class="btn btn-secondary btn-sm" onclick="viewTicket('${t.id}')">Ver Chat</button>
                             </div>
                         </div>
@@ -2213,67 +2166,81 @@ def get_user_panel_page() -> str:
             async function viewTicket(tid) {
                 const t = currentTickets.find(x => x.id === tid);
                 if(!t) return;
-                
+
                 currentChatPhone = t.phone_number;
                 currentChatTicketId = tid;
-                
-                document.getElementById('chatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
-                document.getElementById('chatContent').innerHTML = '<div class="spinner-text">Cargando mensajes desde WAHA...</div>';
-                document.getElementById('chatModal').classList.add('show');
-                
-                // Actions
+
+                document.getElementById('ticketChatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
+                document.getElementById('ticketChatModalTicket').textContent = t.ticket_id || '-';
+                document.getElementById('ticketChatMessages').innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">Cargando mensajes...</div>';
+                document.getElementById('ticketChatModal').classList.add('show');
+
                 let actionsHtml = '';
                 if (!t.is_deleted) {
                     if (t.status === 'pendiente') {
-                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('confirm')">Confirmar</button>`;
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('fin')">Fin</button>`;
                     }
                     if (t.status === 'timeout') {
                         actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('resume')">Retomar</button>`;
                     }
-                    actionsHtml += `<button class="btn btn-danger btn-sm" onclick="actionTicket('delete')">Borrar (Cancelar)</button>`;
                 }
-                document.getElementById('chatModalActions').innerHTML = actionsHtml;
-                
-                // fetch messages
+                document.getElementById('ticketChatModalActions').innerHTML = actionsHtml;
+
                 try {
                     const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
                         headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
                     });
                     if(res.ok) {
-                        const msgs = await res.json();
+                        const data = await res.json();
+                        const msgs = Array.isArray(data) ? data : (data.messages || []);
                         let chtml = '';
-                        if(msgs.length === 0) {
-                            chtml = '<div class="empty-state">No hay mensajes recientes en WAHA</div>';
+                        if(!msgs || msgs.length === 0) {
+                            chtml = '<div style="color:#94a3b8;text-align:center;padding:20px;">No hay mensajes recientes</div>';
                         } else {
-                            // msgs might be an array of Waha message objects
                             msgs.forEach(m => {
-                                const isBot = m.fromMe;
+                                const isBot = m.from_me || m.fromMe;
                                 const align = isBot ? 'right' : 'left';
                                 const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
                                 const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
-                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px;">
-                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word;">
+                                const escapedText = _escapeSchedMsgAttr(text);
+                                chtml += `<div style="text-align:${align};margin-bottom:8px;display:flex;align-items:flex-start;justify-content:${isBot ? 'flex-end' : 'flex-start'};gap:8px;">
+                                    ${!isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-top:8px;cursor:pointer;" title="Seleccionar mensaje para agendar">` : ''}
+                                    <div style="display:inline-block;background:${bg};padding:8px 12px;border-radius:8px;max-width:80%;word-break:break-word;text-align:left;">
                                         ${text}
                                     </div>
+                                    ${isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-top:8px;cursor:pointer;" title="Seleccionar mensaje para agendar">` : ''}
                                 </div>`;
                             });
                         }
-                        document.getElementById('chatContent').innerHTML = chtml;
-                        document.getElementById('chatContent').scrollTop = document.getElementById('chatContent').scrollHeight;
+                        document.getElementById('ticketChatMessages').innerHTML = chtml;
+                        const box = document.getElementById('ticketChatMessages');
+                        box.scrollTop = box.scrollHeight;
                     } else {
-                        document.getElementById('chatContent').innerHTML = '<div class="empty-state">No se pudieron cargar los mensajes.</div>';
+                        document.getElementById('ticketChatMessages').innerHTML = '<div style="color:#94a3b8;text-align:center;">No se pudieron cargar los mensajes.</div>';
                     }
                 } catch(e) {
-                    document.getElementById('chatContent').innerHTML = '<div class="empty-state">Error cargando mensajes.</div>';
+                    document.getElementById('ticketChatMessages').innerHTML = '<div style="color:#94a3b8;text-align:center;">Error cargando mensajes.</div>';
                 }
             }
 
-            function closeChatModal() { document.getElementById('chatModal').classList.remove('show'); }
+            function closeTicketChatModal() { document.getElementById('ticketChatModal').classList.remove('show'); }
+
+            function _escapeSchedMsgAttr(text) {
+                const tempDiv = document.createElement('div');
+                tempDiv.textContent = text || '';
+                return tempDiv.innerHTML.replace(/"/g, '&quot;');
+            }
+
+            function _getSelectedSchedChatText(containerSelector) {
+                const checkboxes = document.querySelectorAll(`${containerSelector} .msg-cb:checked`);
+                if (!checkboxes.length) return '';
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = Array.from(checkboxes).map(cb => cb.value).join('\\n\\n');
+                return tempDiv.textContent.trim();
+            }
 
             async function actionTicket(action) {
-                if(action === 'delete') {
-                    if(!confirm("¿Seguro que quieres borrar este ticket?")) return;
-                }
+                if(action === 'delete' && !confirm("¿Seguro que quieres borrar este ticket?")) return;
                 try {
                     const res = await fetch('/api/tickets/action', {
                         method: 'POST',
@@ -2284,7 +2251,7 @@ def get_user_panel_page() -> str:
                         body: JSON.stringify({ action: action, id: currentChatTicketId })
                     });
                     if(res.ok) {
-                        closeChatModal();
+                        closeTicketChatModal();
                         loadTickets();
                     } else {
                         alert("Error ejecutando accion");
@@ -2292,23 +2259,30 @@ def get_user_panel_page() -> str:
                 } catch(e){ console.error(e); }
             }
 
-            function openScheduleModal() {
-                document.getElementById('schedPhone').value = currentChatPhone;
-                document.getElementById('schedName').value = '';
-                document.getElementById('schedTime').value = '';
-                document.getElementById('schedMessage').value = '';
-                document.getElementById('scheduleModal').classList.add('show');
+            function openTicketScheduleModal() {
+                document.getElementById('ticketSchedPhone').value = currentChatPhone;
+                document.getElementById('ticketSchedName').value = '';
+                document.getElementById('ticketSchedTime').value = '';
+                document.getElementById('ticketSchedMessage').value = _getSelectedSchedChatText('#ticketChatMessages');
+                document.getElementById('ticketScheduleModal').classList.add('show');
             }
 
-            function closeScheduleModal() { document.getElementById('scheduleModal').classList.remove('show'); }
+            function closeTicketScheduleModal() { document.getElementById('ticketScheduleModal').classList.remove('show'); }
 
-            async function saveScheduledMessage() {
-                const phone = document.getElementById('schedPhone').value;
-                const name = document.getElementById('schedName').value;
-                const time = document.getElementById('schedTime').value;
-                const msg = document.getElementById('schedMessage').value;
+            async function saveTicketScheduledMessage() {
+                const phone = document.getElementById('ticketSchedPhone').value;
+                const name = document.getElementById('ticketSchedName').value;
+                const time = document.getElementById('ticketSchedTime').value;
+                const msg = document.getElementById('ticketSchedMessage').value;
+                let send_time = '';
+                let send_date = null;
+                if (time) {
+                    const parts = time.split('T');
+                    send_date = parts[0] || null;
+                    send_time = parts[1] || '';
+                }
                 
-                if(!name || !time || !msg) { alert("Completar todos los campos"); return; }
+                if(!name || !send_time || !msg) { alert("Completar todos los campos"); return; }
                 
                 try {
                     const res = await fetch('/api/scheduled-messages', {
@@ -2320,15 +2294,17 @@ def get_user_panel_page() -> str:
                         body: JSON.stringify({
                             name: name,
                             phone_number: phone,
-                            send_time: time,
+                            send_time: send_time,
+                            send_date: send_date,
                             message: msg,
                             days_of_week: "1,2,3,4,5,6,7",
                             is_active: true
                         })
                     });
                     if(res.ok) {
-                        closeScheduleModal();
+                        closeTicketScheduleModal();
                         loadTickets(); // refresh to show scheduled message badge
+                        loadSchedList();
                         showToast("Mensaje agendado");
                     }
                 } catch(e) { console.error(e); }
@@ -2351,7 +2327,8 @@ def get_user_panel_page() -> str:
                 const target = document.getElementById(sectionId + 'Section') || document.getElementById(sectionId);
                 if(target) target.classList.add('active');
                 
-                if(sectionId === 'tickets') loadTickets();
+                if(sectionId === 'tickets') { loadTickets(); }
+                else if (sectionId === 'programados') { loadSchedList(); }
                 else originalSwitchSection(sectionId, el);
             };
 
@@ -3178,6 +3155,7 @@ def get_user_config_page() -> str:
                     if (t.status === 'pendiente') badgeColor = '#f59e0b';
                     if (t.status === 'confirmado') badgeColor = '#10b981';
                     if (t.status === 'cancelado') badgeColor = '#ef4444';
+                    if (t.status === 'timeout')   badgeColor = '#ef4444';
                     
                     let statusLabel = t.status.toUpperCase();
                     if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
@@ -3219,7 +3197,7 @@ def get_user_config_page() -> str:
                 let actionsHtml = '';
                 if (!t.is_deleted) {
                     if (t.status === 'pendiente') {
-                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('confirm')">Confirmar</button>`;
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('fin')">Fin</button>`;
                     }
                     if (t.status === 'timeout') {
                         actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('resume')">Retomar</button>`;
@@ -3234,21 +3212,27 @@ def get_user_config_page() -> str:
                         headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
                     });
                     if(res.ok) {
-                        const msgs = await res.json();
+                        const data = await res.json();
+                        const msgs = Array.isArray(data) ? data : (data.messages || []);
                         let chtml = '';
-                        if(msgs.length === 0) {
+                        if(!msgs || msgs.length === 0) {
                             chtml = '<div class="empty-state">No hay mensajes recientes en WAHA</div>';
                         } else {
-                            // msgs might be an array of Waha message objects
+                            // msgs is an array of Waha message objects
                             msgs.forEach(m => {
-                                const isBot = m.fromMe;
+                                const isBot = m.from_me || m.fromMe;
                                 const align = isBot ? 'right' : 'left';
                                 const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
                                 const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
-                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px;">
-                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word;">
+                                const tempDiv = document.createElement('div');
+                                tempDiv.textContent = text;
+                                const escapedText = tempDiv.innerHTML.replace(/"/g, '&quot;');
+                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px; display: flex; align-items: center; justify-content: ${isBot ? 'flex-end' : 'flex-start'};">
+                                    ${!isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-right:8px; cursor:pointer;" title="Seleccionar para recordatorio">` : ''}
+                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word; text-align: left;">
                                         ${text}
                                     </div>
+                                    ${isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-left:8px; cursor:pointer;" title="Seleccionar para recordatorio">` : ''}
                                 </div>`;
                             });
                         }
@@ -3290,7 +3274,13 @@ def get_user_config_page() -> str:
                 document.getElementById('schedPhone').value = currentChatPhone;
                 document.getElementById('schedName').value = '';
                 document.getElementById('schedTime').value = '';
-                document.getElementById('schedMessage').value = '';
+                
+                const checkboxes = document.querySelectorAll('#chatContent .msg-cb:checked');
+                const selectedText = Array.from(checkboxes).map(cb => cb.value).join('\\n\\n');
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = selectedText;
+                
+                document.getElementById('schedMessage').value = tempDiv.textContent;
                 document.getElementById('scheduleModal').classList.add('show');
             }
 
@@ -3613,6 +3603,45 @@ def get_dashboard_page() -> str:
                 font-size: 1.8em;
                 color: #f1f5f9;
                 font-weight: 700;
+            }
+
+            .status-item-combo-title {
+                font-size: 1.8em;
+                color: #f1f5f9;
+                font-weight: 700;
+                margin-bottom: 12px;
+            }
+
+            .status-combo-indicators {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                align-items: center;
+            }
+
+            .status-combo-pill {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                min-width: 130px;
+                padding: 8px 12px;
+                border-radius: 999px;
+                font-size: 0.95em;
+                font-weight: 700;
+                border: 1px solid transparent;
+            }
+
+            .status-combo-pill.on {
+                color: #86efac;
+                background: rgba(34, 197, 94, 0.12);
+                border-color: rgba(34, 197, 94, 0.35);
+            }
+
+            .status-combo-pill.off {
+                color: #fca5a5;
+                background: rgba(239, 68, 68, 0.12);
+                border-color: rgba(239, 68, 68, 0.35);
             }
             
             .btn {
@@ -4054,6 +4083,7 @@ def get_dashboard_page() -> str:
             
             <div class="nav-item active" onclick="switchSection('status')">📊 Estado</div>
             <div class="nav-item" onclick="switchSection('ticketsAdmin')">🎫 Tickets</div>
+            <div class="nav-item" onclick="switchSection('programadosAdmin')">🕐 Programados</div>
             <div class="nav-item" onclick="switchSection('holidays')">📅 Feriados</div>
             <div class="nav-item" onclick="switchSection('config')">⚙️ Configuración</div>
             
@@ -4088,19 +4118,21 @@ def get_dashboard_page() -> str:
                     <h2>🎯 Estado del Sistema</h2>
                     <div class="status-grid">
                         <div class="status-item">
-                            <div class="status-item-icon" id="waIcon">🔴</div>
-                            <div class="status-item-label">WhatsApp</div>
-                            <div class="status-item-value" id="waStatus">Desconectado</div>
-                        </div>
-                        <div class="status-item">
-                            <div class="status-item-icon" id="botIcon">▶️</div>
-                            <div class="status-item-label">Bot</div>
-                            <div class="status-item-value" id="botStatus">Activo</div>
+                            <div class="status-item-value status-item-combo-title">💬 / 🤖</div>
+                            <div class="status-combo-indicators">
+                                <div class="status-combo-pill off" id="waStatusPill">🔴 WA OFF</div>
+                                <div class="status-combo-pill off" id="botStatusPill">🔴 Bot OFF</div>
+                            </div>
                         </div>
                         <div class="status-item">
                             <div class="status-item-icon">📞</div>
                             <div class="status-item-label">Chats Hoy</div>
                             <div class="status-item-value" id="chatsToday">0</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-item-icon">🎫</div>
+                            <div class="status-item-label">Tickets Abiertos</div>
+                            <div class="status-item-value" id="openTicketsCount">0</div>
                         </div>
                         <div class="status-item">
                             <div class="status-item-icon" id="hoursIcon">✅</div>
@@ -4113,24 +4145,9 @@ def get_dashboard_page() -> str:
                             <div class="status-item-value" id="waUptime">0s</div>
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="refresh()">🔄 Actualizar Estado</button>
-                    <button class="btn" id="pauseBtn" onclick="toggleBot()" style="margin-left:10px;">⏸️ Pausar Bot</button>
-                </div>
-                
-                <div class="card">
-                    <h2>🔌 Gestión de WhatsApp</h2>
-                    <p style="color: #cbd5e1; margin-bottom: 16px;">Estado: <strong id="waStatusText">Desconectado</strong></p>
+                    <span id="waStatusText" style="display:none;">Desconectado</span>
                     <button class="btn btn-primary" id="waBtn" onclick="toggleWhatsApp()">🔴 Conectar WhatsApp</button>
-                </div>
-
-                <div class="card">
-                    <h2>👤 Control de Modo Humano</h2>
-                    <p style="color:#94a3b8; margin-bottom: 12px;">Cerrar chat de operador para que ese número vuelva al flujo automático del bot.</p>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-                        <input type="text" id="humanModePhoneAdmin" placeholder="549xxxxxxxxxx o 549...@c.us" style="flex:1; min-width:280px; padding:10px 12px; background: rgba(30, 41, 59, 0.5); border:1px solid rgba(226,232,240,0.15); border-radius:10px; color:#f1f5f9;" />
-                        <button class="btn btn-secondary" onclick="closeHumanModeFromAdmin()">🔓 Volver a Bot</button>
-                    </div>
-                    <div id="humanModeMsgAdmin" style="font-size:0.9em; color:#94a3b8;"></div>
+                    <button class="btn" id="pauseBtn" onclick="toggleBot()" style="margin-left:10px;">⏸️ Pausar Bot</button>
                 </div>
 
                 <div class="card">
@@ -4143,16 +4160,6 @@ def get_dashboard_page() -> str:
                     </div>
                 </div>
 
-                <div class="card">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                        <h2 style="margin-bottom:0;">🕐 Mensajes Programados</h2>
-                        <div style="display:flex; gap:8px;">
-                            <button class="btn btn-secondary" onclick="loadAdminSchedList()" style="padding:8px 14px; font-size:0.9em;">🔄</button>
-                            <button class="btn btn-primary" onclick="openAdminSchedModal()" style="padding:8px 14px; font-size:0.9em;">➕ Nuevo</button>
-                        </div>
-                    </div>
-                    <div id="adminSchedList"><div style="color:#94a3b8; font-size:0.9em;">Cargando...</div></div>
-                </div>
             </div>
 
             <!-- ────── SECCIÓN TICKETS ADMIN ────── -->
@@ -4172,6 +4179,28 @@ def get_dashboard_page() -> str:
                 </div>
             </div>
 
+            <div id="programadosAdmin" class="section">
+                <div style="margin-bottom: 20px;">
+                    <h2 style="color: #f1f5f9; margin: 0;">🕐 Mensajes Programados</h2>
+                    <p style="color: #94a3b8; margin-top: 6px; font-size: 0.9em;">Listado general de envíos agendados, ordenado por próxima ejecución.</p>
+                </div>
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:12px; flex-wrap:wrap;">
+                        <div>
+                            <h2 style="margin:0;">Agenda de Mensajes</h2>
+                            <p style="color:#94a3b8; margin-top:6px; font-size:0.88em;">Podés crear, editar, pausar o cancelar mensajes desde esta vista.</p>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="loadAdminSchedList()">🔄 Refrescar</button>
+                            <button class="btn btn-primary btn-sm" onclick="openAdminSchedModal()">➕ Nuevo</button>
+                        </div>
+                    </div>
+                    <div id="adminSchedList" style="max-height:62vh; overflow-y:auto; padding-right:8px;">
+                        <div style="color:#94a3b8; font-size:0.88em;">Cargando...</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Modal Chat Admin -->
             <div id="adminChatModal" class="modal">
                 <div class="modal-content" style="max-width: 600px; width: 95%;">
@@ -4181,7 +4210,10 @@ def get_dashboard_page() -> str:
                     </div>
                     <div id="adminChatContent" style="height: 350px; overflow-y: auto; text-align: left; background: rgba(15,23,42,0.5); padding: 15px; border-radius: 8px; font-size: 0.9em;"></div>
                     <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: space-between; align-items: center;">
-                        <div style="display: flex; gap: 10px;" id="adminChatModalActions"></div>
+                        <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
+                            <div style="display: flex; gap: 10px;" id="adminChatModalActions"></div>
+                            <div style="font-size:0.78em; color:#94a3b8;">Seleccioná mensajes del chat para copiarlos al agendado.</div>
+                        </div>
                         <button class="btn btn-primary btn-sm" id="btnAdminSched" onclick="openAdminTicketScheduleModal()">Agendar Mensaje</button>
                     </div>
                 </div>
@@ -4334,6 +4366,34 @@ def get_dashboard_page() -> str:
                             </div>
                         </form>
                     </div>
+
+                    <div class="card">
+                        <h2>🎟️ Mensajes de Ticket</h2>
+                        <div class="message" id="ticketMessagesMessage"></div>
+                        <form onsubmit="saveTicketMessages(event)">
+                            <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                <h3 style="color: #f1f5f9; margin-bottom: 12px;">🎟️ Mensaje de Creación de Ticket</h3>
+                                <div class="form-group">
+                                    <label>Mensaje Base (Usa {TKT} para número de ticket y {HOURS} para tiempo estimado)</label>
+                                    <textarea id="handoffMessage" rows="8" placeholder="Ocurrirá al derivar a humano..."></textarea>
+                                </div>
+                                <div class="buttons-group">
+                                    <button type="submit" class="btn btn-primary">💾 Guardar Mensaje</button>
+                                </div>
+                            </div>
+
+                            <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                <h3 style="color: #f1f5f9; margin-bottom: 12px;">👋 Mensaje de Cierre de Ticket (/fin)</h3>
+                                <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
+                                    Este mensaje se envía automáticamente al cliente cuando el operador escribe <strong>/fin</strong> para cerrar el ticket.
+                                </p>
+                                <div class="form-group">
+                                    <label>Mensaje de Despedida</label>
+                                    <textarea id="farewellMessage" rows="5" placeholder="Gracias por contactarte. ¡Que tengas un buen día! 😊"></textarea>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
                 </div>
 
                 <!-- ══ TAB: SISTEMA → Config Bot + WAHA + Usuarios + Bloqueados ══ -->
@@ -4397,39 +4457,6 @@ def get_dashboard_page() -> str:
                             </div>
                         </div>
                         
-                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">🔧 Modo de Operación</h3>
-                            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
-                                <input type="checkbox" id="debugMode" style="margin-top: 3px; width: 16px; height: 16px; flex-shrink: 0;">
-                                <div>
-                                    <span style="color: #f1f5f9; font-weight: 500;">Modo Debug</span>
-                                    <p style="color: #94a3b8; font-size: 0.85em; margin: 4px 0 0;">
-                                        Activado: logs detallados (horarios, webhooks, conexión).<br>
-                                        Desactivado <em>(recomendado)</em>: solo chats entrantes y errores.
-                                    </p>
-                                </div>
-                            </label>
-                        </div>
-                        
-                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">🎟️ Mensaje de Creación de Ticket</h3>
-                            <div class="form-group">
-                                <label>Mensaje Base (Usa {TKT} para número de ticket y {HOURS} para tiempo estimado)</label>
-                                <textarea id="handoffMessage" rows="8" placeholder="Ocurrirá al derivar a humano..."></textarea>
-                            </div>
-                        </div>
-
-                        <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                            <h3 style="color: #f1f5f9; margin-bottom: 12px;">👋 Mensaje de Cierre de Ticket (/fin)</h3>
-                            <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
-                                Este mensaje se envía automáticamente al cliente cuando el operador escribe <strong>/fin</strong> para cerrar el ticket.
-                            </p>
-                            <div class="form-group">
-                                <label>Mensaje de Despedida</label>
-                                <textarea id="farewellMessage" rows="5" placeholder="Gracias por contactarte. ¡Que tengas un buen día! 😊"></textarea>
-                            </div>
-                        </div>
-
                         <button type="submit" class="btn btn-primary">💾 Guardar Configuración</button>
                         </form>
                     </div>
@@ -4502,10 +4529,12 @@ def get_dashboard_page() -> str:
                             <button onclick="connectWaha()" class="btn btn-secondary" id="btnConnectWaha">🔌 Conectar/Reiniciar</button>
                             <button onclick="logoutWaha()" class="btn btn-danger" id="btnLogoutWaha">🚪 Logout (Borrar QR)</button>
                         </div>
-                        <div style="margin-top: 20px;">
-                            <h3 style="color: #f1f5f9; margin-bottom: 10px; font-size: 1em;">📊 Información de la Sesión</h3>
-                            <pre id="wahaRawInfo" style="background: rgba(0,0,0,0.3); padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 0.82em; color: #94a3b8;"></pre>
-                        </div>
+                        <details style="margin-top: 20px; background: rgba(15, 23, 42, 0.35); border: 1px solid rgba(226, 232, 240, 0.08); border-radius: 10px; padding: 0 14px 14px 14px;">
+                            <summary style="color: #f1f5f9; font-size: 1em; cursor: pointer; padding: 14px 0; font-weight: 600;">
+                                📊 Información de la Sesión
+                            </summary>
+                            <pre id="wahaRawInfo" style="background: rgba(0,0,0,0.3); padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 0.82em; color: #94a3b8; margin: 0;"></pre>
+                        </details>
                     </div>
 
                 </div>
@@ -4686,20 +4715,8 @@ def get_dashboard_page() -> str:
                         <input id="adminSchedName" type="text" placeholder="Ej: Recordatorio turno mañana" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
                     <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Número(s) destino <span style="color:#64748b;">(coma si son varios)</span></label>
                         <input id="adminSchedPhone" type="text" placeholder="5491112345678" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
-                    <div style="display:flex; gap:10px;">
-                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Fecha y Hora</label>
-                            <input id="adminSchedTime" type="datetime-local" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
-                        <div style="flex:1;"><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Días</label>
-                            <select id="adminSchedDays" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.85em; box-sizing:border-box;">
-                                <option value="1,2,3,4,5,6,7">Todos los días</option>
-                                <option value="1,2,3,4,5">Lunes a Viernes</option>
-                                <option value="6,7">Fin de semana</option>
-                                <option value="1">Lunes</option><option value="2">Martes</option>
-                                <option value="3">Miércoles</option><option value="4">Jueves</option>
-                                <option value="5">Viernes</option><option value="6">Sábado</option>
-                                <option value="7">Domingo</option>
-                            </select></div>
-                    </div>
+                    <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Fecha y Hora</label>
+                        <input id="adminSchedTime" type="datetime-local" style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; box-sizing:border-box;"></div>
                     <div><label style="color:#94a3b8; font-size:0.82em; display:block; margin-bottom:4px;">Mensaje</label>
                         <textarea id="adminSchedMsg" rows="4" placeholder="Texto del mensaje a enviar..." style="width:100%; padding:9px 12px; background:rgba(30,41,59,0.7); border:1px solid rgba(226,232,240,0.15); border-radius:8px; color:#f1f5f9; font-size:0.9em; resize:vertical; box-sizing:border-box;"></textarea></div>
                 </div>
@@ -4852,7 +4869,6 @@ def get_dashboard_page() -> str:
                 loadAdminParkedList();
                 loadAdminSchedList();
                 loadHolidays();
-                renderCalendar();
             });
             
             let currentMonth = new Date();
@@ -4881,11 +4897,11 @@ def get_dashboard_page() -> str:
 
                 if (section === 'holidays') { 
                     loadHolidays(); 
-                    renderCalendar(); 
                 }
                 else if (section === 'status') refresh();
                 else if (section === 'config') loadConfigTabData(currentConfigTab);
-                else if (section === 'ticketsAdmin') loadAdminTickets();
+                else if (section === 'ticketsAdmin') { loadAdminTickets(); loadAdminSchedList(); }
+                else if (section === 'programadosAdmin') loadAdminSchedList();
             }
 
             // ── TICKETS ADMIN JS ────────────────────────────────────────────────────────
@@ -4900,6 +4916,12 @@ def get_dashboard_page() -> str:
                     });
                     if (res.ok) {
                         adminCurrentTickets = await res.json();
+                        const openTicketsEl = document.getElementById('openTicketsCount');
+                        if (openTicketsEl) {
+                            openTicketsEl.textContent = String(
+                                adminCurrentTickets.filter(t => t.type === 'active').length
+                            );
+                        }
                         renderAdminTickets();
                     }
                 } catch(e) { console.error(e); }
@@ -4917,6 +4939,7 @@ def get_dashboard_page() -> str:
                     if (t.status === 'pendiente') badgeColor = '#f59e0b';
                     if (t.status === 'confirmado') badgeColor = '#10b981';
                     if (t.status === 'cancelado') badgeColor = '#ef4444';
+                    if (t.status === 'timeout')   badgeColor = '#ef4444';
                     if (t.status === 'cerrado')    badgeColor = '#3b82f6';
 
                     let statusLabel = t.status.toUpperCase();
@@ -4953,7 +4976,7 @@ def get_dashboard_page() -> str:
 
                 let actionsHtml = '';
                 if (!t.is_deleted) {
-                    if (t.status === 'pendiente') actionsHtml += `<button class="btn btn-primary btn-sm" onclick="adminActionTicket('confirm')">Confirmar</button>`;
+                    if (t.status === 'pendiente') actionsHtml += `<button class="btn btn-primary btn-sm" onclick="adminActionTicket('fin')">Fin</button>`;
                     if (t.status === 'timeout')   actionsHtml += `<button class="btn btn-primary btn-sm" onclick="adminActionTicket('resume')">Retomar</button>`;
                     actionsHtml += `<button class="btn btn-danger btn-sm" onclick="adminActionTicket('delete')">Borrar</button>`;
                 }
@@ -4964,18 +4987,22 @@ def get_dashboard_page() -> str:
                         headers: { 'Authorization': 'Bearer ' + token }
                     });
                     if (res.ok) {
-                        const msgs = await res.json();
+                        const data = await res.json();
+                        const msgs = Array.isArray(data) ? data : (data.messages || []);
                         let chtml = '';
-                        if (!msgs.length) {
+                        if (!msgs || !msgs.length) {
                             chtml = '<div style="color:#94a3b8;text-align:center;padding:20px;">No hay mensajes recientes</div>';
                         } else {
                             msgs.forEach(m => {
-                                const isBot = m.fromMe;
+                                const isBot = m.from_me || m.fromMe;
                                 const align = isBot ? 'right' : 'left';
                                 const bg    = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
                                 const text  = m.body || m.text || JSON.stringify(m);
-                                chtml += `<div style="text-align:${align};margin-bottom:8px;">
-                                    <div style="display:inline-block;background:${bg};padding:8px 12px;border-radius:8px;max-width:80%;word-break:break-word;">${text}</div>
+                                const escapedText = _escapeSchedMsgAttr(text);
+                                chtml += `<div style="text-align:${align};margin-bottom:8px;display:flex;align-items:flex-start;justify-content:${isBot ? 'flex-end' : 'flex-start'};gap:8px;">
+                                    ${!isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-top:8px;cursor:pointer;" title="Seleccionar mensaje para agendar">` : ''}
+                                    <div style="display:inline-block;background:${bg};padding:8px 12px;border-radius:8px;max-width:80%;word-break:break-word;text-align:left;">${text}</div>
+                                    ${isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-top:8px;cursor:pointer;" title="Seleccionar mensaje para agendar">` : ''}
                                 </div>`;
                             });
                         }
@@ -5009,7 +5036,7 @@ def get_dashboard_page() -> str:
                 document.getElementById('adminSchedTicketPhone').value   = adminCurrentChatPhone;
                 document.getElementById('adminSchedTicketName').value    = '';
                 document.getElementById('adminSchedTicketTime').value    = '';
-                document.getElementById('adminSchedTicketMessage').value = '';
+                document.getElementById('adminSchedTicketMessage').value = _getSelectedSchedChatText('#adminChatContent');
                 document.getElementById('adminTicketSchedModal').classList.add('show');
             }
             function closeAdminTicketScheduleModal() { document.getElementById('adminTicketSchedModal').classList.remove('show'); }
@@ -5035,7 +5062,7 @@ def get_dashboard_page() -> str:
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                         body: JSON.stringify({ name, phone_number: phone, send_time, send_date, message: msg, days_of_week: '1,2,3,4,5,6,7', is_active: true })
                     });
-                    if (res.ok) { closeAdminTicketScheduleModal(); loadAdminTickets(); showToast('Mensaje agendado'); }
+                    if (res.ok) { closeAdminTicketScheduleModal(); loadAdminTickets(); loadAdminSchedList(); showToast('Mensaje agendado'); }
                 } catch(e) { console.error(e); }
             }
             // ── FIN TICKETS ADMIN ──────────────────────────────────────────────────────────────
@@ -5268,6 +5295,7 @@ def get_dashboard_page() -> str:
                 if (tab === 'chatbot') {
                     loadMenu();
                     loadOffhours();
+                    loadTicketMessages();
                 } else if (tab === 'sistema') {
                     loadConfig();
                     loadAccessTokens();
@@ -5468,10 +5496,21 @@ def get_dashboard_page() -> str:
                     const status = await res.json();
                     lastConnectedStatus = status.connected;  // Actualizar estado para notificaciones
                     
-                    document.getElementById('waIcon').textContent = status.connected ? '🟢' : '🔴';
-                    document.getElementById('waStatus').textContent = status.connected ? 'Conectado' : 'Desconectado';
-                    document.getElementById('botIcon').textContent = status.paused ? '⏸️' : '▶️';
-                    document.getElementById('botStatus').textContent = status.paused ? 'Pausado' : 'Activo';
+                    const waStatusPill = document.getElementById('waStatusPill');
+                    if (waStatusPill) {
+                        waStatusPill.textContent = status.connected ? '🟢 WA ON' : '🔴 WA OFF';
+                        waStatusPill.classList.toggle('on', status.connected);
+                        waStatusPill.classList.toggle('off', !status.connected);
+                    }
+
+                    const botStatusPill = document.getElementById('botStatusPill');
+                    if (botStatusPill) {
+                        const botOn = !status.paused;
+                        botStatusPill.textContent = botOn ? '🟢 Bot ON' : '🔴 Bot OFF';
+                        botStatusPill.classList.toggle('on', botOn);
+                        botStatusPill.classList.toggle('off', !botOn);
+                    }
+
                     // Actualizar botón de pausa
                     const pauseBtn = document.getElementById('pauseBtn');
                     if (pauseBtn) {
@@ -5491,6 +5530,8 @@ def get_dashboard_page() -> str:
                     if (waUptimeEl) {
                         waUptimeEl.textContent = formatDuration(status.connection_uptime_seconds || 0);
                     }
+
+                    await refreshOpenTicketsCount();
                     
                     const waBtn = document.getElementById('waBtn');
                     if (status.connected) {
@@ -5504,6 +5545,27 @@ def get_dashboard_page() -> str:
                     }
                 } catch (error) {
                     console.error('Error:', error);
+                }
+            }
+
+            async function refreshOpenTicketsCount() {
+                try {
+                    const res = await fetch('/api/tickets/list', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) return;
+
+                    const tickets = await res.json();
+                    const openCount = Array.isArray(tickets)
+                        ? tickets.filter(t => t.type === 'active').length
+                        : 0;
+
+                    const openTicketsEl = document.getElementById('openTicketsCount');
+                    if (openTicketsEl) {
+                        openTicketsEl.textContent = String(openCount);
+                    }
+                } catch (error) {
+                    console.error('Error loading open tickets count:', error);
                 }
             }
 
@@ -5778,102 +5840,35 @@ def get_dashboard_page() -> str:
             }
 
             // ── MENSAJES PROGRAMADOS (admin) ────────────────────────
+""" + _scheduled_messages_shared_js() + """
             let _adminSchedEditId = null;
 
-            async function loadAdminSchedList() {
-                const box = document.getElementById('adminSchedList');
-                if (!box) return;
-                try {
-                    const res = await fetch(`${API_URL}/scheduled-messages`, { headers: { 'Authorization': `Bearer ${token}` }});
-                    const list = await res.json();
-                    if (!list.length) { box.innerHTML = '<div style="color:#94a3b8;font-size:0.9em;">Sin mensajes programados.</div>'; return; }
-                    const DAYS_MAP = {'1':'Lu','2':'Ma','3':'Mi','4':'Ju','5':'Vi','6':'Sa','7':'Do'};
-                    box.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' + list.map(sm => {
-                        const days = (sm.days_of_week||'').split(',').map(d=>DAYS_MAP[d.trim()]||d).join(' ');
-                        const active = sm.is_active;
-                        return `<div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
-                            <div style="flex:1;min-width:0;">
-                                <div style="color:#f1f5f9;font-weight:600;font-size:0.92em;">${sm.name}</div>
-                                <div style="color:#8696a0;font-size:0.78em;margin-top:2px;">📞 ${sm.phone_number} &nbsp;·&nbsp; 🕐 ${sm.send_time} &nbsp;·&nbsp; 📅 ${days}</div>
-                                <div style="color:#94a3b8;font-size:0.82em;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;">${sm.message}</div>
-                            </div>
-                            <div style="display:flex;gap:6px;flex-shrink:0;">
-                                <button onclick="toggleAdminSched(${sm.id})" style="padding:5px 8px;background:${active?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)'};border:1px solid ${active?'rgba(16,185,129,0.4)':'rgba(100,116,139,0.3)'};border-radius:6px;color:${active?'#86efac':'#94a3b8'};cursor:pointer;font-size:0.85em;">${active?'✅':'⏸️'}</button>
-                                <button onclick="editAdminSched(${sm.id})" style="padding:5px 8px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:6px;color:#93c5fd;cursor:pointer;font-size:0.85em;">✏️</button>
-                                <button onclick="deleteAdminSched(${sm.id})" style="padding:5px 8px;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.3);border-radius:6px;color:#fca5a5;cursor:pointer;font-size:0.85em;">🗑️</button>
-                            </div>
-                        </div>`;
-                    }).join('') + '</div>';
-                } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:0.9em;">Error al cargar</div>'; }
-            }
+            const _adminSchedConfig = {
+                url: `${API_URL}/scheduled-messages`,
+                listId: 'adminSchedList',
+                errorText: 'Error al cargar mensajes programados',
+                checkUnauth: null,
+                actions: {
+                    editFn: 'editAdminSched',
+                    deleteFn: 'deleteAdminSched'
+                },
+                modalId: 'adminSchedModal',
+                titleId: 'adminSchedModalTitle',
+                nameId: 'adminSchedName',
+                phoneId: 'adminSchedPhone',
+                timeId: 'adminSchedTime',
+                messageId: 'adminSchedMsg',
+                feedbackId: 'adminSchedModalMsg'
+            };
 
-            function openAdminSchedModal(sm) {
-                _adminSchedEditId = sm ? sm.id : null;
-                document.getElementById('adminSchedModalTitle').textContent = sm ? '✏️ Editar Mensaje Programado' : '🕐 Nuevo Mensaje Programado';
-                document.getElementById('adminSchedName').value = sm ? sm.name : '';
-                document.getElementById('adminSchedPhone').value = sm ? sm.phone_number : '';
-                let dtVal = '';
-                if (sm && sm.send_date && sm.send_time) {
-                    dtVal = `${sm.send_date}T${sm.send_time}`;
-                } else if (sm && sm.send_time) {
-                    dtVal = `${new Date().toISOString().split('T')[0]}T${sm.send_time}`;
-                }
-                document.getElementById('adminSchedTime').value = dtVal;
-                document.getElementById('adminSchedDays').value = sm && sm.days_of_week ? sm.days_of_week : '1,2,3,4,5,6,7';
-                document.getElementById('adminSchedMsg').value = sm ? sm.message : '';
-                document.getElementById('adminSchedModalMsg').textContent = '';
-                document.getElementById('adminSchedModal').style.display = 'flex';
-            }
-
-            function closeAdminSchedModal() { document.getElementById('adminSchedModal').style.display = 'none'; _adminSchedEditId = null; }
-
-            async function saveAdminSchedMsg() {
-                const msgEl = document.getElementById('adminSchedModalMsg');
-                const val = document.getElementById('adminSchedTime').value;
-                let send_time = '';
-                let send_date = null;
-                if (val) {
-                    const parts = val.split('T');
-                    send_date = parts[0];
-                    send_time = parts[1];
-                }
-                const payload = {
-                    name: document.getElementById('adminSchedName').value.trim(),
-                    phone_number: document.getElementById('adminSchedPhone').value.trim(),
-                    message: document.getElementById('adminSchedMsg').value.trim(),
-                    send_time: send_time,
-                    send_date: send_date,
-                    days_of_week: document.getElementById('adminSchedDays').value,
-                };
-                if (!payload.name || !payload.phone_number || !payload.message || !payload.send_time) {
-                    msgEl.style.color='#f87171'; msgEl.textContent='Completá todos los campos obligatorios.'; return;
-                }
-                try {
-                    const url = _adminSchedEditId ? `${API_URL}/scheduled-messages/${_adminSchedEditId}` : `${API_URL}/scheduled-messages`;
-                    const method = _adminSchedEditId ? 'PUT' : 'POST';
-                    const res = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (res.ok) { closeAdminSchedModal(); loadAdminSchedList(); }
-                    else { const d = await res.json(); msgEl.style.color='#f87171'; msgEl.textContent = '❌ ' + (d.detail||'Error'); }
-                } catch(e) { msgEl.style.color='#f87171'; msgEl.textContent='❌ Error de red'; }
-            }
-
-            async function toggleAdminSched(id) {
-                await fetch(`${API_URL}/scheduled-messages/${id}/toggle`, { method:'POST', headers:{ 'Authorization':`Bearer ${token}` }});
-                loadAdminSchedList();
-            }
-
-            async function editAdminSched(id) {
-                const res = await fetch(`${API_URL}/scheduled-messages`, { headers:{ 'Authorization':`Bearer ${token}` }});
-                const list = await res.json();
-                const sm = list.find(x => x.id === id);
-                if (sm) openAdminSchedModal(sm);
-            }
-
-            async function deleteAdminSched(id) {
-                if (!confirm('¿Eliminar este mensaje programado?')) return;
-                await fetch(`${API_URL}/scheduled-messages/${id}`, { method:'DELETE', headers:{ 'Authorization':`Bearer ${token}` }});
-                loadAdminSchedList();
-            }
+            function _setAdminSchedEditId(value) { _adminSchedEditId = value; }
+            async function loadAdminSchedList() { return _loadScheduledMessagesList(_adminSchedConfig); }
+            function openAdminSchedModal(sm) { _openScheduledMessagesModal(_adminSchedConfig, sm, _setAdminSchedEditId); }
+            function closeAdminSchedModal() { _closeScheduledMessagesModal(_adminSchedConfig, _setAdminSchedEditId); }
+            async function saveAdminSchedMsg() { return _saveScheduledMessage(_adminSchedConfig, _adminSchedEditId, () => { closeAdminSchedModal(); loadAdminSchedList(); }); }
+            async function toggleAdminSched(id) { return _toggleScheduledMessage(_adminSchedConfig, id, loadAdminSchedList); }
+            async function editAdminSched(id) { return _editScheduledMessage(_adminSchedConfig, id, openAdminSchedModal); }
+            async function deleteAdminSched(id) { return _deleteScheduledMessage(_adminSchedConfig, id, loadAdminSchedList); }
 
             let _qrPollTimer = null;
 
@@ -6138,8 +6133,6 @@ def get_dashboard_page() -> str:
                     const sunEnabled = !!config.sun_enabled;
                     document.getElementById('sunEnabled').checked = sunEnabled;
                     document.getElementById('sunFields').style.display = sunEnabled ? '' : 'none';
-                    document.getElementById('debugMode').checked = !!config.debug_mode;
-                    
                     if (document.getElementById('handoffMessage')) {
                         document.getElementById('handoffMessage').value = config.handoff_message || '';
                     }
@@ -6159,10 +6152,28 @@ def get_dashboard_page() -> str:
                     console.error('Error loading config:', error);
                 }
             }
+
+            async function loadTicketMessages() {
+                try {
+                    const res = await fetch(`${API_URL}/config`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const config = await res.json();
+
+                    const handoffEl = document.getElementById('handoffMessage');
+                    const farewellEl = document.getElementById('farewellMessage');
+                    if (handoffEl) handoffEl.value = config.handoff_message || '';
+                    if (farewellEl) farewellEl.value = config.farewell_message || '';
+                } catch (error) {
+                    console.error('Error loading ticket messages:', error);
+                }
+            }
             
             async function saveConfig(e) {
                 e.preventDefault();
                 try {
+                    const handoffEl = document.getElementById('handoffMessage');
+                    const farewellEl = document.getElementById('farewellMessage');
                     const res = await fetch(`${API_URL}/config`, {
                         method: 'PUT',
                         headers: {
@@ -6178,9 +6189,8 @@ def get_dashboard_page() -> str:
                             sat_closing_time: document.getElementById('satClosingTime').value,
                             sat_enabled: document.getElementById('satEnabled').checked,
                             sun_enabled: document.getElementById('sunEnabled').checked,
-                            debug_mode: document.getElementById('debugMode').checked,
-                            handoff_message: document.getElementById('handoffMessage').value,
-                            farewell_message: document.getElementById('farewellMessage') ? document.getElementById('farewellMessage').value : undefined
+                            handoff_message: handoffEl ? handoffEl.value : undefined,
+                            farewell_message: farewellEl ? farewellEl.value : undefined
                         })
                     });
                     
@@ -6194,6 +6204,39 @@ def get_dashboard_page() -> str:
                     }
                     setTimeout(() => msg.classList.remove('show'), 3000);
                 } catch (error) {
+                    console.error('Error:', error);
+                }
+            }
+
+            async function saveTicketMessages(e) {
+                e.preventDefault();
+                try {
+                    const res = await fetch(`${API_URL}/config`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            handoff_message: document.getElementById('handoffMessage').value,
+                            farewell_message: document.getElementById('farewellMessage').value
+                        })
+                    });
+
+                    const msg = document.getElementById('ticketMessagesMessage');
+                    if (res.ok) {
+                        msg.textContent = '✅ Mensajes de ticket guardados correctamente';
+                        msg.className = 'message show success';
+                    } else {
+                        msg.textContent = '❌ Error al guardar los mensajes de ticket';
+                        msg.className = 'message show error';
+                    }
+                    setTimeout(() => msg.classList.remove('show'), 3000);
+                } catch (error) {
+                    const msg = document.getElementById('ticketMessagesMessage');
+                    msg.textContent = '❌ Error de conexión: ' + error.message;
+                    msg.className = 'message show error';
+                    setTimeout(() => msg.classList.remove('show'), 3000);
                     console.error('Error:', error);
                 }
             }
@@ -6966,6 +7009,20 @@ def get_dashboard_page() -> str:
             loadAdminSchedList();
             setInterval(refresh, 5000);
             setInterval(loadAdminParkedList, 15000);
+
+            function _escapeSchedMsgAttr(text) {
+                const tempDiv = document.createElement('div');
+                tempDiv.textContent = text || '';
+                return tempDiv.innerHTML.replace(/"/g, '&quot;');
+            }
+
+            function _getSelectedSchedChatText(containerSelector) {
+                const checkboxes = document.querySelectorAll(`${containerSelector} .msg-cb:checked`);
+                if (!checkboxes.length) return '';
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = Array.from(checkboxes).map(cb => cb.value).join('\\n\\n');
+                return tempDiv.textContent.trim();
+            }
         
             // TICKETS LOGIC
             let currentTickets = [];
@@ -6997,6 +7054,7 @@ def get_dashboard_page() -> str:
                     if (t.status === 'pendiente') badgeColor = '#f59e0b';
                     if (t.status === 'confirmado') badgeColor = '#10b981';
                     if (t.status === 'cancelado') badgeColor = '#ef4444';
+                    if (t.status === 'timeout')   badgeColor = '#ef4444';
                     
                     let statusLabel = t.status.toUpperCase();
                     if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
@@ -7038,7 +7096,7 @@ def get_dashboard_page() -> str:
                 let actionsHtml = '';
                 if (!t.is_deleted) {
                     if (t.status === 'pendiente') {
-                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('confirm')">Confirmar</button>`;
+                        actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('fin')">Fin</button>`;
                     }
                     if (t.status === 'timeout') {
                         actionsHtml += `<button class="btn btn-primary btn-sm" onclick="actionTicket('resume')">Retomar</button>`;
@@ -7053,21 +7111,27 @@ def get_dashboard_page() -> str:
                         headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token')}
                     });
                     if(res.ok) {
-                        const msgs = await res.json();
+                        const data = await res.json();
+                        const msgs = Array.isArray(data) ? data : (data.messages || []);
                         let chtml = '';
-                        if(msgs.length === 0) {
+                        if(!msgs || msgs.length === 0) {
                             chtml = '<div class="empty-state">No hay mensajes recientes en WAHA</div>';
                         } else {
                             // msgs might be an array of Waha message objects
                             msgs.forEach(m => {
-                                const isBot = m.fromMe;
+                                const isBot = m.from_me || m.fromMe;
                                 const align = isBot ? 'right' : 'left';
                                 const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
                                 const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
-                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px;">
-                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word;">
+                                const tempDiv = document.createElement('div');
+                                tempDiv.textContent = text;
+                                const escapedText = tempDiv.innerHTML.replace(/"/g, '&quot;');
+                                chtml += `<div style="text-align: ${align}; margin-bottom: 8px; display: flex; align-items: center; justify-content: ${isBot ? 'flex-end' : 'flex-start'};">
+                                    ${!isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-right:8px; cursor:pointer;" title="Seleccionar para recordatorio">` : ''}
+                                    <div style="display: inline-block; background: ${bg}; padding: 8px 12px; border-radius: 8px; max-width: 80%; word-break: break-word; text-align: left;">
                                         ${text}
                                     </div>
+                                    ${isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-left:8px; cursor:pointer;" title="Seleccionar para recordatorio">` : ''}
                                 </div>`;
                             });
                         }
@@ -7109,7 +7173,13 @@ def get_dashboard_page() -> str:
                 document.getElementById('schedPhone').value = currentChatPhone;
                 document.getElementById('schedName').value = '';
                 document.getElementById('schedTime').value = '';
-                document.getElementById('schedMessage').value = '';
+                
+                const checkboxes = document.querySelectorAll('#chatContent .msg-cb:checked');
+                const selectedText = Array.from(checkboxes).map(cb => cb.value).join('\\n\\n');
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = selectedText;
+                
+                document.getElementById('schedMessage').value = tempDiv.textContent;
                 document.getElementById('scheduleModal').classList.add('show');
             }
 

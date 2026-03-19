@@ -4,7 +4,16 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import StaticPool
 
 # Usar SQLite por defecto en data/chatbot.sql
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/chatbot.sql")
+raw_db_url = os.getenv("DATABASE_URL", "sqlite:///./data/chatbot.sql")
+
+# REFACTOR: Evitar pérdida de datos al construir (--build).
+# Si la URL apunta a un sqlite local pero NO está dentro del volumen persistente ./data/,
+# la forzamos a estar dentro para asegurar que sobreviva recomposiciones de Docker.
+if raw_db_url.startswith("sqlite:///./") and not raw_db_url.startswith("sqlite:///./data/"):
+    db_name = raw_db_url.replace("sqlite:///./", "")
+    DATABASE_URL = f"sqlite:///./data/{db_name}"
+else:
+    DATABASE_URL = raw_db_url
 
 # Para SQLite en memoria o archivo
 if DATABASE_URL.startswith("sqlite"):
