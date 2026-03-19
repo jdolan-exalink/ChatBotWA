@@ -61,6 +61,16 @@ CHAT_IDLE_RESET_SEC = int(os.getenv("CHAT_IDLE_RESET_SEC", "7200"))
 HUMAN_MODE_DEFAULT_HOURS = int(os.getenv("HUMAN_MODE_DEFAULT_HOURS", "12"))
 HUMAN_MODE_WAITING_AGENT_HOURS = int(os.getenv("HUMAN_MODE_WAITING_AGENT_HOURS", "2"))
 
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on", "si", "sí"}
+
+
+DEBUG_MODE = _env_bool("DEBUG_MODE", False)
+
 # ──────────────────────────────────────────────────────────────
 #  ESTADO GLOBAL (en memoria)
 # ──────────────────────────────────────────────────────────────
@@ -246,10 +256,10 @@ async def _waha_stop_start_session(reason: str = "unknown") -> bool:
 
 # ──────────────────────────────────────────────────────────────
 #  LOGGING
-#  Modo operativo (debug_mode=False): solo [CHAT] y [ERROR]
-#  Modo debug   (debug_mode=True):  todos los logs detallados
+#  Modo operativo (DEBUG_MODE=False): solo [CHAT] y [ERROR]
+#  Modo debug   (DEBUG_MODE=True):  todos los logs detallados
 # ──────────────────────────────────────────────────────────────
-_debug_mode: bool = False  # sincronizado desde BotConfig.debug_mode
+_debug_mode: bool = DEBUG_MODE
 
 def _log(msg: str) -> None:
     """Log de debug: solo imprime cuando debug_mode está activo."""
@@ -270,7 +280,7 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    APP_VERSION = "v2.3.1"
+    APP_VERSION = "v2.3.2"
 app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
@@ -335,7 +345,6 @@ async def _init_defaults():
             ))
             _log("[INIT] Config por defecto creada")
         db.commit()
-        _sync_debug_mode(db)   # carga debug_mode al arrancar
         _preload_caches(db)    # pre-carga config, blocklist, menú y off-hours
     except Exception as e:
         _logc(f"[ERROR] init: {e}")
@@ -910,12 +919,22 @@ def _get_cfg(db: Session) -> BotConfig:
     return cfg
 
 def _get_cfg_cached(db: Session) -> BotConfig:
-    """Config con caché TTL de 10s. Todos los workers releen DB tras ese tiempo."""
+    """Config con caché TTL de 10s.
+
+    Para evitar DetachedInstanceError almacenamos solo el `id` en caché
+    y siempre retornamos una instancia ligada a la sesión `db`.
+    """
     global _cfg_cache
-    ts, cfg = _cfg_cache
-    if cfg is None or time.time() - ts > _CFG_CACHE_TTL:
+    ts, cfg_id = _cfg_cache
+    if cfg_id is None or time.time() - ts > _CFG_CACHE_TTL:
         cfg = _get_cfg(db)
-        _cfg_cache = (time.time(), cfg)
+        _cfg_cache = (time.time(), cfg.id)
+        return cfg
+    # retornar una instancia fresca ligada al `db` actual
+    cfg = db.query(BotConfig).filter(BotConfig.id == cfg_id).first()
+    if not cfg:
+        cfg = _get_cfg(db)
+        _cfg_cache = (time.time(), cfg.id)
     return cfg
 
 def _invalidate_cfg_cache():
@@ -923,15 +942,6 @@ def _invalidate_cfg_cache():
     global _cfg_cache, _off_hours_cache
     _cfg_cache = (0.0, None)
     _off_hours_cache = (0.0, False)
-
-def _sync_debug_mode(db: Session) -> None:
-    """Lee debug_mode desde DB y actualiza el global en memoria."""
-    global _debug_mode
-    try:
-        cfg = _get_cfg(db)
-        _debug_mode = bool(getattr(cfg, "debug_mode", False))
-    except Exception:
-        pass
 
 def _is_off_hours(db: Session) -> bool:
     import pytz
@@ -1153,6 +1163,28 @@ def _exit_human_mode(db: Session, chat_id: str, closed_by: str = "system", opera
         row.last_message_at   = datetime.utcnow()
         db.commit()
         _logc(f"[HUMAN] Desactivado {chat_id}")
+
+
+async def _close_ticket_with_fin(db: Session, chat_id: str, closed_by: str = "Operador") -> bool:
+    """Envía despedida configurable y cierra el ticket como si el operador hubiera escrito /fin."""
+    row = db.query(ConversationState).filter(
+        ConversationState.phone_number == chat_id
+    ).first()
+    if not row:
+        return False
+
+    cfg_fin = _get_cfg(db)
+    farewell = cfg_fin.closed_message or "Gracias por contactarte. Tu atención ha finalizado. ¡Que tengas un buen día! 😊"
+    try:
+        await _send_wha(chat_id, farewell)
+    except Exception as e:
+        _logc(f"[FIN] Error enviando despedida: {e}")
+
+    _exit_human_mode(db, chat_id, closed_by=closed_by, operator_reply="/fin", reason="escrito_saludos")
+    _chat_nav.pop(chat_id, None)
+    _chat_nav.pop(chat_id.replace("@c.us", ""), None)
+    _logc(f"[FIN] Ticket cerrado con /fin para {chat_id}")
+    return True
 
 
 def _start_human_mode_silent(db: Session, chat_id: str):
@@ -1494,23 +1526,7 @@ async def webhook(req: Request):
                 _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
                 return {"ok": True, "i": "from_me_saludos", "chat": op_chat_id}
             elif op_text == "/fin":
-                # Cerrar ticket con mensaje de despedida configurable
-                cfg_fin = _get_cfg(db)
-                farewell = cfg_fin.closed_message or "Gracias por contactarte. Tu atención ha finalizado. \u00a1Que tengas un buen día! 😊"
-                # Enviar mensaje de despedida al cliente antes de cerrar
-                import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        asyncio.ensure_future(_send_wha(op_chat_id, farewell))
-                    else:
-                        loop.run_until_complete(_send_wha(op_chat_id, farewell))
-                except Exception as _e_fin:
-                    _logc(f"[FIN] Error enviando despedida: {_e_fin}")
-                _exit_human_mode(db, op_chat_id, closed_by="Operador", operator_reply="/fin", reason="escrito_saludos")
-                _chat_nav.pop(op_chat_id, None)
-                _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
-                _logc(f"[FIN] Ticket cerrado con /fin para {op_chat_id}")
+                await _close_ticket_with_fin(db, op_chat_id, closed_by="Operador")
                 return {"ok": True, "i": "from_me_fin", "chat": op_chat_id}
             else:
                 _start_human_mode_silent(db, op_chat_id)
@@ -1863,6 +1879,11 @@ async def post_ticket_action(req: Request, cu=Depends(get_current_user), db: Ses
                 hist.is_deleted = True
                 hist.deleted_by = "system_resume"
                 db.commit()
+    elif action == "fin":
+        if target_type == "act":
+            r = db.query(ConversationState).filter(ConversationState.id == row_id).first()
+            if r:
+                await _close_ticket_with_fin(db, r.phone_number, closed_by=cu["username"])
     elif action == "confirm":
         if target_type == "act":
             r = db.query(ConversationState).filter(ConversationState.id == row_id).first()
@@ -2145,6 +2166,7 @@ async def toggle_pause(uid: int, ca=Depends(get_current_admin), db: Session = De
 async def get_config(db: Session = Depends(get_db)):
     cfg = _get_cfg(db)
     r = BotConfigResponse.from_orm(cfg).model_dump()
+    r["debug_mode"] = _debug_mode
     for key, fname in [("menu_content", "MenuP.MD"), ("off_hours_message", "MenuF.MD")]:
         p = _data_path(fname)
         r[key] = open(p, encoding="utf-8").read() if os.path.exists(p) else ""
@@ -2157,7 +2179,7 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     for f in ["solution_name","menu_title","opening_time","closing_time","sat_opening_time",
               "sat_closing_time","sat_enabled","sun_enabled","off_hours_enabled","off_hours_message",
               "country_filter_enabled","country_codes","area_filter_enabled","area_codes",
-              "ollama_url","ollama_model","admin_idle_timeout_sec","debug_mode","handoff_message"]:
+              "ollama_url","ollama_model","admin_idle_timeout_sec","handoff_message"]:
         v = getattr(data, f, None)
         if v is not None: setattr(cfg, f, v)
     # farewell_message es alias de closed_message
@@ -2170,7 +2192,6 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
         _write_text_with_backup(p, data.off_hours_message)
 
     db.commit(); db.refresh(cfg)
-    _sync_debug_mode(db)   # actualiza el global en memoria
     _invalidate_cfg_cache()    # limpia caché para próxima lectura
     # Rellenar farewell_message en la respuesta a partir de closed_message
     resp = BotConfigResponse.from_orm(cfg)

@@ -1,9 +1,11 @@
 services:
   waha:
     image: devlikeapro/waha:latest-2026.3.2
-    container_name: clinic-waha
+    container_name: waha
     restart: unless-stopped
     shm_size: '1gb'
+    logging:
+      driver: "none"
     ports:
       - "3100:3000"
     environment:
