@@ -9,7 +9,7 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    _GIT_VERSION = "v2.3.3"
+    _GIT_VERSION = "v2.3.4"
 
 
 def _scheduled_messages_shared_js() -> str:
@@ -1700,10 +1700,16 @@ def get_user_panel_page() -> str:
                         body: JSON.stringify({ phone_number: _chatModalPhone, text })
                     });
                     if (res.ok) {
+                        const data = await res.json();
                         input.value = ''; input.style.height = '22px'; input.style.overflowY = 'hidden';
-                        msg.textContent = '✅ Enviado'; msg.style.color = '#8adfcc';
-                        setTimeout(() => { msg.textContent = ''; }, 2000);
-                        setTimeout(loadChatMessages, 800);
+                        if (data.closed) {
+                            msg.textContent = '✅ Ticket cerrado'; msg.style.color = '#8adfcc';
+                            setTimeout(() => { closeChatModal(); loadParkedList(); }, 600);
+                        } else {
+                            msg.textContent = '✅ Enviado'; msg.style.color = '#8adfcc';
+                            setTimeout(() => { msg.textContent = ''; }, 2000);
+                            setTimeout(loadChatMessages, 800);
+                        }
                     } else { msg.textContent = '❌ Error al enviar'; msg.style.color = '#ef4444'; }
                 } catch(e) { msg.textContent = '❌ Error de conexión'; msg.style.color = '#ef4444'; }
                 finally { input.disabled = false; input.focus(); }
@@ -5790,10 +5796,16 @@ def get_dashboard_page() -> str:
                     const data = await res.json();
                     if (data.ok) {
                         input.value = ''; input.style.height = '22px'; input.style.overflowY = 'hidden';
-                        msg.style.color = '#8adfcc';
-                        msg.textContent = '✅ Enviado';
-                        setTimeout(() => { msg.textContent = ''; }, 2000);
-                        setTimeout(() => adminLoadChatMessages(), 800);
+                        if (data.closed) {
+                            msg.style.color = '#8adfcc';
+                            msg.textContent = '✅ Ticket cerrado';
+                            setTimeout(() => { adminCloseChatModal(); loadAdminParkedList(); }, 600);
+                        } else {
+                            msg.style.color = '#8adfcc';
+                            msg.textContent = '✅ Enviado';
+                            setTimeout(() => { msg.textContent = ''; }, 2000);
+                            setTimeout(() => adminLoadChatMessages(), 800);
+                        }
                     } else {
                         msg.style.color = '#f87171';
                         msg.textContent = '❌ Error al enviar';
