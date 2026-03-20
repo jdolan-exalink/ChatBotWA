@@ -273,14 +273,10 @@ def _logc(msg: str) -> None:
 # ──────────────────────────────────────────────────────────────
 #  APP
 # ──────────────────────────────────────────────────────────────
-import subprocess
-try:
-    APP_VERSION = subprocess.check_output(
-        ["git", "--git-dir=/app/.git", "describe", "--tags", "--always"],
-        stderr=subprocess.DEVNULL
-    ).decode("utf-8").strip()
-except Exception:
-    APP_VERSION = "v2.3.5"
+from versioning import get_app_version
+
+
+APP_VERSION = get_app_version()
 app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
