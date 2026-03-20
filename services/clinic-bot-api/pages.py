@@ -2,14 +2,10 @@
 Funciones para renderizar las HTML pages del sistema
 Diseño moderno, minimalista y tecnológico
 """
-import subprocess
-try:
-    _GIT_VERSION = subprocess.check_output(
-        ["git", "--git-dir=/app/.git", "describe", "--tags", "--always"],
-        stderr=subprocess.DEVNULL
-    ).decode("utf-8").strip()
-except Exception:
-    _GIT_VERSION = "v2.3.5"
+from versioning import get_app_version
+
+
+_GIT_VERSION = get_app_version()
 
 
 def _scheduled_messages_shared_js() -> str:
@@ -2112,6 +2108,33 @@ def get_user_panel_page() -> str:
             let currentTickets = [];
             let currentChatPhone = "";
             let currentChatTicketId = "";
+            let currentChatMenuBreadcrumb = "";
+
+            function _formatTicketMessageDateTime(timestamp) {
+                const numericTs = Number(timestamp);
+                if (!Number.isFinite(numericTs) || numericTs <= 0) return '';
+                const parsedDate = new Date(numericTs > 9999999999 ? numericTs : numericTs * 1000);
+                if (Number.isNaN(parsedDate.getTime())) return '';
+                return parsedDate.toLocaleString('es-AR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+
+            function _ticketScheduleTitleFromBreadcrumb(breadcrumb) {
+                const parts = String(breadcrumb || '')
+                    .split('->')
+                    .map(part => part.trim())
+                    .filter(Boolean);
+                if (!parts.length) return '';
+                if (/^\\d+(?:\\.\\d+)*$/.test(parts[0]) && parts.length > 1) {
+                    return parts.slice(1).join(' -> ');
+                }
+                return parts.join(' -> ');
+            }
 
             async function loadTickets() {
                 try {
@@ -2169,6 +2192,7 @@ def get_user_panel_page() -> str:
 
                 currentChatPhone = t.phone_number;
                 currentChatTicketId = tid;
+                currentChatMenuBreadcrumb = t.menu_breadcrumb || t.menu_section || '';
 
                 document.getElementById('ticketChatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
                 document.getElementById('ticketChatModalTicket').textContent = t.ticket_id || '-';
@@ -2193,20 +2217,23 @@ def get_user_panel_page() -> str:
                     if(res.ok) {
                         const data = await res.json();
                         const msgs = Array.isArray(data) ? data : (data.messages || []);
+                        const sortedMsgs = [...msgs].sort((a, b) => Number(a.timestamp || a.t || 0) - Number(b.timestamp || b.t || 0));
                         let chtml = '';
-                        if(!msgs || msgs.length === 0) {
+                        if(!sortedMsgs.length) {
                             chtml = '<div style="color:#94a3b8;text-align:center;padding:20px;">No hay mensajes recientes</div>';
                         } else {
-                            msgs.forEach(m => {
+                            sortedMsgs.forEach(m => {
                                 const isBot = m.from_me || m.fromMe;
                                 const align = isBot ? 'right' : 'left';
                                 const bg = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
                                 const text = m.body || m.text || (typeof m === "string" ? m : JSON.stringify(m));
                                 const escapedText = _escapeSchedMsgAttr(text);
+                                const formattedAt = _formatTicketMessageDateTime(m.timestamp || m.t);
                                 chtml += `<div style="text-align:${align};margin-bottom:8px;display:flex;align-items:flex-start;justify-content:${isBot ? 'flex-end' : 'flex-start'};gap:8px;">
                                     ${!isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-top:8px;cursor:pointer;" title="Seleccionar mensaje para agendar">` : ''}
                                     <div style="display:inline-block;background:${bg};padding:8px 12px;border-radius:8px;max-width:80%;word-break:break-word;text-align:left;">
-                                        ${text}
+                                        <div>${text}</div>
+                                        <div style="font-size:0.7em;color:${isBot ? '#bfdbfe' : '#94a3b8'};text-align:right;margin-top:6px;">${formattedAt}</div>
                                     </div>
                                     ${isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-top:8px;cursor:pointer;" title="Seleccionar mensaje para agendar">` : ''}
                                 </div>`;
@@ -2261,7 +2288,7 @@ def get_user_panel_page() -> str:
 
             function openTicketScheduleModal() {
                 document.getElementById('ticketSchedPhone').value = currentChatPhone;
-                document.getElementById('ticketSchedName').value = '';
+                document.getElementById('ticketSchedName').value = _ticketScheduleTitleFromBreadcrumb(currentChatMenuBreadcrumb);
                 document.getElementById('ticketSchedTime').value = '';
                 document.getElementById('ticketSchedMessage').value = _getSelectedSchedChatText('#ticketChatMessages');
                 document.getElementById('ticketScheduleModal').classList.add('show');
@@ -4904,6 +4931,33 @@ def get_dashboard_page() -> str:
             let adminCurrentTickets = [];
             let adminCurrentChatPhone = '';
             let adminCurrentChatTicketId = '';
+            let adminCurrentChatMenuBreadcrumb = '';
+
+            function _formatAdminTicketMessageDateTime(timestamp) {
+                const numericTs = Number(timestamp);
+                if (!Number.isFinite(numericTs) || numericTs <= 0) return '';
+                const parsedDate = new Date(numericTs > 9999999999 ? numericTs : numericTs * 1000);
+                if (Number.isNaN(parsedDate.getTime())) return '';
+                return parsedDate.toLocaleString('es-AR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+
+            function _adminTicketScheduleTitleFromBreadcrumb(breadcrumb) {
+                const parts = String(breadcrumb || '')
+                    .split('->')
+                    .map(part => part.trim())
+                    .filter(Boolean);
+                if (!parts.length) return '';
+                if (/^\\d+(?:\\.\\d+)*$/.test(parts[0]) && parts.length > 1) {
+                    return parts.slice(1).join(' -> ');
+                }
+                return parts.join(' -> ');
+            }
 
             async function loadAdminTickets() {
                 try {
@@ -4965,6 +5019,7 @@ def get_dashboard_page() -> str:
                 if (!t) return;
                 adminCurrentChatPhone = t.phone_number;
                 adminCurrentChatTicketId = tid;
+                adminCurrentChatMenuBreadcrumb = t.menu_breadcrumb || t.menu_section || '';
 
                 document.getElementById('adminChatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
                 document.getElementById('adminChatContent').innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">Cargando mensajes...</div>';
@@ -4985,19 +5040,24 @@ def get_dashboard_page() -> str:
                     if (res.ok) {
                         const data = await res.json();
                         const msgs = Array.isArray(data) ? data : (data.messages || []);
+                        const sortedMsgs = [...msgs].sort((a, b) => Number(a.timestamp || a.t || 0) - Number(b.timestamp || b.t || 0));
                         let chtml = '';
-                        if (!msgs || !msgs.length) {
+                        if (!sortedMsgs.length) {
                             chtml = '<div style="color:#94a3b8;text-align:center;padding:20px;">No hay mensajes recientes</div>';
                         } else {
-                            msgs.forEach(m => {
+                            sortedMsgs.forEach(m => {
                                 const isBot = m.from_me || m.fromMe;
                                 const align = isBot ? 'right' : 'left';
                                 const bg    = isBot ? 'rgba(59,130,246,0.2)' : 'rgba(30,41,59,0.8)';
                                 const text  = m.body || m.text || JSON.stringify(m);
                                 const escapedText = _escapeSchedMsgAttr(text);
+                                const formattedAt = _formatAdminTicketMessageDateTime(m.timestamp || m.t);
                                 chtml += `<div style="text-align:${align};margin-bottom:8px;display:flex;align-items:flex-start;justify-content:${isBot ? 'flex-end' : 'flex-start'};gap:8px;">
                                     ${!isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-top:8px;cursor:pointer;" title="Seleccionar mensaje para agendar">` : ''}
-                                    <div style="display:inline-block;background:${bg};padding:8px 12px;border-radius:8px;max-width:80%;word-break:break-word;text-align:left;">${text}</div>
+                                    <div style="display:inline-block;background:${bg};padding:8px 12px;border-radius:8px;max-width:80%;word-break:break-word;text-align:left;">
+                                        <div>${text}</div>
+                                        <div style="font-size:0.7em;color:${isBot ? '#bfdbfe' : '#94a3b8'};text-align:right;margin-top:6px;">${formattedAt}</div>
+                                    </div>
                                     ${isBot ? `<input type="checkbox" class="msg-cb" value="${escapedText}" style="margin-top:8px;cursor:pointer;" title="Seleccionar mensaje para agendar">` : ''}
                                 </div>`;
                             });
@@ -5030,7 +5090,7 @@ def get_dashboard_page() -> str:
 
             function openAdminTicketScheduleModal() {
                 document.getElementById('adminSchedTicketPhone').value   = adminCurrentChatPhone;
-                document.getElementById('adminSchedTicketName').value    = '';
+                document.getElementById('adminSchedTicketName').value    = _adminTicketScheduleTitleFromBreadcrumb(adminCurrentChatMenuBreadcrumb);
                 document.getElementById('adminSchedTicketTime').value    = '';
                 document.getElementById('adminSchedTicketMessage').value = _getSelectedSchedChatText('#adminChatContent');
                 document.getElementById('adminTicketSchedModal').classList.add('show');
