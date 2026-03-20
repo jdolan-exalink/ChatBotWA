@@ -280,7 +280,7 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    APP_VERSION = "v2.3.4"
+    APP_VERSION = "v2.3.5"
 app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
@@ -335,7 +335,7 @@ async def _init_defaults():
             _log("[INIT] Usuario creado: usuario / usuario123")
         if not db.query(BotConfig).first():
             db.add(BotConfig(
-                solution_name=SOLUTION_NAME, menu_title=SOLUTION_NAME,
+                solution_name=SOLUTION_NAME,
                 opening_time="08:00", closing_time="16:00",
                 sat_opening_time="10:00", sat_closing_time="14:00",
                 sat_enabled=True, sun_enabled=False,
@@ -608,6 +608,37 @@ def _restore_previous_text(path: str) -> str:
         f.write(current)
 
     return previous
+
+
+_OFFHOURS_WEEKDAY_LINE_RE = re.compile(
+    r"(^\s*🕓\s*El horario de atención es de lunes a viernes de ).*( horas\.\s*$)",
+    re.MULTILINE,
+)
+
+
+def _format_hour_for_message(value: str | None) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    if raw.endswith(":00"):
+        raw = raw[:-3]
+    if raw.startswith("0") and len(raw) > 1:
+        raw = raw[1:]
+    return raw
+
+
+def _sync_offhours_schedule_text(content: str, opening_time: str | None, closing_time: str | None) -> str:
+    """Mantiene sincronizada la línea estándar de horario dentro del mensaje fuera de hora."""
+    if not content.strip():
+        return content
+
+    start = _format_hour_for_message(opening_time)
+    end = _format_hour_for_message(closing_time)
+    if not start or not end:
+        return content
+
+    schedule_text = f"{start} a {end}"
+    return _OFFHOURS_WEEKDAY_LINE_RE.sub(lambda m: f"{m.group(1)}{schedule_text}{m.group(2)}", content)
 
 def _read_menu() -> str:
     menu_path = CLINIC_KB_PATH if os.path.exists(CLINIC_KB_PATH) else _data_path("MenuP.MD")
@@ -913,7 +944,7 @@ async def _send_alert_email(subject: str, body: str):
 def _get_cfg(db: Session) -> BotConfig:
     cfg = db.query(BotConfig).first()
     if not cfg:
-        cfg = BotConfig(solution_name=SOLUTION_NAME, menu_title=SOLUTION_NAME,
+        cfg = BotConfig(solution_name=SOLUTION_NAME,
                         opening_time="08:00", closing_time="16:00")
         db.add(cfg); db.commit()
     return cfg
@@ -1181,7 +1212,8 @@ async def _close_ticket_with_fin(db: Session, chat_id: str, closed_by: str = "Op
         _logc(f"[FIN] Error enviando despedida: {e}")
 
     _exit_human_mode(db, chat_id, closed_by=closed_by, operator_reply="/fin", reason="escrito_saludos")
-    _clear_nav_state(db, chat_id)
+    _chat_nav.pop(chat_id, None)
+    _chat_nav.pop(chat_id.replace("@c.us", ""), None)
     _logc(f"[FIN] Ticket cerrado con /fin para {chat_id}")
     return True
 
@@ -1252,103 +1284,6 @@ def _extract_operator_target_chat_id(msg: dict) -> str:
         if "@c.us" in cid:
             return cid
     return ""
-
-
-def _message_is_from_me(msg: dict) -> bool:
-    """Tolera variantes del flag de WAHA para mensajes enviados por el operador."""
-    return bool(msg.get("fromMe") or msg.get("from_me"))
-
-
-def _extract_message_text(msg: dict) -> str:
-    """Extrae texto de distintas formas de payload usadas por WAHA."""
-    candidates = [
-        msg.get("body"),
-        msg.get("text"),
-        msg.get("content"),
-        (msg.get("message") or {}).get("conversation") if isinstance(msg.get("message"), dict) else None,
-        ((msg.get("message") or {}).get("extendedTextMessage") or {}).get("text")
-        if isinstance(msg.get("message"), dict) else None,
-    ]
-    for raw in candidates:
-        if isinstance(raw, str):
-            text = raw.strip()
-            if text:
-                return text
-    return ""
-
-
-def _get_conversation_row(db: Session, chat_id: str, create: bool = False) -> ConversationState | None:
-    row = db.query(ConversationState).filter(
-        ConversationState.phone_number == chat_id
-    ).first()
-    if row or not create:
-        return row
-
-    row = ConversationState(
-        phone_number=chat_id,
-        current_state="BOT_MENU",
-        last_message_at=datetime.utcnow(),
-    )
-    db.add(row)
-    db.flush()
-    return row
-
-
-def _load_nav_state(db: Session, chat_id: str, now_ts: int) -> dict:
-    """Lee navegación persistida. Fallback a memoria para compatibilidad intra-worker."""
-    nav = _chat_nav.get(chat_id)
-    row = _get_conversation_row(db, chat_id, create=False)
-
-    if row and row.current_menu_section and row.menu_updated_at:
-        row_ts = int(row.menu_updated_at.timestamp())
-        persisted = {"section": row.current_menu_section, "ts": row_ts, "new": False}
-        if not nav or row_ts >= int(nav.get("ts", 0)):
-            nav = persisted
-
-    if not nav:
-        return {"section": "main", "ts": now_ts, "new": True}
-
-    if now_ts - int(nav.get("ts", now_ts)) > CHAT_IDLE_RESET_SEC:
-        return {"section": "main", "ts": now_ts, "new": True}
-
-    return {
-        "section": nav.get("section", "main") or "main",
-        "ts": int(nav.get("ts", now_ts)),
-        "new": bool(nav.get("new", False)),
-    }
-
-
-def _store_nav_state(db: Session, chat_id: str, nav: dict) -> None:
-    """Persiste navegación del menú para que funcione con múltiples workers."""
-    now = datetime.utcnow()
-    row = _get_conversation_row(db, chat_id, create=True)
-    row.current_menu_section = nav.get("section", "main") or "main"
-    row.menu_updated_at = now
-    row.last_message_at = now
-    _chat_nav[chat_id] = {
-        "section": row.current_menu_section,
-        "ts": int(now.timestamp()),
-        "new": bool(nav.get("new", False)),
-    }
-    db.commit()
-
-
-def _clear_nav_state(db: Session, chat_id: str) -> None:
-    """Limpia navegación del menú en memoria y en DB."""
-    normalized = _normalize_phone(chat_id)
-    candidates = {chat_id}
-    if normalized:
-        candidates.add(normalized)
-        candidates.add(f"{normalized}@c.us")
-
-    for candidate in candidates:
-        _chat_nav.pop(candidate, None)
-        row = _get_conversation_row(db, candidate, create=False)
-        if row:
-            row.current_menu_section = None
-            row.menu_updated_at = None
-
-    db.commit()
 
 # ──────────────────────────────────────────────────────────────
 #  MENU  (navegación jerárquica Markdown)
@@ -1464,7 +1399,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
         if in_human:
             if text == "98":
                 _exit_human_mode(db, chat_id, closed_by="client")
-                _clear_nav_state(db, chat_id)
+                _chat_nav.pop(chat_id, None)
                 return (
                     "✅ *Volviste al menú automático.*\n\n"
                     "Escribe *0* para ver el menú principal."
@@ -1481,10 +1416,10 @@ def _sync_process_message(chat_id: str, text: str) -> str:
 
         # 7. Opción 99: activar modo humano
         if text == "99":
-            current_section = _load_nav_state(db, chat_id, int(time.time())).get("section", "main")
+            current_section = _chat_nav.get(chat_id, {}).get("section", "main")
             duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS if _is_turnos_waiting_section(current_section) else HUMAN_MODE_DEFAULT_HOURS
             ticket = _start_human_mode(db, chat_id, duration_hours=duration_hours)
-            _clear_nav_state(db, chat_id)
+            _chat_nav.pop(chat_id, None)
             
             cfg = _get_cfg_cached(db)
             base_msg = cfg.handoff_message or "📞 *Se ha iniciado transferencia a un operador*\n\n✅ Tu número de ticket: *{TKT}*\n\n⏳ Por favor espera a que un operario se comunique contigo.\nEsto generalmente toma unos minutos.\n\n⌛ Tiempo máximo de espera en este estado: *{HOURS} horas*.\n\nGracias por tu paciencia 😊\n\n_(Escribe *98* en cualquier momento para volver al menú automático)_"
@@ -1506,7 +1441,9 @@ def _sync_process_message(chat_id: str, text: str) -> str:
 
         # 9. Flujo normal del bot
         now_ts = int(time.time())
-        nav = _load_nav_state(db, chat_id, now_ts)
+        nav    = _chat_nav.get(chat_id, {"section": "main", "ts": now_ts, "new": True})
+        if now_ts - nav.get("ts", now_ts) > CHAT_IDLE_RESET_SEC:
+            nav = {"section": "main", "ts": now_ts, "new": True}
 
         answer = ""
 
@@ -1543,7 +1480,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
                     row.last_bot_menu = current_section
                     row.menu_breadcrumb = _get_menu_breadcrumb(current_section)
                     db.commit()
-                _clear_nav_state(db, chat_id)
+                _chat_nav.pop(chat_id, None)
                 
                 cfg = _get_cfg_cached(db)
                 if custom_msg:
@@ -1555,11 +1492,11 @@ def _sync_process_message(chat_id: str, text: str) -> str:
                 answer = f"{before_text}\n\n{ticket_msg}".strip() if before_text else ticket_msg
                 
                 nav["ts"] = now_ts
-                _store_nav_state(db, chat_id, nav)
+                _chat_nav[chat_id] = nav
                 return answer
 
         nav["ts"] = now_ts
-        _store_nav_state(db, chat_id, nav)
+        _chat_nav[chat_id] = nav
         return answer
 
     except Exception as e:
@@ -1602,26 +1539,29 @@ async def webhook(req: Request):
 
     # Si el operador inicia/escribe un chat desde WhatsApp Web, activar modo humano
     # para ese número y evitar respuestas automáticas del bot.
-    if _message_is_from_me(msg):
+    if msg.get("fromMe"):
         op_chat_id = _extract_operator_target_chat_id(msg)
         if not op_chat_id:
             return {"ok": True, "i": "from_me_no_chat"}
-
-        op_text = _extract_message_text(msg)
-        op_command = op_text.lower()
+        
+        raw_txt = msg.get("body") or msg.get("text") or ""
+        if not isinstance(raw_txt, str):
+            raw_txt = ""
+        op_text = raw_txt.strip()
 
         db = SessionLocal()
         try:
-            if op_command == "saludos":
+            if op_text == "SALUDOS":
                 _exit_human_mode(db, op_chat_id, closed_by="Operador", operator_reply="SALUDOS", reason="escrito_saludos")
-                _clear_nav_state(db, op_chat_id)
+                _chat_nav.pop(op_chat_id, None)
+                _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
                 return {"ok": True, "i": "from_me_saludos", "chat": op_chat_id}
-            elif op_command == "/fin":
+            elif op_text == "/fin":
                 await _close_ticket_with_fin(db, op_chat_id, closed_by="Operador")
                 return {"ok": True, "i": "from_me_fin", "chat": op_chat_id}
             else:
                 _start_human_mode_silent(db, op_chat_id)
-                _clear_nav_state(db, op_chat_id)
+                _chat_nav.pop(op_chat_id, None)
         finally:
             db.close()
         return {"ok": True, "i": "from_me_human_mode", "chat": op_chat_id}
@@ -1632,12 +1572,10 @@ async def webhook(req: Request):
     if any(x in chat_id for x in ("status@", "@status", "broadcast")):
         return {"ok": True, "i": "status"}
 
-    if chat_id and "@g.us" not in chat_id and "@c.us" not in chat_id:
-        normalized_chat = _normalize_phone(chat_id)
-        if normalized_chat:
-            chat_id = f"{normalized_chat}@c.us"
-
-    text = _extract_message_text(msg)
+    raw_txt = msg.get("body") or msg.get("text") or ""
+    if not isinstance(raw_txt, str):
+        raw_txt = ""
+    text = raw_txt.strip()
 
     msg_log = f"[CHAT] ← {chat_id!r}: {text!r}"
     # --- Deduplicación simple: usar id de mensaje si viene (WAHA),
@@ -1824,7 +1762,10 @@ async def close_human_mode_chat(req: Request, cu=Depends(get_current_user), db: 
     target = row.phone_number
     operator_reply = str(body.get("operator_reply") or "").strip()
     _exit_human_mode(db, target, closed_by=cu["username"], operator_reply=operator_reply)
-    _clear_nav_state(db, target)
+    # Limpiar posibles variantes en cache de navegación
+    _chat_nav.pop(target, None)
+    _chat_nav.pop(normalized, None)
+    _chat_nav.pop(f"{normalized}@c.us", None)
 
     return {"ok": True, "closed": True, "phone_number": target}
 
@@ -2269,7 +2210,12 @@ async def get_config(db: Session = Depends(get_db)):
 @app.put("/api/config")
 async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db: Session = Depends(get_db)):
     cfg = _get_cfg(db)
-    for f in ["solution_name","menu_title","opening_time","closing_time","sat_opening_time",
+    schedule_fields = {
+        "opening_time", "closing_time", "sat_opening_time",
+        "sat_closing_time", "sat_enabled", "sun_enabled",
+    }
+    schedule_changed = any(getattr(data, f, None) is not None for f in schedule_fields)
+    for f in ["solution_name","opening_time","closing_time","sat_opening_time",
               "sat_closing_time","sat_enabled","sun_enabled","off_hours_enabled","off_hours_message",
               "country_filter_enabled","country_codes","area_filter_enabled","area_codes",
               "ollama_url","ollama_model","admin_idle_timeout_sec","handoff_message"]:
@@ -2282,7 +2228,18 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     # Mantener sincronizado el archivo que usa el runtime para mensaje fuera de horario
     if data.off_hours_message is not None:
         p = _data_path("MenuF.MD")
-        _write_text_with_backup(p, data.off_hours_message)
+        synced = _sync_offhours_schedule_text(data.off_hours_message, cfg.opening_time, cfg.closing_time)
+        _write_text_with_backup(p, synced)
+        cfg.off_hours_message = synced
+    elif schedule_changed:
+        p = _data_path("MenuF.MD")
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                current = f.read()
+            synced = _sync_offhours_schedule_text(current, cfg.opening_time, cfg.closing_time)
+            if synced != current:
+                _write_text_with_backup(p, synced)
+                cfg.off_hours_message = synced
 
     db.commit(); db.refresh(cfg)
     _invalidate_cfg_cache()    # limpia caché para próxima lectura
