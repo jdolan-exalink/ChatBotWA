@@ -161,6 +161,8 @@ class ConversationState(Base):
     # Datos recolectados (JSON o texto)
     collected_data = Column(Text)  # JSON con datos del usuario
     last_bot_menu = Column(String(100))  # Último menú que vio
+    current_menu_section = Column(String(100))  # Sección actual del menú para navegación multinivel
+    menu_updated_at = Column(DateTime(timezone=True))  # Última vez que se actualizó la navegación
     menu_breadcrumb = Column(Text)  # Ruta con descripciones para el ticket
     
     # Timestamps
@@ -303,4 +305,3 @@ class ExternalAccessToken(Base):
 
     def __repr__(self):
         return f"<ExternalAccessToken {self.name} active={self.is_active}>"
-

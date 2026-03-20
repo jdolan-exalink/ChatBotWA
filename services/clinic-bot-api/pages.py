@@ -9,7 +9,7 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    _GIT_VERSION = "v2.3.2"
+    _GIT_VERSION = "v2.3.3"
 
 
 def _scheduled_messages_shared_js() -> str:
