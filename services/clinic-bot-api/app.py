@@ -280,7 +280,7 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    APP_VERSION = "v2.3.3"
+    APP_VERSION = "v2.3.4"
 app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
@@ -1254,6 +1254,29 @@ def _extract_operator_target_chat_id(msg: dict) -> str:
     return ""
 
 
+def _message_is_from_me(msg: dict) -> bool:
+    """Tolera variantes del flag de WAHA para mensajes enviados por el operador."""
+    return bool(msg.get("fromMe") or msg.get("from_me"))
+
+
+def _extract_message_text(msg: dict) -> str:
+    """Extrae texto de distintas formas de payload usadas por WAHA."""
+    candidates = [
+        msg.get("body"),
+        msg.get("text"),
+        msg.get("content"),
+        (msg.get("message") or {}).get("conversation") if isinstance(msg.get("message"), dict) else None,
+        ((msg.get("message") or {}).get("extendedTextMessage") or {}).get("text")
+        if isinstance(msg.get("message"), dict) else None,
+    ]
+    for raw in candidates:
+        if isinstance(raw, str):
+            text = raw.strip()
+            if text:
+                return text
+    return ""
+
+
 def _get_conversation_row(db: Session, chat_id: str, create: bool = False) -> ConversationState | None:
     row = db.query(ConversationState).filter(
         ConversationState.phone_number == chat_id
@@ -1579,23 +1602,21 @@ async def webhook(req: Request):
 
     # Si el operador inicia/escribe un chat desde WhatsApp Web, activar modo humano
     # para ese número y evitar respuestas automáticas del bot.
-    if msg.get("fromMe"):
+    if _message_is_from_me(msg):
         op_chat_id = _extract_operator_target_chat_id(msg)
         if not op_chat_id:
             return {"ok": True, "i": "from_me_no_chat"}
-        
-        raw_txt = msg.get("body") or msg.get("text") or ""
-        if not isinstance(raw_txt, str):
-            raw_txt = ""
-        op_text = raw_txt.strip()
+
+        op_text = _extract_message_text(msg)
+        op_command = op_text.lower()
 
         db = SessionLocal()
         try:
-            if op_text == "SALUDOS":
+            if op_command == "saludos":
                 _exit_human_mode(db, op_chat_id, closed_by="Operador", operator_reply="SALUDOS", reason="escrito_saludos")
                 _clear_nav_state(db, op_chat_id)
                 return {"ok": True, "i": "from_me_saludos", "chat": op_chat_id}
-            elif op_text == "/fin":
+            elif op_command == "/fin":
                 await _close_ticket_with_fin(db, op_chat_id, closed_by="Operador")
                 return {"ok": True, "i": "from_me_fin", "chat": op_chat_id}
             else:
@@ -1616,10 +1637,7 @@ async def webhook(req: Request):
         if normalized_chat:
             chat_id = f"{normalized_chat}@c.us"
 
-    raw_txt = msg.get("body") or msg.get("text") or ""
-    if not isinstance(raw_txt, str):
-        raw_txt = ""
-    text = raw_txt.strip()
+    text = _extract_message_text(msg)
 
     msg_log = f"[CHAT] ← {chat_id!r}: {text!r}"
     # --- Deduplicación simple: usar id de mensaje si viene (WAHA),
@@ -1847,7 +1865,7 @@ async def get_chat_messages(phone: str, cu=Depends(get_current_user)):
 
 
 @app.post("/api/human-mode/reply")
-async def reply_to_chat(req: Request, cu=Depends(get_current_user)):
+async def reply_to_chat(req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
     """Envía un mensaje al cliente desde el panel del operador."""
     body = await req.json()
     phone = str(body.get("phone_number") or "").strip()
@@ -1855,8 +1873,11 @@ async def reply_to_chat(req: Request, cu=Depends(get_current_user)):
     if not phone or not text:
         raise HTTPException(400, "phone_number y text requeridos")
     chat_id = phone if "@c.us" in phone else f"{_normalize_phone(phone)}@c.us"
+    if text.lower() == "/fin":
+        closed = await _close_ticket_with_fin(db, chat_id, closed_by=cu["username"])
+        return {"ok": True, "closed": closed, "phone_number": chat_id}
     await _send_wha(chat_id, text)
-    return {"ok": True}
+    return {"ok": True, "closed": False, "phone_number": chat_id}
 
 
 @app.get("/api/tickets/list")
