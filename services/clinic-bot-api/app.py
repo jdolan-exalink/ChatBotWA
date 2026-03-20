@@ -280,7 +280,7 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    APP_VERSION = "v2.3.2"
+    APP_VERSION = "v2.3.3"
 app = FastAPI(title="WA-BOT", version=APP_VERSION)
 app.add_middleware(GZipMiddleware, minimum_size=500)   # comprimir respuestas >500B
 app.add_middleware(
@@ -1181,8 +1181,7 @@ async def _close_ticket_with_fin(db: Session, chat_id: str, closed_by: str = "Op
         _logc(f"[FIN] Error enviando despedida: {e}")
 
     _exit_human_mode(db, chat_id, closed_by=closed_by, operator_reply="/fin", reason="escrito_saludos")
-    _chat_nav.pop(chat_id, None)
-    _chat_nav.pop(chat_id.replace("@c.us", ""), None)
+    _clear_nav_state(db, chat_id)
     _logc(f"[FIN] Ticket cerrado con /fin para {chat_id}")
     return True
 
@@ -1253,6 +1252,80 @@ def _extract_operator_target_chat_id(msg: dict) -> str:
         if "@c.us" in cid:
             return cid
     return ""
+
+
+def _get_conversation_row(db: Session, chat_id: str, create: bool = False) -> ConversationState | None:
+    row = db.query(ConversationState).filter(
+        ConversationState.phone_number == chat_id
+    ).first()
+    if row or not create:
+        return row
+
+    row = ConversationState(
+        phone_number=chat_id,
+        current_state="BOT_MENU",
+        last_message_at=datetime.utcnow(),
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _load_nav_state(db: Session, chat_id: str, now_ts: int) -> dict:
+    """Lee navegación persistida. Fallback a memoria para compatibilidad intra-worker."""
+    nav = _chat_nav.get(chat_id)
+    row = _get_conversation_row(db, chat_id, create=False)
+
+    if row and row.current_menu_section and row.menu_updated_at:
+        row_ts = int(row.menu_updated_at.timestamp())
+        persisted = {"section": row.current_menu_section, "ts": row_ts, "new": False}
+        if not nav or row_ts >= int(nav.get("ts", 0)):
+            nav = persisted
+
+    if not nav:
+        return {"section": "main", "ts": now_ts, "new": True}
+
+    if now_ts - int(nav.get("ts", now_ts)) > CHAT_IDLE_RESET_SEC:
+        return {"section": "main", "ts": now_ts, "new": True}
+
+    return {
+        "section": nav.get("section", "main") or "main",
+        "ts": int(nav.get("ts", now_ts)),
+        "new": bool(nav.get("new", False)),
+    }
+
+
+def _store_nav_state(db: Session, chat_id: str, nav: dict) -> None:
+    """Persiste navegación del menú para que funcione con múltiples workers."""
+    now = datetime.utcnow()
+    row = _get_conversation_row(db, chat_id, create=True)
+    row.current_menu_section = nav.get("section", "main") or "main"
+    row.menu_updated_at = now
+    row.last_message_at = now
+    _chat_nav[chat_id] = {
+        "section": row.current_menu_section,
+        "ts": int(now.timestamp()),
+        "new": bool(nav.get("new", False)),
+    }
+    db.commit()
+
+
+def _clear_nav_state(db: Session, chat_id: str) -> None:
+    """Limpia navegación del menú en memoria y en DB."""
+    normalized = _normalize_phone(chat_id)
+    candidates = {chat_id}
+    if normalized:
+        candidates.add(normalized)
+        candidates.add(f"{normalized}@c.us")
+
+    for candidate in candidates:
+        _chat_nav.pop(candidate, None)
+        row = _get_conversation_row(db, candidate, create=False)
+        if row:
+            row.current_menu_section = None
+            row.menu_updated_at = None
+
+    db.commit()
 
 # ──────────────────────────────────────────────────────────────
 #  MENU  (navegación jerárquica Markdown)
@@ -1368,7 +1441,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
         if in_human:
             if text == "98":
                 _exit_human_mode(db, chat_id, closed_by="client")
-                _chat_nav.pop(chat_id, None)
+                _clear_nav_state(db, chat_id)
                 return (
                     "✅ *Volviste al menú automático.*\n\n"
                     "Escribe *0* para ver el menú principal."
@@ -1385,10 +1458,10 @@ def _sync_process_message(chat_id: str, text: str) -> str:
 
         # 7. Opción 99: activar modo humano
         if text == "99":
-            current_section = _chat_nav.get(chat_id, {}).get("section", "main")
+            current_section = _load_nav_state(db, chat_id, int(time.time())).get("section", "main")
             duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS if _is_turnos_waiting_section(current_section) else HUMAN_MODE_DEFAULT_HOURS
             ticket = _start_human_mode(db, chat_id, duration_hours=duration_hours)
-            _chat_nav.pop(chat_id, None)
+            _clear_nav_state(db, chat_id)
             
             cfg = _get_cfg_cached(db)
             base_msg = cfg.handoff_message or "📞 *Se ha iniciado transferencia a un operador*\n\n✅ Tu número de ticket: *{TKT}*\n\n⏳ Por favor espera a que un operario se comunique contigo.\nEsto generalmente toma unos minutos.\n\n⌛ Tiempo máximo de espera en este estado: *{HOURS} horas*.\n\nGracias por tu paciencia 😊\n\n_(Escribe *98* en cualquier momento para volver al menú automático)_"
@@ -1410,9 +1483,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
 
         # 9. Flujo normal del bot
         now_ts = int(time.time())
-        nav    = _chat_nav.get(chat_id, {"section": "main", "ts": now_ts, "new": True})
-        if now_ts - nav.get("ts", now_ts) > CHAT_IDLE_RESET_SEC:
-            nav = {"section": "main", "ts": now_ts, "new": True}
+        nav = _load_nav_state(db, chat_id, now_ts)
 
         answer = ""
 
@@ -1449,7 +1520,7 @@ def _sync_process_message(chat_id: str, text: str) -> str:
                     row.last_bot_menu = current_section
                     row.menu_breadcrumb = _get_menu_breadcrumb(current_section)
                     db.commit()
-                _chat_nav.pop(chat_id, None)
+                _clear_nav_state(db, chat_id)
                 
                 cfg = _get_cfg_cached(db)
                 if custom_msg:
@@ -1461,11 +1532,11 @@ def _sync_process_message(chat_id: str, text: str) -> str:
                 answer = f"{before_text}\n\n{ticket_msg}".strip() if before_text else ticket_msg
                 
                 nav["ts"] = now_ts
-                _chat_nav[chat_id] = nav
+                _store_nav_state(db, chat_id, nav)
                 return answer
 
         nav["ts"] = now_ts
-        _chat_nav[chat_id] = nav
+        _store_nav_state(db, chat_id, nav)
         return answer
 
     except Exception as e:
@@ -1522,15 +1593,14 @@ async def webhook(req: Request):
         try:
             if op_text == "SALUDOS":
                 _exit_human_mode(db, op_chat_id, closed_by="Operador", operator_reply="SALUDOS", reason="escrito_saludos")
-                _chat_nav.pop(op_chat_id, None)
-                _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
+                _clear_nav_state(db, op_chat_id)
                 return {"ok": True, "i": "from_me_saludos", "chat": op_chat_id}
             elif op_text == "/fin":
                 await _close_ticket_with_fin(db, op_chat_id, closed_by="Operador")
                 return {"ok": True, "i": "from_me_fin", "chat": op_chat_id}
             else:
                 _start_human_mode_silent(db, op_chat_id)
-                _chat_nav.pop(op_chat_id, None)
+                _clear_nav_state(db, op_chat_id)
         finally:
             db.close()
         return {"ok": True, "i": "from_me_human_mode", "chat": op_chat_id}
@@ -1540,6 +1610,11 @@ async def webhook(req: Request):
     # Filtro temprano de estados (antes del log para no ensuciar consola)
     if any(x in chat_id for x in ("status@", "@status", "broadcast")):
         return {"ok": True, "i": "status"}
+
+    if chat_id and "@g.us" not in chat_id and "@c.us" not in chat_id:
+        normalized_chat = _normalize_phone(chat_id)
+        if normalized_chat:
+            chat_id = f"{normalized_chat}@c.us"
 
     raw_txt = msg.get("body") or msg.get("text") or ""
     if not isinstance(raw_txt, str):
@@ -1731,10 +1806,7 @@ async def close_human_mode_chat(req: Request, cu=Depends(get_current_user), db: 
     target = row.phone_number
     operator_reply = str(body.get("operator_reply") or "").strip()
     _exit_human_mode(db, target, closed_by=cu["username"], operator_reply=operator_reply)
-    # Limpiar posibles variantes en cache de navegación
-    _chat_nav.pop(target, None)
-    _chat_nav.pop(normalized, None)
-    _chat_nav.pop(f"{normalized}@c.us", None)
+    _clear_nav_state(db, target)
 
     return {"ok": True, "closed": True, "phone_number": target}
 
