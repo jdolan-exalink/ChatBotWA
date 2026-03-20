@@ -1,6 +1,6 @@
 🔒En este momento el soporte permanecen cerradas. 
 
-🕓 El horario de atención es de lunes a viernes de 8 a 16 horas.  
+🕓 El horario de atención es de lunes a viernes de 8 a 18 horas.  
 
 deja tu consulta...
 

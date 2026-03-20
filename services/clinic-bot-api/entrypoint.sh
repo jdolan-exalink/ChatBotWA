@@ -75,7 +75,6 @@ if not cfg:
     from app import SOLUTION_NAME, OLLAMA_URL, OLLAMA_MODEL
     config = BotConfig(
         solution_name=SOLUTION_NAME,
-        menu_title=SOLUTION_NAME,
         opening_time='09:00',
         closing_time='18:00',
         sat_opening_time='10:00',

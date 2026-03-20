@@ -37,7 +37,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 SCHEMA_VERSION_TABLE = "schema_version"
-TARGET_SCHEMA_VERSION = 7
+TARGET_SCHEMA_VERSION = 6
 
 def get_db():
     db = SessionLocal()
@@ -218,21 +218,6 @@ def _migration_v6_ticket_breadcrumb() -> None:
         _add_column_if_missing("ticket_history", "menu_breadcrumb", "menu_breadcrumb TEXT")
 
 
-def _migration_v7_persistent_menu_nav() -> None:
-    """Persiste la navegación del menú para soportar múltiples workers."""
-    if _table_exists("conversation_states"):
-        _add_column_if_missing(
-            "conversation_states",
-            "current_menu_section",
-            "current_menu_section VARCHAR(100)"
-        )
-        _add_column_if_missing(
-            "conversation_states",
-            "menu_updated_at",
-            "menu_updated_at DATETIME"
-        )
-
-
 def _run_schema_migrations() -> int:
     migrations = [
         (1, _migration_v1_bot_config_columns),
@@ -241,7 +226,6 @@ def _run_schema_migrations() -> int:
         (4, _migration_v4_ticket_fields),
         (5, _migration_v5_scheduled_date),
         (6, _migration_v6_ticket_breadcrumb),
-        (7, _migration_v7_persistent_menu_nav),
     ]
 
     current = _get_schema_version()

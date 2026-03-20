@@ -49,7 +49,6 @@ class PasswordResetRequest(BaseModel):
 # ===================== BOT CONFIG =====================
 class BotConfigUpdate(BaseModel):
     solution_name: Optional[str] = None
-    menu_title: Optional[str] = None
     opening_time: Optional[str] = None  # HH:MM (Lunes-Viernes)
     closing_time: Optional[str] = None  # HH:MM (Lunes-Viernes)
     sat_opening_time: Optional[str] = None  # HH:MM Sábado
@@ -71,7 +70,6 @@ class BotConfigUpdate(BaseModel):
 class BotConfigResponse(BaseModel):
     id: int
     solution_name: str
-    menu_title: str
     is_paused: bool
     opening_time: Optional[str]
     closing_time: Optional[str]

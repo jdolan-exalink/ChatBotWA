@@ -9,7 +9,7 @@ try:
         stderr=subprocess.DEVNULL
     ).decode("utf-8").strip()
 except Exception:
-    _GIT_VERSION = "v2.3.4"
+    _GIT_VERSION = "v2.3.5"
 
 
 def _scheduled_messages_shared_js() -> str:
@@ -1700,16 +1700,10 @@ def get_user_panel_page() -> str:
                         body: JSON.stringify({ phone_number: _chatModalPhone, text })
                     });
                     if (res.ok) {
-                        const data = await res.json();
                         input.value = ''; input.style.height = '22px'; input.style.overflowY = 'hidden';
-                        if (data.closed) {
-                            msg.textContent = '✅ Ticket cerrado'; msg.style.color = '#8adfcc';
-                            setTimeout(() => { closeChatModal(); loadParkedList(); }, 600);
-                        } else {
-                            msg.textContent = '✅ Enviado'; msg.style.color = '#8adfcc';
-                            setTimeout(() => { msg.textContent = ''; }, 2000);
-                            setTimeout(loadChatMessages, 800);
-                        }
+                        msg.textContent = '✅ Enviado'; msg.style.color = '#8adfcc';
+                        setTimeout(() => { msg.textContent = ''; }, 2000);
+                        setTimeout(loadChatMessages, 800);
                     } else { msg.textContent = '❌ Error al enviar'; msg.style.color = '#ef4444'; }
                 } catch(e) { msg.textContent = '❌ Error de conexión'; msg.style.color = '#ef4444'; }
                 finally { input.disabled = false; input.focus(); }
@@ -4410,12 +4404,8 @@ def get_dashboard_page() -> str:
                         <div class="message" id="configMessage"></div>
                         <form onsubmit="saveConfig(event)">
                             <div class="form-group">
-                                <label>Nombre de la Solución</label>
+                                <label>Nombre de la Solución / Título del Menú</label>
                                 <input type="text" id="solutionName" placeholder="Clínica">
-                            </div>
-                            <div class="form-group">
-                                <label>Título del Menú</label>
-                                <input type="text" id="menuTitle" placeholder="Menú Principal">
                             </div>
                         
                         <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
@@ -5796,16 +5786,10 @@ def get_dashboard_page() -> str:
                     const data = await res.json();
                     if (data.ok) {
                         input.value = ''; input.style.height = '22px'; input.style.overflowY = 'hidden';
-                        if (data.closed) {
-                            msg.style.color = '#8adfcc';
-                            msg.textContent = '✅ Ticket cerrado';
-                            setTimeout(() => { adminCloseChatModal(); loadAdminParkedList(); }, 600);
-                        } else {
-                            msg.style.color = '#8adfcc';
-                            msg.textContent = '✅ Enviado';
-                            setTimeout(() => { msg.textContent = ''; }, 2000);
-                            setTimeout(() => adminLoadChatMessages(), 800);
-                        }
+                        msg.style.color = '#8adfcc';
+                        msg.textContent = '✅ Enviado';
+                        setTimeout(() => { msg.textContent = ''; }, 2000);
+                        setTimeout(() => adminLoadChatMessages(), 800);
                     } else {
                         msg.style.color = '#f87171';
                         msg.textContent = '❌ Error al enviar';
@@ -6134,7 +6118,6 @@ def get_dashboard_page() -> str:
                     const config = await res.json();
                     
                     document.getElementById('solutionName').value = config.solution_name || '';
-                    document.getElementById('menuTitle').value = config.menu_title || '';
                     document.getElementById('openingTime').value = config.opening_time || '09:00';
                     document.getElementById('closingTime').value = config.closing_time || '18:00';
                     document.getElementById('satOpeningTime').value = config.sat_opening_time || '10:00';
@@ -6194,7 +6177,6 @@ def get_dashboard_page() -> str:
                         },
                         body: JSON.stringify({
                             solution_name: document.getElementById('solutionName').value,
-                            menu_title: document.getElementById('menuTitle').value,
                             opening_time: document.getElementById('openingTime').value,
                             closing_time: document.getElementById('closingTime').value,
                             sat_opening_time: document.getElementById('satOpeningTime').value,
