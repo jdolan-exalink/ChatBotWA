@@ -37,7 +37,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 SCHEMA_VERSION_TABLE = "schema_version"
-TARGET_SCHEMA_VERSION = 6
+TARGET_SCHEMA_VERSION = 10
 
 def get_db():
     db = SessionLocal()
@@ -218,6 +218,90 @@ def _migration_v6_ticket_breadcrumb() -> None:
         _add_column_if_missing("ticket_history", "menu_breadcrumb", "menu_breadcrumb TEXT")
 
 
+def _migration_v7_scheduled_templates() -> None:
+    """Agrega plantillas configurables para confirmación y recordatorios."""
+    if not _table_exists("bot_config"):
+        return
+
+    _add_column_if_missing(
+        "bot_config",
+        "scheduled_confirmation_template",
+        "scheduled_confirmation_template TEXT DEFAULT '✅ *Recordatorio programado*\n\n*{RECORDATORIO}*\n📅 Turno: *{FECHA}* a las *{HORA}*\n🔔 Avisos automáticos: *1 día antes* y *1 hora antes*.\n{NOTA_BLOQUE}\nSi necesitás cambios, respondé a este mensaje.'",
+    )
+    _add_column_if_missing(
+        "bot_config",
+        "scheduled_reminder_template",
+        "scheduled_reminder_template TEXT DEFAULT '✨ *{RECORDATORIO}*\n\nTe recordamos tu turno para el *{FECHA}* a las *{HORA}*.\n⏰ Aviso: *{AVISO}*.\n{NOTA_BLOQUE}\nSi necesitás reprogramar, respondé a este mensaje.'",
+    )
+
+
+def _migration_v8_ensure_scheduled_template_columns() -> None:
+    """Reasegura columnas de plantillas sin defaults complejos para bases legacy."""
+    if not _table_exists("bot_config"):
+        return
+
+    _add_column_if_missing(
+        "bot_config",
+        "scheduled_confirmation_template",
+        "scheduled_confirmation_template TEXT",
+    )
+    _add_column_if_missing(
+        "bot_config",
+        "scheduled_reminder_template",
+        "scheduled_reminder_template TEXT",
+    )
+
+
+def _migration_v9_scheduled_calendar_link_config() -> None:
+    """Agrega configuración para link público al ICS."""
+    if not _table_exists("bot_config"):
+        return
+
+    _add_column_if_missing(
+        "bot_config",
+        "scheduled_calendar_link_enabled",
+        "scheduled_calendar_link_enabled BOOLEAN DEFAULT 0",
+    )
+    _add_column_if_missing(
+        "bot_config",
+        "scheduled_calendar_link_base_url",
+        "scheduled_calendar_link_base_url VARCHAR(255)",
+    )
+
+
+def _migration_v10_scheduled_ticket_calendar_fields() -> None:
+    """Agrega metadata de ticket a programados para links ICS prolijos por ticket."""
+    if not _table_exists("scheduled_messages"):
+        return
+
+    _add_column_if_missing(
+        "scheduled_messages",
+        "ticket_id",
+        "ticket_id VARCHAR(100)",
+    )
+    _add_column_if_missing(
+        "scheduled_messages",
+        "event_at",
+        "event_at VARCHAR(40)",
+    )
+    _add_column_if_missing(
+        "scheduled_messages",
+        "schedule_note",
+        "schedule_note TEXT",
+    )
+    _add_column_if_missing(
+        "scheduled_messages",
+        "schedule_kind",
+        "schedule_kind VARCHAR(30) DEFAULT 'general'",
+    )
+
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_scheduled_messages_ticket_id "
+            "ON scheduled_messages (ticket_id)"
+        ))
+
+
 def _run_schema_migrations() -> int:
     migrations = [
         (1, _migration_v1_bot_config_columns),
@@ -226,6 +310,10 @@ def _run_schema_migrations() -> int:
         (4, _migration_v4_ticket_fields),
         (5, _migration_v5_scheduled_date),
         (6, _migration_v6_ticket_breadcrumb),
+        (7, _migration_v7_scheduled_templates),
+        (8, _migration_v8_ensure_scheduled_template_columns),
+        (9, _migration_v9_scheduled_calendar_link_config),
+        (10, _migration_v10_scheduled_ticket_calendar_fields),
     ]
 
     current = _get_schema_version()

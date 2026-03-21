@@ -16,9 +16,11 @@ import re
 import secrets
 import shutil
 import time
+from urllib.parse import quote, urlparse
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Depends
@@ -27,6 +29,7 @@ from fastapi.responses import HTMLResponse, Response, RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from jose import jwt, JWTError
 
 from database import init_db, get_db, SessionLocal, engine
 from models import Base, User, BotConfig, Holiday, HolidayMenu, WhatsAppBlockList, ConversationState, DailyChatContact, WahaRuntimeState, TicketHistory, ScheduledMessage, ExternalAccessToken
@@ -37,7 +40,7 @@ from schemas import (
     ExternalAccessTokenCreate, ExternalAccessTokenResponse,
     ExternalAccessTokenWithSecretResponse, ExternalNotificationPayload,
 )
-from security import hash_password, verify_password, create_access_token, get_current_user, get_current_admin
+from security import hash_password, verify_password, create_access_token, get_current_user, get_current_admin, SECRET_KEY, ALGORITHM
 from pages import get_login_page, get_dashboard_page, get_user_panel_page, get_user_config_page
 
 # ──────────────────────────────────────────────────────────────
@@ -60,6 +63,24 @@ SOLUTION_NAME   = os.getenv("SOLUTION_NAME", "Clínica")
 CHAT_IDLE_RESET_SEC = int(os.getenv("CHAT_IDLE_RESET_SEC", "7200"))
 HUMAN_MODE_DEFAULT_HOURS = int(os.getenv("HUMAN_MODE_DEFAULT_HOURS", "12"))
 HUMAN_MODE_WAITING_AGENT_HOURS = int(os.getenv("HUMAN_MODE_WAITING_AGENT_HOURS", "2"))
+
+DEFAULT_SCHEDULED_CONFIRMATION_TEMPLATE = (
+    "✅ *Recordatorio programado*\n\n"
+    "*{RECORDATORIO}*\n"
+    "📅 Turno: *{FECHA}* a las *{HORA}*\n"
+    "🔔 Avisos automáticos: *1 día antes* y *1 hora antes*.\n"
+    "{NOTA_BLOQUE}\n"
+    "{CALENDAR_LINK_BLOQUE}\n"
+    "Si necesitás cambios, respondé a este mensaje."
+)
+DEFAULT_SCHEDULED_REMINDER_TEMPLATE = (
+    "✨ *{RECORDATORIO}*\n\n"
+    "Te recordamos tu turno para el *{FECHA}* a las *{HORA}*.\n"
+    "⏰ Aviso: *{AVISO}*.\n"
+    "{NOTA_BLOQUE}\n"
+    "{CALENDAR_LINK_BLOQUE}\n"
+    "Si necesitás reprogramar, respondé a este mensaje."
+)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -522,6 +543,8 @@ async def _scheduler_loop():
                         except Exception as e:
                             _log(f"[SCHED] Error enviando '{sm.name}' → {phone}: {e}")
                     sm.last_sent_date = today
+                    if sm.send_date:
+                        sm.is_active = False
                     db.add(sm)
                 db.commit()
             finally:
@@ -635,6 +658,76 @@ def _sync_offhours_schedule_text(content: str, opening_time: str | None, closing
 
     schedule_text = f"{start} a {end}"
     return _OFFHOURS_WEEKDAY_LINE_RE.sub(lambda m: f"{m.group(1)}{schedule_text}{m.group(2)}", content)
+
+
+def _get_cfg_timezone(cfg: BotConfig):
+    import pytz
+
+    try:
+        return pytz.timezone(cfg.timezone or "America/Argentina/Buenos_Aires")
+    except Exception:
+        return pytz.UTC
+
+
+def _parse_local_event_datetime(value: str, cfg: BotConfig) -> datetime:
+    raw = (value or "").strip()
+    try:
+        naive = datetime.strptime(raw, "%Y-%m-%dT%H:%M")
+    except ValueError as exc:
+        raise HTTPException(400, "event_at debe tener formato YYYY-MM-DDTHH:MM") from exc
+
+    tz = _get_cfg_timezone(cfg)
+    return tz.localize(naive) if hasattr(tz, "localize") else naive.replace(tzinfo=tz)
+
+
+def _render_scheduled_template(template: str, context: dict[str, str], *, append_note_if_missing: bool = False) -> str:
+    rendered = template or ""
+    note = str(context.get("NOTA") or "").strip()
+    calendar_link = str(context.get("CALENDAR_LINK") or "").strip()
+    if append_note_if_missing and note:
+        has_note_placeholder = any(
+            marker in rendered for marker in ("{NOTA}", "{nota}", "{NOTA_BLOQUE}", "{nota_bloque}")
+        )
+        if not has_note_placeholder:
+            rendered = rendered.rstrip() + "\n\n📝 Nota:\n{NOTA}"
+    if calendar_link:
+        has_calendar_placeholder = any(
+            marker in rendered for marker in ("{CALENDAR_LINK}", "{calendar_link}", "{CALENDAR_LINK_BLOQUE}", "{calendar_link_bloque}")
+        )
+        if not has_calendar_placeholder:
+            rendered = rendered.rstrip() + "\n\n📅 Agendalo en tu celular:\n{CALENDAR_LINK}"
+    for key, value in context.items():
+        safe_value = str(value or "")
+        rendered = rendered.replace("{" + key + "}", safe_value)
+        rendered = rendered.replace("{" + key.lower() + "}", safe_value)
+    return "\n".join(line for line in rendered.splitlines() if line.strip() or line == "").strip()
+
+
+def _build_scheduled_template_context(
+    name: str,
+    event_at: datetime,
+    aviso: str = "",
+    note: str = "",
+    calendar_link: str = "",
+) -> dict[str, str]:
+    fecha = event_at.strftime("%d/%m/%Y")
+    hora = event_at.strftime("%H:%M")
+    turno = f"{fecha} a las {hora}"
+    cleaned_note = str(note or "").strip()
+    cleaned_calendar_link = str(calendar_link or "").strip()
+    return {
+        "RECORDATORIO": name,
+        "NOMBRE_RECORDATORIO": name,
+        "FECHA": fecha,
+        "HORA": hora,
+        "FECHA_HORA": turno,
+        "TURNO": turno,
+        "AVISO": aviso,
+        "NOTA": cleaned_note,
+        "NOTA_BLOQUE": f"📝 Nota:\n{cleaned_note}" if cleaned_note else "",
+        "CALENDAR_LINK": cleaned_calendar_link,
+        "CALENDAR_LINK_BLOQUE": f"📅 Agendalo en tu celular:\n{cleaned_calendar_link}" if cleaned_calendar_link else "",
+    }
 
 def _read_menu() -> str:
     menu_path = CLINIC_KB_PATH if os.path.exists(CLINIC_KB_PATH) else _data_path("MenuP.MD")
@@ -910,6 +1003,204 @@ async def _send_wha(chat_id: str, text: str):
             client = _get_waha_client()
 
     _logc(f"[SEND] No enviado para {chat_id} (todas las rutas fallaron)")
+
+
+def _sanitize_filename(value: str, fallback: str = "recordatorio") -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", (value or "").strip()).strip("-._")
+    return cleaned or fallback
+
+
+def _ics_escape(value: str) -> str:
+    text = str(value or "")
+    text = text.replace("\\", "\\\\")
+    text = text.replace(";", "\\;").replace(",", "\\,")
+    text = text.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
+    return text
+
+
+def _build_calendar_invite_bytes(
+    *,
+    cfg: BotConfig,
+    name: str,
+    event_at: datetime,
+    note: str = "",
+    duration_minutes: int = 60,
+) -> tuple[str, bytes]:
+    tz_name = (cfg.timezone or "America/Argentina/Buenos_Aires").strip()
+    try:
+        event_zone = ZoneInfo(tz_name)
+    except Exception:
+        event_zone = ZoneInfo("UTC")
+        tz_name = "UTC"
+
+    localized_event = event_at.astimezone(event_zone)
+    end_at = localized_event + timedelta(minutes=max(15, duration_minutes))
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    uid = f"{secrets.token_hex(12)}@chatbotwa.local"
+
+    summary = name.strip() or "Recordatorio"
+    description_parts = [
+        f"Turno: {localized_event.strftime('%d/%m/%Y %H:%M')}",
+    ]
+    if note.strip():
+        description_parts.append(note.strip())
+    description = "\n\n".join(description_parts)
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//ChatBotWA//Recordatorio Turno//ES",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        f"UID:{uid}",
+        f"DTSTAMP:{now_utc.strftime('%Y%m%dT%H%M%SZ')}",
+        f"DTSTART;TZID={tz_name}:{localized_event.strftime('%Y%m%dT%H%M%S')}",
+        f"DTEND;TZID={tz_name}:{end_at.strftime('%Y%m%dT%H%M%S')}",
+        f"SUMMARY:{_ics_escape(summary)}",
+        f"DESCRIPTION:{_ics_escape(description)}",
+        "STATUS:CONFIRMED",
+        "END:VEVENT",
+        "END:VCALENDAR",
+        "",
+    ]
+    filename = _sanitize_filename(
+        f"{summary}-{localized_event.strftime('%Y%m%d-%H%M')}.ics",
+        fallback="recordatorio.ics",
+    )
+    return filename, "\r\n".join(lines).encode("utf-8")
+
+
+def _build_calendar_link_token(*, cfg: BotConfig, name: str, event_at: datetime, note: str = "") -> str:
+    expire_at = event_at.astimezone(ZoneInfo("UTC")) + timedelta(days=30)
+    payload = {
+        "sub": "calendar_invite",
+        "name": name,
+        "event_at": event_at.isoformat(),
+        "note": note,
+        "tz": (cfg.timezone or "America/Argentina/Buenos_Aires"),
+        "exp": expire_at,
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _clean_ticket_calendar_ref(ticket_id: str | None) -> str:
+    cleaned = str(ticket_id or "").strip()
+    if cleaned in {"", "-", "—"}:
+        return ""
+    return cleaned
+
+
+def _build_public_base_url(req: Request, cfg: BotConfig) -> str:
+    configured = str(getattr(cfg, "scheduled_calendar_link_base_url", "") or "").strip()
+    if configured:
+        return configured.rstrip("/")
+    detected = str(req.base_url).rstrip("/")
+    parsed = urlparse(detected)
+    hostname = (parsed.hostname or "").strip().lower()
+    if hostname in {"", "localhost", "127.0.0.1", "0.0.0.0", "::1", "wa-bot", "waha"}:
+        return ""
+    return detected
+
+
+def _build_calendar_link(
+    req: Request,
+    cfg: BotConfig,
+    *,
+    name: str,
+    event_at: datetime,
+    note: str = "",
+    ticket_id: str = "",
+) -> str:
+    if not bool(getattr(cfg, "scheduled_calendar_link_enabled", False)):
+        return ""
+    public_base_url = _build_public_base_url(req, cfg)
+    if not public_base_url:
+        return ""
+    ticket_ref = _clean_ticket_calendar_ref(ticket_id)
+    if ticket_ref:
+        return f"{public_base_url}/calendar/invite/{quote(ticket_ref, safe='')}.ics"
+    token = _build_calendar_link_token(cfg=cfg, name=name, event_at=event_at, note=note)
+    return f"{public_base_url}/calendar/invite/{token}.ics"
+
+
+async def _send_wha_file(chat_id: str, *, filename: str, mimetype: str, data: bytes, caption: str | None = None):
+    if not data:
+        _log(f"[SEND-FILE] Bloqueado - archivo vacío para {chat_id}")
+        return
+
+    encoded = base64.b64encode(data).decode("ascii")
+    client = _get_waha_client()
+    payload_variants = [
+        (
+            "/api/sendFile",
+            {
+                "session": WAHA_SESSION,
+                "chatId": chat_id,
+                "caption": caption or "",
+                "file": {
+                    "mimetype": mimetype,
+                    "filename": filename,
+                    "data": encoded,
+                },
+            },
+        ),
+        (
+            f"/api/{WAHA_SESSION}/sendFile",
+            {
+                "chatId": chat_id,
+                "caption": caption or "",
+                "file": {
+                    "mimetype": mimetype,
+                    "filename": filename,
+                    "data": encoded,
+                },
+            },
+        ),
+        (
+            "/api/messages/file",
+            {
+                "session": WAHA_SESSION,
+                "chatId": chat_id,
+                "caption": caption or "",
+                "file": {
+                    "mimetype": mimetype,
+                    "filename": filename,
+                    "data": encoded,
+                },
+            },
+        ),
+    ]
+
+    for path, payload in payload_variants:
+        try:
+            r = await client.post(
+                path,
+                json=payload,
+                headers=_waha_headers(),
+                timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0),
+            )
+            if r.status_code < 400:
+                _log(f"[SEND-FILE] OK via {path}")
+                return
+            _log(f"[SEND-FILE] Error {r.status_code} via {path}")
+        except httpx.TimeoutException:
+            _logc(f"[SEND-FILE] Timeout en {path}")
+            _reset_waha_client()
+            await asyncio.sleep(1)
+            client = _get_waha_client()
+        except httpx.ConnectError as e:
+            _logc(f"[SEND-FILE] ConnectError en {path}: {e}")
+            _reset_waha_client()
+            await asyncio.sleep(1)
+            client = _get_waha_client()
+        except Exception as e:
+            _logc(f"[SEND-FILE] Error en {path}: {e}")
+            _reset_waha_client()
+            await asyncio.sleep(1)
+            client = _get_waha_client()
+
+    raise RuntimeError("No se pudo enviar el archivo por WAHA")
 
 # ──────────────────────────────────────────────────────────────
 #  HELPERS - EMAIL
@@ -1966,6 +2257,10 @@ def _sm_to_dict(sm: ScheduledMessage) -> dict:
         "days_of_week": sm.days_of_week,
         "is_active": sm.is_active,
         "last_sent_date": sm.last_sent_date,
+        "ticket_id": getattr(sm, "ticket_id", None),
+        "event_at": getattr(sm, "event_at", None),
+        "schedule_note": getattr(sm, "schedule_note", None),
+        "schedule_kind": getattr(sm, "schedule_kind", None),
         "created_by": sm.created_by,
         "created_at": sm.created_at.isoformat() if sm.created_at else None,
     }
@@ -1996,6 +2291,182 @@ async def create_scheduled(req: Request, cu=Depends(get_current_user), db: Sessi
     )
     db.add(sm); db.commit(); db.refresh(sm)
     return _sm_to_dict(sm)
+
+
+@app.post("/api/tickets/schedule-reminder")
+async def create_ticket_schedule_reminder(req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    body = await req.json()
+    name = str(body.get("name") or "").strip()
+    phone = str(body.get("phone_number") or "").strip()
+    ticket_id = _clean_ticket_calendar_ref(body.get("ticket_id"))
+    event_at_raw = str(body.get("event_at") or "").strip()
+    note = str(body.get("note") or "").strip()
+    remind_day_before = bool(body.get("remind_day_before", True))
+    remind_hour_before = bool(body.get("remind_hour_before", True))
+
+    if not name or not phone or not event_at_raw:
+        raise HTTPException(400, "name, phone_number y event_at son requeridos")
+
+    normalized_phone = _normalize_phone(phone) if "@c.us" not in phone else phone.split("@", 1)[0]
+    if not normalized_phone:
+        raise HTTPException(400, "phone_number inválido")
+
+    cfg = _get_cfg(db)
+    event_at = _parse_local_event_datetime(event_at_raw, cfg)
+    now_local = datetime.now(_get_cfg_timezone(cfg))
+    if event_at <= now_local:
+        raise HTTPException(400, "La fecha y hora del turno debe ser futura")
+    calendar_link = _build_calendar_link(
+        req,
+        cfg,
+        name=name,
+        event_at=event_at,
+        note=note,
+        ticket_id=ticket_id,
+    )
+
+    reminder_template = cfg.scheduled_reminder_template or DEFAULT_SCHEDULED_REMINDER_TEMPLATE
+    confirmation_template = (
+        cfg.scheduled_confirmation_template or DEFAULT_SCHEDULED_CONFIRMATION_TEMPLATE
+    )
+    main_event_message = _render_scheduled_template(
+        reminder_template,
+        _build_scheduled_template_context(
+            name,
+            event_at,
+            aviso="Horario del turno",
+            note=note,
+            calendar_link=calendar_link,
+        ),
+        append_note_if_missing=True,
+    )
+
+    created: list[ScheduledMessage] = []
+    skipped: list[dict[str, str]] = []
+
+    main_sm = ScheduledMessage(
+        name=name,
+        phone_number=normalized_phone,
+        message=main_event_message,
+        send_time=event_at.strftime("%H:%M"),
+        send_date=event_at.strftime("%Y-%m-%d"),
+        days_of_week="1,2,3,4,5,6,7",
+        is_active=True,
+        ticket_id=ticket_id or None,
+        event_at=event_at.isoformat(),
+        schedule_note=note or None,
+        schedule_kind="ticket_event",
+        created_by=cu["username"],
+    )
+    db.add(main_sm)
+    created.append(main_sm)
+
+    offsets = []
+    if remind_day_before:
+        offsets.append(("1 día antes", timedelta(days=1)))
+    if remind_hour_before:
+        offsets.append(("1 hora antes", timedelta(hours=1)))
+
+    for aviso_label, delta in offsets:
+        send_at = event_at - delta
+        if send_at <= now_local:
+            skipped.append({
+                "aviso": aviso_label,
+                "reason": "El horario ya pasó para este aviso",
+            })
+            continue
+
+        message = _render_scheduled_template(
+            reminder_template,
+            _build_scheduled_template_context(
+                name,
+                event_at,
+                aviso=aviso_label,
+                note=note,
+                calendar_link=calendar_link,
+            ),
+            append_note_if_missing=True,
+        )
+        sm = ScheduledMessage(
+            name=f"{name} · Aviso {aviso_label}",
+            phone_number=normalized_phone,
+            message=message,
+            send_time=send_at.strftime("%H:%M"),
+            send_date=send_at.strftime("%Y-%m-%d"),
+            days_of_week="1,2,3,4,5,6,7",
+            is_active=True,
+            ticket_id=ticket_id or None,
+            event_at=event_at.isoformat(),
+            schedule_note=note or None,
+            schedule_kind="ticket_reminder",
+            created_by=cu["username"],
+        )
+        db.add(sm)
+        created.append(sm)
+
+    db.commit()
+    for sm in created:
+        db.refresh(sm)
+
+    selected_labels = [label for label, _ in offsets]
+    selected_text = ", ".join(selected_labels) if selected_labels else "sin avisos previos"
+
+    confirmation_message = _render_scheduled_template(
+        confirmation_template,
+        _build_scheduled_template_context(
+            name,
+            event_at,
+            aviso=selected_text,
+            note=note,
+            calendar_link=calendar_link,
+        ),
+        append_note_if_missing=True,
+    )
+
+    sent_confirmation = True
+    confirmation_error = None
+    sent_calendar_invite = True
+    calendar_invite_error = None
+    chat_id = phone if "@c.us" in phone else f"{normalized_phone}@c.us"
+    try:
+        await _send_wha(chat_id, confirmation_message)
+    except Exception as exc:
+        sent_confirmation = False
+        confirmation_error = str(exc)
+        _log(f"[SCHED] Error enviando confirmación inmediata a {phone}: {exc}")
+
+    if not bool(getattr(cfg, "scheduled_calendar_link_enabled", False)):
+        try:
+            invite_filename, invite_bytes = _build_calendar_invite_bytes(
+                cfg=cfg,
+                name=name,
+                event_at=event_at,
+                note=note,
+            )
+            await _send_wha_file(
+                chat_id,
+                filename=invite_filename,
+                mimetype="text/calendar",
+                data=invite_bytes,
+                caption="📅 Adjuntamos un calendario para agendar el turno en tu celular.",
+            )
+        except Exception as exc:
+            sent_calendar_invite = False
+            calendar_invite_error = str(exc)
+            _log(f"[SCHED] Error enviando archivo ICS a {phone}: {exc}")
+
+    return {
+        "ok": True,
+        "created": [_sm_to_dict(sm) for sm in created],
+        "skipped": skipped,
+        "sent_confirmation": sent_confirmation,
+        "confirmation_error": confirmation_error,
+        "sent_calendar_invite": sent_calendar_invite,
+        "calendar_invite_error": calendar_invite_error,
+        "calendar_link": calendar_link,
+        "ticket_id": ticket_id or None,
+        "event_at": event_at.isoformat(),
+    }
 
 @app.put("/api/scheduled-messages/{sid}")
 async def update_scheduled(sid: int, req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2201,6 +2672,14 @@ async def get_config(db: Session = Depends(get_db)):
         p = _data_path(fname)
         r[key] = open(p, encoding="utf-8").read() if os.path.exists(p) else ""
     r["farewell_message"] = cfg.closed_message or ""
+    r["scheduled_confirmation_template"] = (
+        cfg.scheduled_confirmation_template or DEFAULT_SCHEDULED_CONFIRMATION_TEMPLATE
+    )
+    r["scheduled_reminder_template"] = (
+        cfg.scheduled_reminder_template or DEFAULT_SCHEDULED_REMINDER_TEMPLATE
+    )
+    r["scheduled_calendar_link_enabled"] = bool(getattr(cfg, "scheduled_calendar_link_enabled", False))
+    r["scheduled_calendar_link_base_url"] = getattr(cfg, "scheduled_calendar_link_base_url", None)
     return r
 
 @app.put("/api/config")
@@ -2214,7 +2693,9 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     for f in ["solution_name","opening_time","closing_time","sat_opening_time",
               "sat_closing_time","sat_enabled","sun_enabled","off_hours_enabled","off_hours_message",
               "country_filter_enabled","country_codes","area_filter_enabled","area_codes",
-              "ollama_url","ollama_model","admin_idle_timeout_sec","handoff_message"]:
+              "ollama_url","ollama_model","admin_idle_timeout_sec","handoff_message",
+              "scheduled_confirmation_template","scheduled_reminder_template",
+              "scheduled_calendar_link_enabled","scheduled_calendar_link_base_url"]:
         v = getattr(data, f, None)
         if v is not None: setattr(cfg, f, v)
     # farewell_message es alias de closed_message
@@ -2242,6 +2723,14 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     # Rellenar farewell_message en la respuesta a partir de closed_message
     resp = BotConfigResponse.from_orm(cfg)
     resp.farewell_message = cfg.closed_message
+    resp.scheduled_confirmation_template = (
+        cfg.scheduled_confirmation_template or DEFAULT_SCHEDULED_CONFIRMATION_TEMPLATE
+    )
+    resp.scheduled_reminder_template = (
+        cfg.scheduled_reminder_template or DEFAULT_SCHEDULED_REMINDER_TEMPLATE
+    )
+    resp.scheduled_calendar_link_enabled = bool(getattr(cfg, "scheduled_calendar_link_enabled", False))
+    resp.scheduled_calendar_link_base_url = getattr(cfg, "scheduled_calendar_link_base_url", None)
     return resp
 
 @app.get("/api/config/menu")
@@ -2309,6 +2798,86 @@ async def get_offhours_file(db: Session = Depends(get_db)):
         "off_hours_enabled": bool(getattr(cfg, "off_hours_enabled", False)),
         "off_hours_message": content,
     }
+
+
+@app.get("/calendar/invite/{invite_ref}.ics")
+async def download_calendar_invite(invite_ref: str, db: Session = Depends(get_db)):
+    ticket_ref = _clean_ticket_calendar_ref(invite_ref)
+    if ticket_ref:
+        main_row = (
+            db.query(ScheduledMessage)
+            .filter(
+                ScheduledMessage.ticket_id == ticket_ref,
+                ScheduledMessage.schedule_kind == "ticket_event",
+                ScheduledMessage.event_at.isnot(None),
+            )
+            .order_by(ScheduledMessage.created_at.desc(), ScheduledMessage.id.desc())
+            .first()
+        )
+        fallback_row = None
+        if not main_row:
+            fallback_row = (
+                db.query(ScheduledMessage)
+                .filter(
+                    ScheduledMessage.ticket_id == ticket_ref,
+                    ScheduledMessage.event_at.isnot(None),
+                )
+                .order_by(ScheduledMessage.created_at.desc(), ScheduledMessage.id.desc())
+                .first()
+            )
+        source_row = main_row or fallback_row
+        if source_row:
+            try:
+                event_at = datetime.fromisoformat(str(source_row.event_at))
+            except ValueError:
+                raise HTTPException(404, "Invitación no válida")
+
+            cfg = _get_cfg(db)
+            filename, content = _build_calendar_invite_bytes(
+                cfg=cfg,
+                name=str(source_row.name or "Recordatorio").strip(),
+                event_at=event_at,
+                note=str(getattr(source_row, "schedule_note", "") or "").strip(),
+            )
+            ticket_filename = _sanitize_filename(f"{ticket_ref}.ics", fallback=filename)
+            headers = {
+                "Content-Disposition": f'attachment; filename="{ticket_filename}"',
+                "Cache-Control": "private, max-age=3600",
+            }
+            return Response(content=content, media_type="text/calendar; charset=utf-8", headers=headers)
+
+    try:
+        payload = jwt.decode(invite_ref, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(404, "Invitación no válida")
+
+    if payload.get("sub") != "calendar_invite":
+        raise HTTPException(404, "Invitación no válida")
+
+    name = str(payload.get("name") or "Recordatorio").strip()
+    note = str(payload.get("note") or "").strip()
+    event_at_raw = str(payload.get("event_at") or "").strip()
+    tz_name = str(payload.get("tz") or "America/Argentina/Buenos_Aires").strip()
+
+    try:
+        event_at = datetime.fromisoformat(event_at_raw)
+    except ValueError:
+        raise HTTPException(404, "Invitación no válida")
+
+    cfg = BotConfig(
+        timezone=tz_name,
+    )
+    filename, content = _build_calendar_invite_bytes(
+        cfg=cfg,
+        name=name,
+        event_at=event_at,
+        note=note,
+    )
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "private, max-age=3600",
+    }
+    return Response(content=content, media_type="text/calendar; charset=utf-8", headers=headers)
 
 
 @app.post("/api/config/offhours/restore")
