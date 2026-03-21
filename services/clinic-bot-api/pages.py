@@ -1141,7 +1141,10 @@ def get_user_panel_page() -> str:
                             <div style="display:flex; gap:8px; flex-wrap:wrap;" id="ticketChatModalActions"></div>
                             <div style="font-size:0.78em; color:#94a3b8;">Seleccioná uno o más mensajes del chat para llevarlos al programado.</div>
                         </div>
-                        <button class="btn btn-primary btn-sm" id="ticketBtnSched" onclick="openTicketScheduleModal()">Agendar Programado</button>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                            <span id="ticketSchedSummary" style="display:none; background:rgba(100,116,139,0.2); border:1px solid rgba(148,163,184,0.25); color:#cbd5e1; border-radius:999px; padding:6px 10px; font-size:0.78em;"></span>
+                            <button class="btn btn-primary btn-sm" id="ticketBtnSched" onclick="handleTicketScheduleAction()">Agendar Programado</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2123,6 +2126,7 @@ def get_user_panel_page() -> str:
             let currentChatTicketId = "";
             let currentChatTicketNumber = "";
             let currentChatMenuBreadcrumb = "";
+            let currentChatScheduledTurno = "";
 
             function _formatTicketMessageDateTime(timestamp) {
                 const numericTs = Number(timestamp);
@@ -2148,6 +2152,57 @@ def get_user_panel_page() -> str:
                     return parts.slice(1).join(' -> ');
                 }
                 return parts.join(' -> ');
+            }
+
+            function _getTicketScheduledTurno(ticket) {
+                if (!ticket) return '';
+                if (ticket.scheduled_turno) return ticket.scheduled_turno;
+                if (!ticket.scheduled_event_at) return '';
+                const parsedDate = new Date(ticket.scheduled_event_at);
+                if (Number.isNaN(parsedDate.getTime())) return String(ticket.scheduled_event_at);
+                return parsedDate.toLocaleString('es-AR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+
+            function _syncTicketScheduleButton(ticket) {
+                const btn = document.getElementById('ticketBtnSched');
+                const summary = document.getElementById('ticketSchedSummary');
+                if (!btn || !summary) return;
+
+                const hasScheduled = Boolean(ticket && ticket.has_scheduled_message);
+                const turno = _getTicketScheduledTurno(ticket) || currentChatScheduledTurno || '';
+
+                if (hasScheduled) {
+                    btn.textContent = 'Cancelar Programado';
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-danger');
+                    summary.textContent = turno ? `Turno: ${turno}` : 'Turno programado';
+                    summary.style.display = 'inline-flex';
+                } else {
+                    btn.textContent = 'Agendar Programado';
+                    btn.classList.remove('btn-danger');
+                    btn.classList.add('btn-primary');
+                    summary.textContent = '';
+                    summary.style.display = 'none';
+                }
+            }
+
+            async function handleTicketScheduleAction() {
+                const ticket = currentTickets.find(x => x.id === currentChatTicketId);
+                if (!ticket) return;
+
+                if (ticket.has_scheduled_message) {
+                    if (!confirm('¿Cancelar el programado de este ticket?')) return;
+                    await actionTicket('cancel_schedule', { keepModalOpen: true });
+                    return;
+                }
+
+                openTicketScheduleModal();
             }
 
             async function loadTickets() {
@@ -2182,7 +2237,7 @@ def get_user_panel_page() -> str:
                     let statusLabel = t.status.toUpperCase();
                     if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
 
-                    const schedBadge = t.has_scheduled_message ? '<span style="background: rgba(139,92,246,0.2); color: #c4b5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
+                    const schedBadge = t.has_scheduled_message ? '<span style="background: rgba(100,116,139,0.2); color: #cbd5e1; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
 
                     html += `
                         <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
@@ -2208,6 +2263,7 @@ def get_user_panel_page() -> str:
                 currentChatTicketId = tid;
                 currentChatTicketNumber = t.ticket_id || '';
                 currentChatMenuBreadcrumb = t.menu_breadcrumb || t.menu_section || '';
+                currentChatScheduledTurno = _getTicketScheduledTurno(t);
 
                 document.getElementById('ticketChatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
                 document.getElementById('ticketChatModalTicket').textContent = t.ticket_id || '-';
@@ -2224,6 +2280,7 @@ def get_user_panel_page() -> str:
                     }
                 }
                 document.getElementById('ticketChatModalActions').innerHTML = actionsHtml;
+                _syncTicketScheduleButton(t);
 
                 try {
                     const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
@@ -2265,7 +2322,10 @@ def get_user_panel_page() -> str:
                 }
             }
 
-            function closeTicketChatModal() { document.getElementById('ticketChatModal').classList.remove('show'); }
+            function closeTicketChatModal() {
+                currentChatScheduledTurno = "";
+                document.getElementById('ticketChatModal').classList.remove('show');
+            }
 
             function _escapeSchedMsgAttr(text) {
                 const tempDiv = document.createElement('div');
@@ -2281,7 +2341,7 @@ def get_user_panel_page() -> str:
                 return tempDiv.textContent.trim();
             }
 
-            async function actionTicket(action) {
+            async function actionTicket(action, options = {}) {
                 if(action === 'delete' && !confirm("¿Seguro que quieres borrar este ticket?")) return;
                 try {
                     const res = await fetch('/api/tickets/action', {
@@ -2293,10 +2353,27 @@ def get_user_panel_page() -> str:
                         body: JSON.stringify({ action: action, id: currentChatTicketId })
                     });
                     if(res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        if (action === 'cancel_schedule') {
+                            const ticket = currentTickets.find(x => x.id === currentChatTicketId);
+                            if (ticket) {
+                                ticket.has_scheduled_message = false;
+                                ticket.scheduled_turno = null;
+                                ticket.scheduled_event_at = null;
+                            }
+                            currentChatScheduledTurno = "";
+                            _syncTicketScheduleButton(ticket);
+                            loadTickets();
+                            if (typeof loadSchedList === 'function') loadSchedList();
+                            showToast((data.cancelled_count || 0) > 0 ? 'Programado cancelado' : 'No había programados activos', 'info');
+                            if (!options.keepModalOpen) closeTicketChatModal();
+                            return;
+                        }
                         closeTicketChatModal();
                         loadTickets();
                     } else {
-                        alert("Error ejecutando accion");
+                        const data = await res.json().catch(() => ({}));
+                        alert(data.detail || "Error ejecutando accion");
                     }
                 } catch(e){ console.error(e); }
             }
@@ -2343,6 +2420,14 @@ def get_user_panel_page() -> str:
                     if(res.ok) {
                         const data = await res.json();
                         closeTicketScheduleModal();
+                        const ticket = currentTickets.find(x => x.id === currentChatTicketId);
+                        if (ticket) {
+                            ticket.has_scheduled_message = true;
+                            ticket.scheduled_turno = data.scheduled_turno || null;
+                            ticket.scheduled_event_at = data.event_at || null;
+                            currentChatScheduledTurno = ticket.scheduled_turno || '';
+                        }
+                        _syncTicketScheduleButton(ticket);
                         loadTickets(); // refresh to show scheduled message badge
                         loadSchedList();
                         const baseMsg = `${data.created.length} aviso(s) programado(s)`;
@@ -4266,7 +4351,10 @@ def get_dashboard_page() -> str:
                             <div style="display: flex; gap: 10px;" id="adminChatModalActions"></div>
                             <div style="font-size:0.78em; color:#94a3b8;">Seleccioná mensajes del chat para copiarlos al agendado.</div>
                         </div>
-                        <button class="btn btn-primary btn-sm" id="btnAdminSched" onclick="openAdminTicketScheduleModal()">Agendar Programado</button>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                            <span id="adminTicketSchedSummary" style="display:none; background:rgba(100,116,139,0.2); border:1px solid rgba(148,163,184,0.25); color:#cbd5e1; border-radius:999px; padding:6px 10px; font-size:0.78em;"></span>
+                            <button class="btn btn-primary btn-sm" id="btnAdminSched" onclick="handleAdminTicketScheduleAction()">Agendar Programado</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -5005,6 +5093,7 @@ def get_dashboard_page() -> str:
             let adminCurrentChatTicketId = '';
             let adminCurrentChatTicketNumber = '';
             let adminCurrentChatMenuBreadcrumb = '';
+            let adminCurrentChatScheduledTurno = '';
 
             function _formatAdminTicketMessageDateTime(timestamp) {
                 const numericTs = Number(timestamp);
@@ -5018,6 +5107,57 @@ def get_dashboard_page() -> str:
                     hour: '2-digit',
                     minute: '2-digit'
                 });
+            }
+
+            function _getAdminTicketScheduledTurno(ticket) {
+                if (!ticket) return '';
+                if (ticket.scheduled_turno) return ticket.scheduled_turno;
+                if (!ticket.scheduled_event_at) return '';
+                const parsedDate = new Date(ticket.scheduled_event_at);
+                if (Number.isNaN(parsedDate.getTime())) return String(ticket.scheduled_event_at);
+                return parsedDate.toLocaleString('es-AR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+
+            function _syncAdminTicketScheduleButton(ticket) {
+                const btn = document.getElementById('btnAdminSched');
+                const summary = document.getElementById('adminTicketSchedSummary');
+                if (!btn || !summary) return;
+
+                const hasScheduled = Boolean(ticket && ticket.has_scheduled_message);
+                const turno = _getAdminTicketScheduledTurno(ticket) || adminCurrentChatScheduledTurno || '';
+
+                if (hasScheduled) {
+                    btn.textContent = 'Cancelar Programado';
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-danger');
+                    summary.textContent = turno ? `Turno: ${turno}` : 'Turno programado';
+                    summary.style.display = 'inline-flex';
+                } else {
+                    btn.textContent = 'Agendar Programado';
+                    btn.classList.remove('btn-danger');
+                    btn.classList.add('btn-primary');
+                    summary.textContent = '';
+                    summary.style.display = 'none';
+                }
+            }
+
+            async function handleAdminTicketScheduleAction() {
+                const ticket = adminCurrentTickets.find(x => x.id === adminCurrentChatTicketId);
+                if (!ticket) return;
+
+                if (ticket.has_scheduled_message) {
+                    if (!confirm('¿Cancelar el programado de este ticket?')) return;
+                    await adminActionTicket('cancel_schedule', { keepModalOpen: true });
+                    return;
+                }
+
+                openAdminTicketScheduleModal();
             }
 
             function _adminTicketScheduleTitleFromBreadcrumb(breadcrumb) {
@@ -5069,7 +5209,7 @@ def get_dashboard_page() -> str:
                     if (t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
 
                     let schedBadge = t.has_scheduled_message
-                        ? '<span style="background:rgba(139,92,246,0.2);color:#c4b5fd;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:8px;">\u23F3 Programado</span>'
+                        ? '<span style="background:rgba(100,116,139,0.2);color:#cbd5e1;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:8px;">\u23F3 Programado</span>'
                         : '';
 
                     html += `
@@ -5094,6 +5234,7 @@ def get_dashboard_page() -> str:
                 adminCurrentChatTicketId = tid;
                 adminCurrentChatTicketNumber = t.ticket_id || '';
                 adminCurrentChatMenuBreadcrumb = t.menu_breadcrumb || t.menu_section || '';
+                adminCurrentChatScheduledTurno = _getAdminTicketScheduledTurno(t);
 
                 document.getElementById('adminChatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
                 document.getElementById('adminChatContent').innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">Cargando mensajes...</div>';
@@ -5106,6 +5247,7 @@ def get_dashboard_page() -> str:
                     actionsHtml += `<button class="btn btn-danger btn-sm" onclick="adminActionTicket('delete')">Borrar</button>`;
                 }
                 document.getElementById('adminChatModalActions').innerHTML = actionsHtml;
+                _syncAdminTicketScheduleButton(t);
 
                 try {
                     const res = await fetch(`/api/human-mode/messages/${encodeURIComponent(t.phone_number)}`, {
@@ -5147,9 +5289,12 @@ def get_dashboard_page() -> str:
                 }
             }
 
-            function closeAdminChatModal() { document.getElementById('adminChatModal').classList.remove('show'); }
+            function closeAdminChatModal() {
+                adminCurrentChatScheduledTurno = '';
+                document.getElementById('adminChatModal').classList.remove('show');
+            }
 
-            async function adminActionTicket(action) {
+            async function adminActionTicket(action, options = {}) {
                 if (action === 'delete' && !confirm('\u00bfSeguro que quieres borrar este ticket?')) return;
                 try {
                     const res = await fetch('/api/tickets/action', {
@@ -5157,8 +5302,30 @@ def get_dashboard_page() -> str:
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                         body: JSON.stringify({ action: action, id: adminCurrentChatTicketId })
                     });
-                    if (res.ok) { closeAdminChatModal(); loadAdminTickets(); }
-                    else        alert('Error ejecutando accion');
+                    if (res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        if (action === 'cancel_schedule') {
+                            const ticket = adminCurrentTickets.find(x => x.id === adminCurrentChatTicketId);
+                            if (ticket) {
+                                ticket.has_scheduled_message = false;
+                                ticket.scheduled_turno = null;
+                                ticket.scheduled_event_at = null;
+                            }
+                            adminCurrentChatScheduledTurno = '';
+                            _syncAdminTicketScheduleButton(ticket);
+                            loadAdminTickets();
+                            if (typeof loadAdminSchedList === 'function') loadAdminSchedList();
+                            showToast((data.cancelled_count || 0) > 0 ? 'Programado cancelado' : 'No había programados activos', 'info');
+                            if (!options.keepModalOpen) closeAdminChatModal();
+                            return;
+                        }
+                        closeAdminChatModal();
+                        loadAdminTickets();
+                    }
+                    else {
+                        const data = await res.json().catch(() => ({}));
+                        alert(data.detail || 'Error ejecutando accion');
+                    }
                 } catch(e) { console.error(e); }
             }
 
@@ -5199,6 +5366,14 @@ def get_dashboard_page() -> str:
                     if (res.ok) {
                         const data = await res.json();
                         closeAdminTicketScheduleModal();
+                        const ticket = adminCurrentTickets.find(x => x.id === adminCurrentChatTicketId);
+                        if (ticket) {
+                            ticket.has_scheduled_message = true;
+                            ticket.scheduled_turno = data.scheduled_turno || null;
+                            ticket.scheduled_event_at = data.event_at || null;
+                            adminCurrentChatScheduledTurno = ticket.scheduled_turno || '';
+                        }
+                        _syncAdminTicketScheduleButton(ticket);
                         loadAdminTickets();
                         loadAdminSchedList();
                         const baseMsg = `${data.created.length} aviso(s) programado(s)`;
