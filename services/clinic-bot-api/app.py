@@ -729,6 +729,129 @@ def _build_scheduled_template_context(
         "CALENDAR_LINK_BLOQUE": f"📅 Agendalo en tu celular:\n{cleaned_calendar_link}" if cleaned_calendar_link else "",
     }
 
+
+def _parse_scheduled_event_at(value: str | None) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _scheduled_turno_label(*, event_at: str | None = None, send_date: str | None = None, send_time: str | None = None) -> str | None:
+    parsed = _parse_scheduled_event_at(event_at)
+    if parsed is not None:
+        return parsed.strftime("%d/%m/%Y %H:%M")
+
+    raw_date = str(send_date or "").strip()
+    raw_time = str(send_time or "").strip()
+    if raw_date and raw_time:
+        try:
+            parsed = datetime.strptime(f"{raw_date} {raw_time}", "%Y-%m-%d %H:%M")
+            return parsed.strftime("%d/%m/%Y %H:%M")
+        except ValueError:
+            return f"{raw_date} {raw_time}"
+    return None
+
+
+def _phone_variants(phone: str | None) -> set[str]:
+    variants: set[str] = set()
+    raw_value = str(phone or "").strip()
+    if not raw_value:
+        return variants
+
+    for raw_phone in raw_value.split(","):
+        candidate = raw_phone.strip()
+        if not candidate:
+            continue
+        variants.add(candidate)
+        if "@c.us" in candidate:
+            candidate = candidate.split("@", 1)[0].strip()
+            if candidate:
+                variants.add(candidate)
+        normalized = _normalize_phone(candidate)
+        if normalized:
+            variants.add(normalized)
+    return variants
+
+
+def _build_ticket_schedule_summary(rows: list[ScheduledMessage]) -> dict[str, Any] | None:
+    if not rows:
+        return None
+
+    def _row_sort_key(sm: ScheduledMessage):
+        kind_priority = 0 if getattr(sm, "schedule_kind", "") == "ticket_event" else 1
+        parsed = _parse_scheduled_event_at(getattr(sm, "event_at", None))
+        if parsed is None:
+            raw_date = str(getattr(sm, "send_date", "") or "").strip()
+            raw_time = str(getattr(sm, "send_time", "") or "").strip()
+            if raw_date and raw_time:
+                try:
+                    parsed = datetime.strptime(f"{raw_date} {raw_time}", "%Y-%m-%d %H:%M")
+                except ValueError:
+                    parsed = None
+        return (
+            kind_priority,
+            parsed or datetime.max,
+            getattr(sm, "id", 0),
+        )
+
+    primary = sorted(rows, key=_row_sort_key)[0]
+    scheduled_event_at = str(getattr(primary, "event_at", "") or "").strip() or None
+    return {
+        "scheduled_event_at": scheduled_event_at,
+        "scheduled_turno": _scheduled_turno_label(
+            event_at=scheduled_event_at,
+            send_date=getattr(primary, "send_date", None),
+            send_time=getattr(primary, "send_time", None),
+        ),
+        "scheduled_count": len(rows),
+    }
+
+
+def _get_active_ticket_schedule_summary(db: Session, *, phone_number: str = "", ticket_id: str = "") -> dict[str, Any] | None:
+    ticket_ref = _clean_ticket_calendar_ref(ticket_id)
+    phone_keys = _phone_variants(phone_number)
+    base_query = db.query(ScheduledMessage).filter(
+        ScheduledMessage.is_active == True,
+        ScheduledMessage.schedule_kind.in_(("ticket_event", "ticket_reminder")),
+    )
+
+    rows: list[ScheduledMessage] = []
+    if ticket_ref:
+        rows = base_query.filter(ScheduledMessage.ticket_id == ticket_ref).all()
+    if not rows and phone_keys:
+        rows = [
+            sm for sm in base_query.all()
+            if _phone_variants(getattr(sm, "phone_number", None)) & phone_keys
+        ]
+    return _build_ticket_schedule_summary(rows)
+
+
+def _cancel_active_ticket_schedule(db: Session, *, phone_number: str = "", ticket_id: str = "") -> int:
+    ticket_ref = _clean_ticket_calendar_ref(ticket_id)
+    phone_keys = _phone_variants(phone_number)
+    base_query = db.query(ScheduledMessage).filter(
+        ScheduledMessage.schedule_kind.in_(("ticket_event", "ticket_reminder")),
+    )
+
+    rows: list[ScheduledMessage] = []
+    if ticket_ref:
+        rows = base_query.filter(ScheduledMessage.ticket_id == ticket_ref).all()
+    if not rows and phone_keys:
+        rows = [
+            sm for sm in base_query.all()
+            if _phone_variants(getattr(sm, "phone_number", None)) & phone_keys
+        ]
+
+    for sm in rows:
+        db.delete(sm)
+    if rows:
+        db.commit()
+    return len(rows)
+
 def _read_menu() -> str:
     menu_path = CLINIC_KB_PATH if os.path.exists(CLINIC_KB_PATH) else _data_path("MenuP.MD")
     try:
@@ -1527,6 +1650,34 @@ def _start_human_mode_silent(db: Session, chat_id: str):
     _logc(f"[HUMAN] Activado por operador {chat_id} | expire={row.human_mode_expire}")
 
 
+def _resume_ticket_from_history(db: Session, hist: TicketHistory) -> ConversationState:
+    """Reabre un ticket histórico sobre el mismo chat, sin generar uno nuevo."""
+    row = db.query(ConversationState).filter(
+        ConversationState.phone_number == hist.phone_number
+    ).first()
+    if not row:
+        row = ConversationState(phone_number=hist.phone_number)
+        db.add(row)
+
+    now = datetime.utcnow()
+    row.human_mode = True
+    row.human_mode_expire = now + timedelta(hours=12)
+    row.handoff_active = True
+    row.current_state = "IN_AGENT"
+    row.ticket_status = "pendiente"
+    row.ticket_id = hist.ticket_id or row.ticket_id
+    row.handoff_started_at = hist.opened_at or row.handoff_started_at or now
+    row.last_message_at = now
+    row.closed_at = None
+    if hist.menu_section:
+        row.last_bot_menu = hist.menu_section
+    if hist.menu_breadcrumb:
+        row.menu_breadcrumb = hist.menu_breadcrumb
+    db.commit()
+    _logc(f"[HUMAN] Ticket retomado {row.phone_number} | ticket={row.ticket_id}")
+    return row
+
+
 def _touch_human_mode_timeout(db: Session, chat_id: str):
     """Renueva timeout de modo humano por actividad de chat."""
     row = db.query(ConversationState).filter(
@@ -2117,13 +2268,15 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
         history_rows = db.query(TicketHistory).all()
     else:
         history_rows = db.query(TicketHistory).filter(TicketHistory.is_deleted == False).all()
-        
-    scheduled_pn = {sm.phone_number for sm in db.query(ScheduledMessage.phone_number).filter(ScheduledMessage.is_active == True).all()}
     
     tickets = []
     
     for r in active_rows:
-        has_sm = r.phone_number in scheduled_pn
+        schedule_summary = _get_active_ticket_schedule_summary(
+            db,
+            phone_number=r.phone_number,
+            ticket_id=r.ticket_id or "",
+        )
         tickets.append({
             "id": f"act_{r.id}",
             "ticket_id": r.ticket_id,
@@ -2131,7 +2284,9 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
             "status": getattr(r, "ticket_status", "pendiente"),
             "is_deleted": False,
             "deleted_by": None,
-            "has_scheduled_message": has_sm,
+            "has_scheduled_message": bool(schedule_summary),
+            "scheduled_event_at": schedule_summary.get("scheduled_event_at") if schedule_summary else None,
+            "scheduled_turno": schedule_summary.get("scheduled_turno") if schedule_summary else None,
             "menu_section": r.last_bot_menu,
             "menu_breadcrumb": getattr(r, "menu_breadcrumb", r.last_bot_menu),
             "opened_at": r.handoff_started_at.isoformat() if r.handoff_started_at else None,
@@ -2141,7 +2296,11 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
         })
         
     for r in history_rows:
-        has_sm = r.phone_number in scheduled_pn
+        schedule_summary = _get_active_ticket_schedule_summary(
+            db,
+            phone_number=r.phone_number,
+            ticket_id=r.ticket_id or "",
+        )
         tickets.append({
             "id": f"hist_{r.id}",
             "ticket_id": r.ticket_id,
@@ -2149,7 +2308,9 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
             "status": getattr(r, "ticket_status", "cerrado"),
             "is_deleted": getattr(r, "is_deleted", False),
             "deleted_by": getattr(r, "deleted_by", None),
-            "has_scheduled_message": has_sm,
+            "has_scheduled_message": bool(schedule_summary),
+            "scheduled_event_at": schedule_summary.get("scheduled_event_at") if schedule_summary else None,
+            "scheduled_turno": schedule_summary.get("scheduled_turno") if schedule_summary else None,
             "menu_section": r.menu_section,
             "menu_breadcrumb": getattr(r, "menu_breadcrumb", r.menu_section),
             "opened_at": r.opened_at.isoformat() if r.opened_at else None,
@@ -2196,7 +2357,7 @@ async def post_ticket_action(req: Request, cu=Depends(get_current_user), db: Ses
         if target_type == "hist":
             hist = db.query(TicketHistory).filter(TicketHistory.id == row_id).first()
             if hist:
-                _start_human_mode_silent(db, hist.phone_number)
+                _resume_ticket_from_history(db, hist)
                 hist.is_deleted = True
                 hist.deleted_by = "system_resume"
                 db.commit()
@@ -2216,6 +2377,25 @@ async def post_ticket_action(req: Request, cu=Depends(get_current_user), db: Ses
             if hist:
                 hist.ticket_status = "confirmado"
                 db.commit()
+    elif action == "cancel_schedule":
+        cancelled = 0
+        if target_type == "act":
+            r = db.query(ConversationState).filter(ConversationState.id == row_id).first()
+            if r:
+                cancelled = _cancel_active_ticket_schedule(
+                    db,
+                    phone_number=r.phone_number,
+                    ticket_id=r.ticket_id or "",
+                )
+        else:
+            hist = db.query(TicketHistory).filter(TicketHistory.id == row_id).first()
+            if hist:
+                cancelled = _cancel_active_ticket_schedule(
+                    db,
+                    phone_number=hist.phone_number,
+                    ticket_id=hist.ticket_id or "",
+                )
+        return {"ok": True, "cancelled_count": cancelled}
     return {"ok": True}
 
 
@@ -2316,6 +2496,16 @@ async def create_ticket_schedule_reminder(req: Request, cu=Depends(get_current_u
     now_local = datetime.now(_get_cfg_timezone(cfg))
     if event_at <= now_local:
         raise HTTPException(400, "La fecha y hora del turno debe ser futura")
+
+    existing_schedule = _get_active_ticket_schedule_summary(
+        db,
+        phone_number=normalized_phone,
+        ticket_id=ticket_id or "",
+    )
+    if existing_schedule:
+        turno_existente = existing_schedule.get("scheduled_turno") or "ese turno"
+        raise HTTPException(409, f"Este ticket ya tiene un programado activo para {turno_existente}. Cancelalo antes de crear otro.")
+
     calendar_link = _build_calendar_link(
         req,
         cfg,
@@ -2336,7 +2526,7 @@ async def create_ticket_schedule_reminder(req: Request, cu=Depends(get_current_u
             event_at,
             aviso="Horario del turno",
             note=note,
-            calendar_link=calendar_link,
+            calendar_link="",
         ),
         append_note_if_missing=True,
     )
@@ -2383,7 +2573,7 @@ async def create_ticket_schedule_reminder(req: Request, cu=Depends(get_current_u
                 event_at,
                 aviso=aviso_label,
                 note=note,
-                calendar_link=calendar_link,
+                calendar_link="",
             ),
             append_note_if_missing=True,
         )
@@ -2466,6 +2656,7 @@ async def create_ticket_schedule_reminder(req: Request, cu=Depends(get_current_u
         "calendar_link": calendar_link,
         "ticket_id": ticket_id or None,
         "event_at": event_at.isoformat(),
+        "scheduled_turno": event_at.strftime("%d/%m/%Y %H:%M"),
     }
 
 @app.put("/api/scheduled-messages/{sid}")
