@@ -1141,14 +1141,14 @@ def get_user_panel_page() -> str:
                             <div style="display:flex; gap:8px; flex-wrap:wrap;" id="ticketChatModalActions"></div>
                             <div style="font-size:0.78em; color:#94a3b8;">Seleccioná uno o más mensajes del chat para llevarlos al programado.</div>
                         </div>
-                        <button class="btn btn-primary btn-sm" id="ticketBtnSched" onclick="openTicketScheduleModal()">Agendar Mensaje</button>
+                        <button class="btn btn-primary btn-sm" id="ticketBtnSched" onclick="openTicketScheduleModal()">Agendar Programado</button>
                     </div>
                 </div>
             </div>
             
             <div id="ticketScheduleModal" class="modal">
                 <div class="modal-content">
-                    <h3 style="margin-top:0;">Agendar Mensaje</h3>
+                    <h3 style="margin-top:0;">Agendar Programado</h3>
                     <div class="form-group" style="text-align: left;">
                         <label>Teléfono</label>
                         <input type="text" id="ticketSchedPhone" readonly style="opacity: 0.7;">
@@ -1158,12 +1158,25 @@ def get_user_panel_page() -> str:
                         <input type="text" id="ticketSchedName" placeholder="Ej: Recordatorio Turno">
                     </div>
                     <div class="form-group" style="text-align: left;">
-                        <label>Fecha y Hora</label>
-                        <input type="datetime-local" id="ticketSchedTime">
+                        <label>Fecha y Hora del Turno</label>
+                        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                            <input type="datetime-local" id="ticketSchedTime" style="flex:1; min-width:220px;">
+                            <label style="display:flex; align-items:center; gap:6px; color:#cbd5e1; font-size:0.88em; white-space:nowrap;">
+                                <input type="checkbox" id="ticketSchedDayBefore" checked style="width:auto;">
+                                1 día antes
+                            </label>
+                            <label style="display:flex; align-items:center; gap:6px; color:#cbd5e1; font-size:0.88em; white-space:nowrap;">
+                                <input type="checkbox" id="ticketSchedHourBefore" checked style="width:auto;">
+                                1 hora antes
+                            </label>
+                        </div>
+                    </div>
+                    <div style="text-align:left; background:rgba(15,23,42,0.6); border:1px solid rgba(148,163,184,0.18); border-radius:12px; padding:14px 16px; margin-top:6px; color:#94a3b8; font-size:0.84em; line-height:1.5;">
+                        Al guardar, se crea en <strong style="color:#e2e8f0;">Programados</strong> el envío principal para la fecha del turno y, además, solo los avisos que estén tildados. También se envía una confirmación inmediata al paciente.
                     </div>
                     <div class="form-group" style="text-align: left;">
-                        <label>Mensaje</label>
-                        <textarea id="ticketSchedMessage" rows="4" placeholder="Contenido del mensaje..."></textarea>
+                        <label>Nota del Programado</label>
+                        <textarea id="ticketSchedNote" rows="4" placeholder="Detalle del turno o mensaje seleccionado del chat..."></textarea>
                     </div>
                     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
                         <button class="btn btn-secondary" onclick="closeTicketScheduleModal()">Cancelar</button>
@@ -2108,6 +2121,7 @@ def get_user_panel_page() -> str:
             let currentTickets = [];
             let currentChatPhone = "";
             let currentChatTicketId = "";
+            let currentChatTicketNumber = "";
             let currentChatMenuBreadcrumb = "";
 
             function _formatTicketMessageDateTime(timestamp) {
@@ -2192,6 +2206,7 @@ def get_user_panel_page() -> str:
 
                 currentChatPhone = t.phone_number;
                 currentChatTicketId = tid;
+                currentChatTicketNumber = t.ticket_id || '';
                 currentChatMenuBreadcrumb = t.menu_breadcrumb || t.menu_section || '';
 
                 document.getElementById('ticketChatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
@@ -2290,7 +2305,9 @@ def get_user_panel_page() -> str:
                 document.getElementById('ticketSchedPhone').value = currentChatPhone;
                 document.getElementById('ticketSchedName').value = _ticketScheduleTitleFromBreadcrumb(currentChatMenuBreadcrumb);
                 document.getElementById('ticketSchedTime').value = '';
-                document.getElementById('ticketSchedMessage').value = _getSelectedSchedChatText('#ticketChatMessages');
+                document.getElementById('ticketSchedDayBefore').checked = true;
+                document.getElementById('ticketSchedHourBefore').checked = true;
+                document.getElementById('ticketSchedNote').value = _getSelectedSchedChatText('#ticketChatMessages');
                 document.getElementById('ticketScheduleModal').classList.add('show');
             }
 
@@ -2298,21 +2315,16 @@ def get_user_panel_page() -> str:
 
             async function saveTicketScheduledMessage() {
                 const phone = document.getElementById('ticketSchedPhone').value;
-                const name = document.getElementById('ticketSchedName').value;
-                const time = document.getElementById('ticketSchedTime').value;
-                const msg = document.getElementById('ticketSchedMessage').value;
-                let send_time = '';
-                let send_date = null;
-                if (time) {
-                    const parts = time.split('T');
-                    send_date = parts[0] || null;
-                    send_time = parts[1] || '';
-                }
-                
-                if(!name || !send_time || !msg) { alert("Completar todos los campos"); return; }
+                const name = document.getElementById('ticketSchedName').value.trim();
+                const eventAt = document.getElementById('ticketSchedTime').value.trim();
+                const remindDayBefore = document.getElementById('ticketSchedDayBefore').checked;
+                const remindHourBefore = document.getElementById('ticketSchedHourBefore').checked;
+                const note = document.getElementById('ticketSchedNote').value.trim();
+
+                if(!name || !eventAt) { alert("Completar nombre y fecha del turno"); return; }
                 
                 try {
-                    const res = await fetch('/api/scheduled-messages', {
+                    const res = await fetch('/api/tickets/schedule-reminder', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -2321,18 +2333,31 @@ def get_user_panel_page() -> str:
                         body: JSON.stringify({
                             name: name,
                             phone_number: phone,
-                            send_time: send_time,
-                            send_date: send_date,
-                            message: msg,
-                            days_of_week: "1,2,3,4,5,6,7",
-                            is_active: true
+                            ticket_id: currentChatTicketNumber,
+                            event_at: eventAt,
+                            note: note,
+                            remind_day_before: remindDayBefore,
+                            remind_hour_before: remindHourBefore
                         })
                     });
                     if(res.ok) {
+                        const data = await res.json();
                         closeTicketScheduleModal();
                         loadTickets(); // refresh to show scheduled message badge
                         loadSchedList();
-                        showToast("Mensaje agendado");
+                        const baseMsg = `${data.created.length} aviso(s) programado(s)`;
+                        if (data.sent_confirmation === false) {
+                            showToast(baseMsg + ' · confirmación pendiente', 'info');
+                        } else if (data.calendar_link) {
+                            showToast(baseMsg + ' · con link calendario');
+                        } else if (data.sent_calendar_invite === false) {
+                            showToast(baseMsg + ' · sin archivo calendario', 'info');
+                        } else {
+                            showToast(baseMsg);
+                        }
+                    } else {
+                        const data = await res.json();
+                        alert(data.detail || 'No se pudo programar el recordatorio');
                     }
                 } catch(e) { console.error(e); }
             }
@@ -4241,7 +4266,7 @@ def get_dashboard_page() -> str:
                             <div style="display: flex; gap: 10px;" id="adminChatModalActions"></div>
                             <div style="font-size:0.78em; color:#94a3b8;">Seleccioná mensajes del chat para copiarlos al agendado.</div>
                         </div>
-                        <button class="btn btn-primary btn-sm" id="btnAdminSched" onclick="openAdminTicketScheduleModal()">Agendar Mensaje</button>
+                        <button class="btn btn-primary btn-sm" id="btnAdminSched" onclick="openAdminTicketScheduleModal()">Agendar Programado</button>
                     </div>
                 </div>
             </div>
@@ -4249,7 +4274,7 @@ def get_dashboard_page() -> str:
             <!-- Modal Agendar Admin Ticket -->
             <div id="adminTicketSchedModal" class="modal">
                 <div class="modal-content">
-                    <h3 style="margin-top:0;">Agendar Mensaje</h3>
+                    <h3 style="margin-top:0;">Agendar Programado</h3>
                     <div class="form-group" style="text-align: left;">
                         <label>Teléfono</label>
                         <input type="text" id="adminSchedTicketPhone" readonly style="opacity: 0.7;">
@@ -4259,12 +4284,25 @@ def get_dashboard_page() -> str:
                         <input type="text" id="adminSchedTicketName" placeholder="Ej: Recordatorio Turno">
                     </div>
                     <div class="form-group" style="text-align: left;">
-                        <label>Fecha y Hora</label>
-                        <input type="datetime-local" id="adminSchedTicketTime">
+                        <label>Fecha y Hora del Turno</label>
+                        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                            <input type="datetime-local" id="adminSchedTicketTime" style="flex:1; min-width:220px;">
+                            <label style="display:flex; align-items:center; gap:6px; color:#cbd5e1; font-size:0.88em; white-space:nowrap;">
+                                <input type="checkbox" id="adminSchedDayBefore" checked style="width:auto;">
+                                1 día antes
+                            </label>
+                            <label style="display:flex; align-items:center; gap:6px; color:#cbd5e1; font-size:0.88em; white-space:nowrap;">
+                                <input type="checkbox" id="adminSchedHourBefore" checked style="width:auto;">
+                                1 hora antes
+                            </label>
+                        </div>
+                    </div>
+                    <div style="text-align:left; background:rgba(15,23,42,0.6); border:1px solid rgba(148,163,184,0.18); border-radius:12px; padding:14px 16px; margin-top:6px; color:#94a3b8; font-size:0.84em; line-height:1.5;">
+                        Al guardar, se crea en <strong style="color:#e2e8f0;">Programados</strong> el envío principal para la fecha del turno y, además, solo los avisos que estén tildados. También se envía una confirmación inmediata al paciente.
                     </div>
                     <div class="form-group" style="text-align: left;">
-                        <label>Mensaje</label>
-                        <textarea id="adminSchedTicketMessage" rows="4" placeholder="Contenido del mensaje..."></textarea>
+                        <label>Nota del Programado</label>
+                        <textarea id="adminSchedTicketNote" rows="4" placeholder="Detalle del turno o mensaje seleccionado del chat..."></textarea>
                     </div>
                     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
                         <button class="btn btn-secondary" onclick="closeAdminTicketScheduleModal()">Cancelar</button>
@@ -4417,6 +4455,40 @@ def get_dashboard_page() -> str:
                                 <div class="form-group">
                                     <label>Mensaje de Despedida</label>
                                     <textarea id="farewellMessage" rows="5" placeholder="Gracias por contactarte. ¡Que tengas un buen día! 😊"></textarea>
+                                </div>
+                                <div class="buttons-group">
+                                    <button type="submit" class="btn btn-primary">💾 Guardar Cierre</button>
+                                </div>
+                            </div>
+
+                            <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                <h3 style="color: #f1f5f9; margin-bottom: 12px;">📅 Recordatorios Programados</h3>
+                                <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
+                                    Variables disponibles: <strong>{RECORDATORIO}</strong>, <strong>{FECHA}</strong>, <strong>{HORA}</strong>, <strong>{TURNO}</strong>, <strong>{AVISO}</strong>, <strong>{NOTA}</strong>, <strong>{NOTA_BLOQUE}</strong>, <strong>{CALENDAR_LINK}</strong> y <strong>{CALENDAR_LINK_BLOQUE}</strong>.
+                                </p>
+                                <div class="form-group">
+                                    <label>Mensaje de Confirmación Inmediata</label>
+                                    <textarea id="scheduledConfirmationTemplate" rows="6" placeholder="Mensaje que se envía al guardar el recordatorio..."></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>Mensaje para Avisos Automáticos</label>
+                                    <textarea id="scheduledReminderTemplate" rows="6" placeholder="Mensaje que se enviará 1 día antes y 1 hora antes..."></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label style="display:flex; align-items:center; gap:8px;">
+                                        <input type="checkbox" id="scheduledCalendarLinkEnabled" style="width:auto;">
+                                        Incluir link descargable para agendar en el celular
+                                    </label>
+                                    <p style="color:#94a3b8;font-size:0.85em;margin:8px 0 0;">
+                                        Si lo activás, el mensaje puede incluir un link al archivo <strong>.ics</strong>. Para enviarlo afuera del servidor, definí una URL pública base.
+                                    </p>
+                                </div>
+                                <div class="form-group">
+                                    <label>URL Pública Base para el Link (opcional)</label>
+                                    <input type="text" id="scheduledCalendarLinkBaseUrl" placeholder="Ej: https://bot.midominio.com">
+                                </div>
+                                <div class="buttons-group">
+                                    <button type="submit" class="btn btn-primary">💾 Guardar Recordatorios</button>
                                 </div>
                             </div>
                         </form>
@@ -4931,6 +5003,7 @@ def get_dashboard_page() -> str:
             let adminCurrentTickets = [];
             let adminCurrentChatPhone = '';
             let adminCurrentChatTicketId = '';
+            let adminCurrentChatTicketNumber = '';
             let adminCurrentChatMenuBreadcrumb = '';
 
             function _formatAdminTicketMessageDateTime(timestamp) {
@@ -5019,6 +5092,7 @@ def get_dashboard_page() -> str:
                 if (!t) return;
                 adminCurrentChatPhone = t.phone_number;
                 adminCurrentChatTicketId = tid;
+                adminCurrentChatTicketNumber = t.ticket_id || '';
                 adminCurrentChatMenuBreadcrumb = t.menu_breadcrumb || t.menu_section || '';
 
                 document.getElementById('adminChatModalTitle').textContent = `Chat: ${t.phone_number} (${t.status})`;
@@ -5092,33 +5166,50 @@ def get_dashboard_page() -> str:
                 document.getElementById('adminSchedTicketPhone').value   = adminCurrentChatPhone;
                 document.getElementById('adminSchedTicketName').value    = _adminTicketScheduleTitleFromBreadcrumb(adminCurrentChatMenuBreadcrumb);
                 document.getElementById('adminSchedTicketTime').value    = '';
-                document.getElementById('adminSchedTicketMessage').value = _getSelectedSchedChatText('#adminChatContent');
+                document.getElementById('adminSchedDayBefore').checked   = true;
+                document.getElementById('adminSchedHourBefore').checked  = true;
+                document.getElementById('adminSchedTicketNote').value    = _getSelectedSchedChatText('#adminChatContent');
                 document.getElementById('adminTicketSchedModal').classList.add('show');
             }
             function closeAdminTicketScheduleModal() { document.getElementById('adminTicketSchedModal').classList.remove('show'); }
 
             async function saveAdminTicketScheduledMessage() {
                 const phone = document.getElementById('adminSchedTicketPhone').value;
-                const name  = document.getElementById('adminSchedTicketName').value;
-                const val   = document.getElementById('adminSchedTicketTime').value;
-                const msg   = document.getElementById('adminSchedTicketMessage').value;
-                
-                let send_time = '';
-                let send_date = null;
-                if (val) {
-                    const parts = val.split('T');
-                    send_date = parts[0];
-                    send_time = parts[1];
-                }
-                
-                if (!name || !send_time || !msg) { alert('Completar todos los campos'); return; }
+                const name  = document.getElementById('adminSchedTicketName').value.trim();
+                const eventAt = document.getElementById('adminSchedTicketTime').value.trim();
+                const remindDayBefore = document.getElementById('adminSchedDayBefore').checked;
+                const remindHourBefore = document.getElementById('adminSchedHourBefore').checked;
+                const note = document.getElementById('adminSchedTicketNote').value.trim();
+
+                if (!name || !eventAt) { alert('Completar nombre y fecha del turno'); return; }
                 try {
-                    const res = await fetch('/api/scheduled-messages', {
+                    const res = await fetch('/api/tickets/schedule-reminder', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                        body: JSON.stringify({ name, phone_number: phone, send_time, send_date, message: msg, days_of_week: '1,2,3,4,5,6,7', is_active: true })
+                        body: JSON.stringify({
+                            name,
+                            phone_number: phone,
+                            ticket_id: adminCurrentChatTicketNumber,
+                            event_at: eventAt,
+                            note,
+                            remind_day_before: remindDayBefore,
+                            remind_hour_before: remindHourBefore
+                        })
                     });
-                    if (res.ok) { closeAdminTicketScheduleModal(); loadAdminTickets(); loadAdminSchedList(); showToast('Mensaje agendado'); }
+                    if (res.ok) {
+                        const data = await res.json();
+                        closeAdminTicketScheduleModal();
+                        loadAdminTickets();
+                        loadAdminSchedList();
+                        const baseMsg = `${data.created.length} aviso(s) programado(s)`;
+                        if (data.sent_confirmation === false) showToast(baseMsg + ' · confirmación pendiente', 'info');
+                        else if (data.calendar_link) showToast(baseMsg + ' · con link calendario');
+                        else if (data.sent_calendar_invite === false) showToast(baseMsg + ' · sin archivo calendario', 'info');
+                        else showToast(baseMsg);
+                    } else {
+                        const data = await res.json();
+                        alert(data.detail || 'No se pudo programar el recordatorio');
+                    }
                 } catch(e) { console.error(e); }
             }
             // ── FIN TICKETS ADMIN ──────────────────────────────────────────────────────────────
@@ -6194,6 +6285,18 @@ def get_dashboard_page() -> str:
                     if (document.getElementById('farewellMessage')) {
                         document.getElementById('farewellMessage').value = config.farewell_message || '';
                     }
+                    if (document.getElementById('scheduledConfirmationTemplate')) {
+                        document.getElementById('scheduledConfirmationTemplate').value = config.scheduled_confirmation_template || '';
+                    }
+                    if (document.getElementById('scheduledReminderTemplate')) {
+                        document.getElementById('scheduledReminderTemplate').value = config.scheduled_reminder_template || '';
+                    }
+                    if (document.getElementById('scheduledCalendarLinkEnabled')) {
+                        document.getElementById('scheduledCalendarLinkEnabled').checked = !!config.scheduled_calendar_link_enabled;
+                    }
+                    if (document.getElementById('scheduledCalendarLinkBaseUrl')) {
+                        document.getElementById('scheduledCalendarLinkBaseUrl').value = config.scheduled_calendar_link_base_url || '';
+                    }
                     // Bloqueados: filtros
                     const cfEl = document.getElementById('countryFilter');
                     const afEl = document.getElementById('areaFilter');
@@ -6217,8 +6320,16 @@ def get_dashboard_page() -> str:
 
                     const handoffEl = document.getElementById('handoffMessage');
                     const farewellEl = document.getElementById('farewellMessage');
+                    const confirmationEl = document.getElementById('scheduledConfirmationTemplate');
+                    const reminderEl = document.getElementById('scheduledReminderTemplate');
+                    const calendarEnabledEl = document.getElementById('scheduledCalendarLinkEnabled');
+                    const calendarBaseUrlEl = document.getElementById('scheduledCalendarLinkBaseUrl');
                     if (handoffEl) handoffEl.value = config.handoff_message || '';
                     if (farewellEl) farewellEl.value = config.farewell_message || '';
+                    if (confirmationEl) confirmationEl.value = config.scheduled_confirmation_template || '';
+                    if (reminderEl) reminderEl.value = config.scheduled_reminder_template || '';
+                    if (calendarEnabledEl) calendarEnabledEl.checked = !!config.scheduled_calendar_link_enabled;
+                    if (calendarBaseUrlEl) calendarBaseUrlEl.value = config.scheduled_calendar_link_base_url || '';
                 } catch (error) {
                     console.error('Error loading ticket messages:', error);
                 }
@@ -6273,7 +6384,11 @@ def get_dashboard_page() -> str:
                         },
                         body: JSON.stringify({
                             handoff_message: document.getElementById('handoffMessage').value,
-                            farewell_message: document.getElementById('farewellMessage').value
+                            farewell_message: document.getElementById('farewellMessage').value,
+                            scheduled_confirmation_template: document.getElementById('scheduledConfirmationTemplate').value,
+                            scheduled_reminder_template: document.getElementById('scheduledReminderTemplate').value,
+                            scheduled_calendar_link_enabled: document.getElementById('scheduledCalendarLinkEnabled').checked,
+                            scheduled_calendar_link_base_url: document.getElementById('scheduledCalendarLinkBaseUrl').value.trim()
                         })
                     });
 

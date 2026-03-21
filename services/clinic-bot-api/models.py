@@ -71,6 +71,18 @@ class BotConfig(Base):
     # Mensaje cuando se cierra el ticket
     closed_message = Column(Text, default="Gracias por contactarte. Tu caso está cerrado. Si necesitas ayuda, escribe nuevamente.")
 
+    # Plantillas para recordatorios programados desde tickets
+    scheduled_confirmation_template = Column(
+        Text,
+        default="✅ *Recordatorio programado*\n\n*{RECORDATORIO}*\n📅 Turno: *{FECHA}* a las *{HORA}*\n🔔 Avisos automáticos: *1 día antes* y *1 hora antes*.\n{NOTA_BLOQUE}\n{CALENDAR_LINK_BLOQUE}\nSi necesitás cambios, respondé a este mensaje.",
+    )
+    scheduled_reminder_template = Column(
+        Text,
+        default="✨ *{RECORDATORIO}*\n\nTe recordamos tu turno para el *{FECHA}* a las *{HORA}*.\n⏰ Aviso: *{AVISO}*.\n{NOTA_BLOQUE}\n{CALENDAR_LINK_BLOQUE}\nSi necesitás reprogramar, respondé a este mensaje.",
+    )
+    scheduled_calendar_link_enabled = Column(Boolean, default=False)
+    scheduled_calendar_link_base_url = Column(String(255))
+
     # ============ LOGGING ============
     debug_mode = Column(Boolean, default=False)  # True=logs detallados, False=solo chats y errores
 
@@ -277,6 +289,10 @@ class ScheduledMessage(Base):
     days_of_week = Column(String(20), default="1,2,3,4,5,6,7")  # 1=Lun … 7=Dom (CSV)
     is_active = Column(Boolean, default=True)
     last_sent_date = Column(String(10), nullable=True)  # "YYYY-MM-DD" evita doble envío
+    ticket_id = Column(String(100), index=True)
+    event_at = Column(String(40), nullable=True)        # ISO datetime del turno original
+    schedule_note = Column(Text, nullable=True)
+    schedule_kind = Column(String(30), default="general")
     created_by = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -302,4 +318,3 @@ class ExternalAccessToken(Base):
 
     def __repr__(self):
         return f"<ExternalAccessToken {self.name} active={self.is_active}>"
-
