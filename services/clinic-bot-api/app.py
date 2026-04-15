@@ -97,6 +97,7 @@ DEBUG_MODE = _env_bool("DEBUG_MODE", False)
 # ──────────────────────────────────────────────────────────────
 _bot_paused   = False
 _chat_nav: dict[str, dict] = {}   # estado de navegación por chat
+_main_loop: asyncio.AbstractEventLoop | None = None   # loop principal para run_coroutine_threadsafe
 _last_status  = {
     "connected": None,
     "last_alert_at": 0,
@@ -311,6 +312,8 @@ app.add_middleware(
 # ──────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
+    global _main_loop
+    _main_loop = asyncio.get_event_loop()
     init_db()
     _get_waha_client()              # pre-inicializar el cliente HTTP
     # Warm-up del backend bcrypt: la primera llamada a passlib con bcrypt>=4.x
@@ -1525,6 +1528,12 @@ def _is_human_mode(db: Session, chat_id: str) -> bool:
 
     if not active:
         # Expiró → archivar y limpiar automáticamente (WAHA-DOC §11)
+        extra = {}
+        if row.extra_data:
+            try:
+                extra = json.loads(row.extra_data)
+            except Exception:
+                pass
         _archive_ticket(db, row, reason="expired", closed_by="system")
         row.human_mode = False
         row.human_mode_expire = None
@@ -1532,6 +1541,11 @@ def _is_human_mode(db: Session, chat_id: str) -> bool:
         row.current_state = "BOT_MENU"
         db.commit()
         _logc(f"[HUMAN] Expirado para {chat_id} → bot")
+        # Ticket de salida: avisar al cliente que la sesión terminó
+        if extra.get("operator_initiated") and _main_loop:
+            cfg = _get_cfg(db)
+            farewell = cfg.closed_message or "✅ La sesión con el operador ha finalizado. Si necesitás más ayuda, ¡escribinos! 😊"
+            asyncio.run_coroutine_threadsafe(_send_wha(chat_id, farewell), _main_loop)
     return active
 
 def _start_human_mode(db: Session, chat_id: str, duration_hours: int = HUMAN_MODE_DEFAULT_HOURS) -> str:
@@ -2038,11 +2052,16 @@ async def webhook(req: Request):
 
     msg = data.get("payload") or data.get("message") or data
 
+    # Log diagnóstico para mensajes fromMe (operador)
+    if msg.get("fromMe"):
+        _logc(f"[FROMME] event={event_type!r} body={str(msg.get('body') or msg.get('text') or '')[:60]!r} chatId={msg.get('chatId') or msg.get('to')!r}")
+
     # Si el operador inicia/escribe un chat desde WhatsApp Web, activar modo humano
     # para ese número y evitar respuestas automáticas del bot.
     if msg.get("fromMe"):
         op_chat_id = _extract_operator_target_chat_id(msg)
         if not op_chat_id:
+            _logc(f"[FROMME] No se pudo extraer chat_id. Payload keys: {list(msg.keys())}")
             return {"ok": True, "i": "from_me_no_chat"}
         
         raw_txt = msg.get("body") or msg.get("text") or ""
@@ -2053,9 +2072,23 @@ async def webhook(req: Request):
         db = SessionLocal()
         try:
             if op_text == "SALUDOS":
+                # Chequear si es ticket de salida antes de cerrar (para mandar despedida)
+                row_saludos = db.query(ConversationState).filter(
+                    ConversationState.phone_number == op_chat_id
+                ).first()
+                is_op_initiated = False
+                if row_saludos and row_saludos.extra_data:
+                    try:
+                        is_op_initiated = json.loads(row_saludos.extra_data).get("operator_initiated", False)
+                    except Exception:
+                        pass
                 _exit_human_mode(db, op_chat_id, closed_by="Operador", operator_reply="SALUDOS", reason="escrito_saludos")
                 _chat_nav.pop(op_chat_id, None)
                 _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
+                if is_op_initiated:
+                    cfg_s = _get_cfg(db)
+                    farewell = cfg_s.closed_message or "✅ La sesión con el operador ha finalizado. Si necesitás más ayuda, ¡escribinos! 😊"
+                    await _send_wha(op_chat_id, farewell)
                 return {"ok": True, "i": "from_me_saludos", "chat": op_chat_id}
             elif op_text == "/fin":
                 await _close_ticket_with_fin(db, op_chat_id, closed_by="Operador")
@@ -2064,6 +2097,14 @@ async def webhook(req: Request):
                 # Abre ticket de salida: siempre nuevo, 2h renovables desde último mensaje
                 _start_operator_initiated_ticket(db, op_chat_id, operator_name="Operador")
                 _chat_nav.pop(op_chat_id, None)
+                # Avisar al cliente que el operador está en línea y el bot no responderá
+                cfg_i = _get_cfg(db)
+                welcome = (
+                    "👋 *Hola!* Un operador se está comunicando con vos directamente.\n\n"
+                    "🤖 El bot _no responderá_ durante las próximas *2 horas*.\n\n"
+                    "_(Si el operador no continúa, el sistema volverá al menú automático.)_"
+                )
+                await _send_wha(op_chat_id, welcome)
                 return {"ok": True, "i": "from_me_iniciar", "chat": op_chat_id}
             else:
                 # Texto libre del operador: solo renovar timer si ya hay sesión activa.
@@ -2469,6 +2510,17 @@ async def open_operator_ticket(req: Request, cu=Depends(get_current_user), db: S
     db.commit()
     db.refresh(row)
     _logc(f"[HUMAN] Ticket salida abierto por {cu.get('username')} → {chat_id} | ticket={ticket_id}")
+
+    # Siempre avisar al cliente que hay un operador en línea
+    welcome = (
+        "👋 *Hola!* Un operador se está comunicando con vos directamente.\n\n"
+        "🤖 El bot _no responderá_ durante las próximas *2 horas*.\n\n"
+        "_(Si el operador no continúa, el sistema volverá al menú automático.)_"
+    )
+    try:
+        await _send_wha(chat_id, welcome)
+    except Exception as e:
+        _logc(f"[HUMAN] Error enviando bienvenida: {e}")
 
     if text:
         try:
