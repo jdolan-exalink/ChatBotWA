@@ -1,48 +1,30 @@
 # 🤖 WA-BOT - Sistema Integral de WhatsApp
 
+```text
+╔════════════════════════════════════════════════════════════════╗
+║               🤖 WA-BOT - Documentación de Uso (2026)           ║
+╚════════════════════════════════════════════════════════════════╝
 ```
-  ╔════════════════════════════════════════════════════════════════╗
-  ║           🤖 WA-BOT - V1.0.3                                  ║
-  ║    Sistema Integral de Chat + Administración con Seguridad    ║
-  ╚════════════════════════════════════════════════════════════════╝
-```
 
-## 🎯 ¿Qué es?
+## 🎯 Resumen
 
-Sistema completo y profesional para gestionar un bot de WhatsApp en una clínica, consultorio, farmacia o negocio de salud. Incluye:
-
-✅ Chatbot inteligente con menú dinámico  
-✅ **Opción rápida: "99 - Chatear con Operador" para transferencia inmediata**  
-✅ Gestión completa de usuarios y administradores  
-✅ Control de horarios y feriados  
-✅ Sistema antispam  
-✅ Panel web moderno y fácil de usar  
-✅ API REST completa  
-✅ Base de datos relacional segura  
-✅ Autenticación con JWT  
+WA-BOT es una solución completa para gestionar interacción por WhatsApp con soporte a handoff (transferencia a operador), panel web administrativo y API REST. Está diseñada para clínicas, farmacias y negocios de salud que necesiten automatizar atención y mantener control humano cuando sea necesario.
 
 ---
 
 ## 🚀 Inicio Rápido
 
-### Opción 1: Docker Compose (Recomendado)
+### Docker (recomendado)
 
 ```bash
-# Clonar/entrar al proyecto
-cd /opt/wa-bot
-
-# Configurar variables de entorno
+# Dentro del repo
 cp .env.example .env
-nano .env  # Completar con tus datos
-
-# Iniciar
-docker-compose up -d
-
-# Acceder
-🌐 http://localhost:8088/
+# Edita .env con tus credenciales
+docker compose up -d --build
+# Panel: http://localhost:8088/
 ```
 
-### Opción 2: Desarrollo Local
+### Desarrollo local (rápido)
 
 ```bash
 cd services/clinic-bot-api
@@ -51,181 +33,86 @@ cp ../../.env.example .env
 python app.py
 ```
 
-**Admin por defecto:**
-- Usuario: `admin`
-- Contraseña: `admin123`
+Admin por defecto (cámbialo en producción): usuario `admin` / contraseña `admin123`
 
 ---
 
-## 📚 Documentación
+## 📌 Uso en el Panel (Interfaz web)
 
-| Documento | Contenido |
-|-----------|----------|
-| [GUIA_RAPIDA.md](GUIA_RAPIDA.md) | ⚡ Inicio en 10 minutos |
-| [DOCUMENTACION.md](DOCUMENTACION.md) | 📖 Documentación completa |
-| [CAMBIOS_IMPLEMENTADOS.md](CAMBIOS_IMPLEMENTADOS.md) | ✨ Detalle técnico con los nuevos cambios |
+**Para Administradores**
+- Acceder a `http://<host>:8088/` → `Dashboard`.
+- Funcionalidades principales:
+  - Gestión de usuarios (crear, editar, borrar).
+  - Configuración de menús y contenidos (editor de `MenuP.MD` / `MenuF.MD`).
+  - Configurar horarios de atención y feriados.
+  - Activar/desactivar handoff (transferencia a operador).
+  - Visualizar tickets y chats en curso.
 
----
+**Para Operadores**
+- Ver lista de tickets asignados y su historial.
+- Tomar/soltar atención de un cliente (asignar ticket).
+- Responder mensajes desde el panel cuando se habilita la interfaz de operador.
 
-## 🆕 Novedades Marzo 2026
-
-- Se corrigió la resolución de rutas para `MenuP.MD` y `MenuF.MD` en Docker y en ejecución local.
-- Se agregaron endpoints explícitos de lectura:
-  - `GET /api/config/menu`
-  - `GET /api/config/offhours`
-- La actualización de menú ahora acepta ambos métodos:
-  - `POST /api/config/menu`
-  - `PUT /api/config/menu`
-- Compatibilidad de payload para menú:
-  - `{"content": "..."}`
-  - `{"menu": "..."}`
+**Para Usuarios (panel de cliente)**
+- Consultar estado de solicitudes y datos personales.
+- Pausar/reanudar notificaciones o interacción con el bot (según configuración).
 
 ---
 
-## 🏗️ Arquitectura
+## 💬 Uso por Chat (WhatsApp)
 
+El bot responde mensajes y ofrece un menú interactivo. Además soporta handoff para pasar a un operador humano.
+
+### Comandos y atajos (clientes)
+
+Estos comandos están disponibles por defecto o pueden activarse/configurarse desde el panel:
+
+- `99` — Solicitar transferencia a un operador humano (handoff). El bot confirmará y generará un ticket.
+- `menu` — Mostrar el menú principal y opciones disponibles.
+- `ayuda` / `help` — Ver instrucciones básicas y formas de contacto.
+- `estado` — Consultar el estado de tu solicitud o turno.
+- `cancelar` — Cancelar una solicitud/handoff pendiente (si aplica).
+
+Ejemplo sencillo (cliente):
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                     USUARIOS / ADMIN                         │
-│              http://localhost:8088                           │
-└────────────────────┬─────────────────────────────────────────┘
-                     │ HTTP/REST/WebSocket
-         ┌───────────┴──────────────┐
-         ▼                          ▼
-    ┌─────────┐              ┌──────────────┐
-    │  LOGIN  │              │   DASHBOARD  │
-    │ /login  │              │ /dashboard   │
-    └────┬────┘              └──────┬───────┘
-         │                          │
-         └──────────────┬───────────┘
-                        │
-                        ▼
-         ┌──────────────────────────┐
-         │   FASTAPI (app.py)       │
-         │  - Autenticación (JWT)   │
-         │  - API REST              │
-         │  - Webhooks              │
-         └──────────────┬───────────┘
-                        │
-         ┌──────────────┼──────────────┐
-         ▼              ▼              ▼
-     ┌────────┐   ┌──────────┐   ┌──────────┐
-     │ SQLite │   │  WAHA    │   │  Ollama  │
-     │ (BD)   │   │(WhatsApp)│   │   (IA)   │
-     └────────┘   └──────────┘   └──────────┘
+Cliente: 99
+Bot: "Listo, recibimos tu solicitud. Un operador te contacta a la brevedad."
 ```
 
----
+### Comandos y acciones (operadores / administradores)
 
-## ✨ Características Principales
+Las acciones de operador suelen gestionarse desde el panel, pero hay metadatos y mensajes que el sistema utiliza en chat:
 
-### 🔐 Seguridad
-- Autenticación con JWT tokens
-- Contraseñas hasheadas con bcrypt
-- Validación con Pydantic
-- CORS configurado
-- Sesiones de usuario
+- Tomar ticket (desde el panel): marcar como "en atención" y comenzar la conversación.
+- `cerrar` (desde la interfaz) — Marcar ticket como cerrado cuando finaliza la atención.
+- Responder directamente al cliente (desde panel u interfaz de operador).
 
-### 👥 Usuarios & Admin
-- **Admin:** Control total del sistema
-- **Usuario:** Pausar/reanudar bot, cambiar contraseña
-
-### ⚙️ Configuración
-- Nombre flexible de solución
-- Horarios de atención configurable
-- Menúe especial fuera de horarios
-- Feriados automáticos
-- Antispam por número
-
-### 📊 Dashboard
-- Estado en tiempo real del bot
-- Gestión de usuarios
-- Editor de menú
-- Calendario de feriados
-- Lista negra de números
-
-### 🤖 Chatbot
-- Respuestas inteligentes con Ollama
-- Menú jerárquico personalizable
-- Detección automática de horarios
-- Control de inactividad
-- Integración con WhatsApp
+Nota: los comandos exactos expuestos vía chat para operadores dependen de la integración y del front-end de operadores; la lógica de tickets y estados (`ticket_status`, `assigned_agent_id`) está presente en la base de datos y en la API.
 
 ---
 
-## 📋 Stack Tecnológico
+## 🧭 Ciclo de atención (ticket + handoff)
 
-```
-Backend:
-  🐍 Python 3.11
-  ⚡ FastAPI
-  🗄️ SQLAlchemy + SQLite/PostgreSQL
-  🔐 JWT + bcrypt
+1. Cliente envía `99` o solicita un operador.
+2. El bot crea un ticket y responde con un mensaje de confirmación.
+3. Si hay operadores disponibles, el ticket se asigna; si no, queda en cola con mensaje de espera.
+4. Operador atiende, responde y cierra el ticket cuando termina.
 
-Frontend:
-  🌐 HTML5
-  🎨 CSS3
-  💻 JavaScript Vanilla
-  📱 Responsive Design
-
-Integraciones:
-  📱 WAHA (WhatsApp Web)
-  🧠 Ollama (LLM)
-  📧 Gmail API
-  🔄 N8N Webhooks
-
-DevOps:
-  🐳 Docker
-  🐳 Docker Compose
-  🔧 Linux
-```
+Parámetros configurables:
+- `handoff_enabled` (boolean)
+- `handoff_inactivity_minutes` (tiempo para cerrar por inactividad)
+- Textos personalizados: `handoff_message`, `waiting_agent_message`, `in_agent_message` (ver `database.py` defaults).
 
 ---
 
-## 🎯 Casos de Uso
+## ⚙️ Configuración & Variables importantes
 
-✅ **Clínicas y Consultórios**
-- Toma de turnos automática
-- Información de especialidades
-- Horarios y disponibilidad
-
-✅ **Farmacias**
-- Información de medicamentos
-- Precios y disponibilidad
-- Horarios de atención
-
-✅ **Centros Médicos**
-- Derivación a profesionales
-- Información de estudios
-- Contacto de urgencias
-
-✅ **Negocios de Salud General**
-- Atención al cliente
-- FAQs automatizadas
-- Toma de datos
-
----
-
-## 📊 URLs Principales
-
-| Función | URL | Acceso |
-|---------|-----|--------|
-| 🏠 Principal | `/` | Público |
-| 🔐 Login | `/login` | Público |
-| 📊 Dashboard | `/dashboard` | Admin |
-| 👤 Panel Usuario | `/user-panel` | Usuario |
-| 🌐 API REST | `/api/*` | Autenticado |
-| 🚨 Health | `/health` | Público |
-
----
-
-## 🔧 Configuración Básica
+Comprueba y edita el archivo `.env` con las claves y endpoints necesarios:
 
 ```env
-# .env
 SOLUTION_NAME=Mi Clínica
 WAHA_API_KEY=tu-api-key
-DATABASE_URL=sqlite:///./clinic_bot.db
+DATABASE_URL=sqlite:///./chatbot.sql
 SECRET_KEY=tu-clave-secreta
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=lfm2:latest
@@ -233,139 +120,39 @@ OLLAMA_MODEL=lfm2:latest
 
 ---
 
-## 📦 Archivos Nuevos
+## 🔎 Endpoints útiles (ejemplos)
 
-```
-✨ database.py       - Configuración BD
-✨ models.py         - Modelos SQLAlchemy
-✨ schemas.py        - Validación Pydantic
-✨ security.py       - JWT + Hashing
-✨ pages.py          - Generador HTML
-✨ app.py            - Nueva versión refactorizada
-✨ DOCUMENTACION.md  - Documentación completa
-✨ GUIA_RAPIDA.md    - Quick start
-```
+- `POST /api/auth/login` — Autenticación (devuelve JWT).
+- `GET /api/config/menu` — Obtener menú actual.
+- `POST /api/config/menu` — Actualizar menú (admin).
+- `POST /api/holidays` — Agregar feriado (admin).
+
+Ver ejemplos en secciones de la API dentro del repositorio.
 
 ---
 
-## 🚀 Flujo de Uso
+## ✅ Buenas prácticas antes de producción
 
-### Administrador
-```
-LOGIN → DASHBOARD → (Usuarios | Config | Menú | Feriados | etc)
-```
-
-### Usuario Regular
-```
-LOGIN → USER PANEL → (Pausar | Reanudar | Logout)
-```
-
-### Cliente WhatsApp
-```
-Enviar Mensaje → Webhook → Verificación → Respuesta IA
-```
+- Cambiar credenciales por defecto.
+- Usar HTTPS y reverse-proxy (nginx).
+- Migrar a PostgreSQL para carga concurrente.
+- Habilitar backups automáticos y logging centralizado.
 
 ---
 
-## ⚡ API REST - Ejemplos
+## 📚 Recursos y documentación adicional
 
-### Login
-```bash
-curl -X POST http://localhost:8088/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
-```
-
-### Crear Usuario
-```bash
-curl -X POST http://localhost:8088/api/admin/users \
-  -H "Authorization: Bearer {TOKEN}" \
-  -d '{
-    "username":"nuevo",
-    "password":"123456",
-    "email":"user@example.com"
-  }'
-```
-
-### Agregar Feriado
-```bash
-curl -X POST http://localhost:8088/api/holidays \
-  -H "Authorization: Bearer {TOKEN}" \
-  -d '{
-    "date":"2024-12-25",
-    "name":"Navidad"
-  }'
-```
+- Guía rápida: [GUIA_RAPIDA.md](GUIA_RAPIDA.md)
+- Documentación técnica: [DOCUMENTACION.md](DOCUMENTACION.md)
+- Cambios y novedades: [CAMBIOS_IMPLEMENTADOS.md](CAMBIOS_IMPLEMENTADOS.md)
 
 ---
 
-## 🔒 Seguridad Pre-Producción
+## 🙋‍♂️ Soporte y contacto
 
-- [ ] Cambiar admin password
-- [ ] Cambiar SECRET_KEY
-- [ ] Usar HTTPS (nginx + certbot)
-- [ ] Configurar PostgreSQL
-- [ ] Habilitar backups
-- [ ] Ajustar firewall
-- [ ] Configurar alertas email
-- [ ] Rate limiting
-- [ ] Logs centralizados
+Para soporte o personalizaciones, contacta al equipo de desarrollo responsable del despliegue.
 
 ---
 
-## ❓ Troubleshooting
+Gracias por usar WA-BOT — si querés, puedo agregar ejemplos concretos de mensajes o capturas del panel para mejorar la sección visual.
 
-```bash
-# Ver logs
-docker-compose logs -f wa-bot
-
-# Reiniciar
-docker-compose restart
-
-# Limpiar y reiniciar
-docker-compose down && docker-compose up -d
-
-# Acceder a shell
-docker exec -it wa-bot bash
-```
-
----
-
-## 📞 Soporte
-
-Documentación completa disponible en:
-- 📖 [DOCUMENTACION.md](DOCUMENTACION.md)
-- ⚡ [GUIA_RAPIDA.md](GUIA_RAPIDA.md)
-- ✨ [CAMBIOS_IMPLEMENTADOS.md](CAMBIOS_IMPLEMENTADOS.md)
-
----
-
-## 📝 Licencia & Autoría
-
-Sistema desarrollado para clínicas y negocios de salud.
-Contactar a equipo de desarrollo para soporte profesional.
-
----
-
-## 🎉 ¡Bienvenido!
-
-Gracias por usar **WA-BOT**. Este sistema te permite:
-
-✅ Automatizar atención al cliente  
-✅ Gestionar horarios y feriados  
-✅ Administrar usuarios seguramente  
-✅ Mantener control total de tu chatbot  
-
-**¡Adelante! Comienza con la [GUIA_RAPIDA.md](GUIA_RAPIDA.md)** 🚀
-
----
-
-```
-╔════════════════════════════════════════════════════════════════╗
-║                    🤖 WA-BOT - V0.3.0                         ║
-║                      Marzo 2026                                ║
-╚════════════════════════════════════════════════════════════════╝
-```                      ║
-║                    ¡Gestforma fácil y segura!                 ║
-╚════════════════════════════════════════════════════════════════╝
-```
