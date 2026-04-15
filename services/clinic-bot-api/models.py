@@ -71,6 +71,10 @@ class BotConfig(Base):
     # Mensaje cuando se cierra el ticket
     closed_message = Column(Text, default="Gracias por contactarte. Tu caso está cerrado. Si necesitas ayuda, escribe nuevamente.")
 
+    # Mensajes de comandos de operador
+    operator_inicio_message = Column(Text, default="👋 *Hola!* Un operador se está comunicando con vos directamente.\n\n🤖 El bot _no responderá_ durante las próximas *2 horas*.\n\n_(Si el operador no continúa, el sistema volverá al menú automático.)_")
+    operator_fin_message = Column(Text, default="✅ La sesión con el operador ha finalizado. Si necesitás más ayuda, ¡escribinos! 😊")
+
     # Plantillas para recordatorios programados desde tickets
     scheduled_confirmation_template = Column(
         Text,

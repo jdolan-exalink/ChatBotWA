@@ -1644,7 +1644,7 @@ async def _close_ticket_with_fin(db: Session, chat_id: str, closed_by: str = "Op
         return False
 
     cfg_fin = _get_cfg(db)
-    farewell = cfg_fin.closed_message or "Gracias por contactarte. Tu atención ha finalizado. ¡Que tengas un buen día! 😊"
+    farewell = cfg_fin.operator_fin_message or cfg_fin.closed_message or "Gracias por contactarte. Tu atención ha finalizado. ¡Que tengas un buen día! 😊"
     try:
         await _send_wha(chat_id, farewell)
     except Exception as e:
@@ -2106,19 +2106,19 @@ async def webhook(req: Request):
                 _chat_nav.pop(op_chat_id.replace("@c.us", ""), None)
                 if is_op_initiated:
                     cfg_s = _get_cfg(db)
-                    farewell = cfg_s.closed_message or "✅ La sesión con el operador ha finalizado. Si necesitás más ayuda, ¡escribinos! 😊"
+                    farewell = cfg_s.operator_fin_message or cfg_s.closed_message or "✅ La sesión con el operador ha finalizado. Si necesitás más ayuda, ¡escribinos! 😊"
                     await _send_wha(op_chat_id, farewell)
                 return {"ok": True, "i": "from_me_saludos", "chat": op_chat_id}
             elif op_text == "/fin":
                 await _close_ticket_with_fin(db, op_chat_id, closed_by="Operador")
                 return {"ok": True, "i": "from_me_fin", "chat": op_chat_id}
-            elif op_text.lower() in {"/iniciar", "/abrir", "/ticket"}:
+            elif op_text.lower() in {"/iniciar", "/inicio", "/abrir", "/ticket"}:
                 # Abre ticket de salida: siempre nuevo, 2h renovables desde último mensaje
                 _start_operator_initiated_ticket(db, op_chat_id, operator_name="Operador")
                 _chat_nav.pop(op_chat_id, None)
                 # Avisar al cliente que el operador está en línea y el bot no responderá
                 cfg_i = _get_cfg(db)
-                welcome = (
+                welcome = cfg_i.operator_inicio_message or (
                     "👋 *Hola!* Un operador se está comunicando con vos directamente.\n\n"
                     "🤖 El bot _no responderá_ durante las próximas *2 horas*.\n\n"
                     "_(Si el operador no continúa, el sistema volverá al menú automático.)_"
@@ -3186,6 +3186,8 @@ async def get_config(db: Session = Depends(get_db)):
         p = _data_path(fname)
         r[key] = open(p, encoding="utf-8").read() if os.path.exists(p) else ""
     r["farewell_message"] = cfg.closed_message or ""
+    r["operator_inicio_message"] = cfg.operator_inicio_message or ""
+    r["operator_fin_message"] = cfg.operator_fin_message or ""
     r["scheduled_confirmation_template"] = (
         cfg.scheduled_confirmation_template or DEFAULT_SCHEDULED_CONFIRMATION_TEMPLATE
     )
@@ -3208,6 +3210,7 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
               "sat_closing_time","sat_enabled","sun_enabled","off_hours_enabled","off_hours_message",
               "country_filter_enabled","country_codes","area_filter_enabled","area_codes",
               "ollama_url","ollama_model","admin_idle_timeout_sec","handoff_message",
+              "operator_inicio_message","operator_fin_message",
               "scheduled_confirmation_template","scheduled_reminder_template",
               "scheduled_calendar_link_enabled","scheduled_calendar_link_base_url"]:
         v = getattr(data, f, None)
@@ -3237,6 +3240,8 @@ async def update_config(data: BotConfigUpdate, ca=Depends(get_current_admin), db
     # Rellenar farewell_message en la respuesta a partir de closed_message
     resp = BotConfigResponse.from_orm(cfg)
     resp.farewell_message = cfg.closed_message
+    resp.operator_inicio_message = cfg.operator_inicio_message or ""
+    resp.operator_fin_message = cfg.operator_fin_message or ""
     resp.scheduled_confirmation_template = (
         cfg.scheduled_confirmation_template or DEFAULT_SCHEDULED_CONFIRMATION_TEMPLATE
     )

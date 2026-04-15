@@ -37,7 +37,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 SCHEMA_VERSION_TABLE = "schema_version"
-TARGET_SCHEMA_VERSION = 10
+TARGET_SCHEMA_VERSION = 11
 
 def get_db():
     db = SessionLocal()
@@ -302,6 +302,26 @@ def _migration_v10_scheduled_ticket_calendar_fields() -> None:
         ))
 
 
+def _migration_v11_operator_command_messages() -> None:
+    """Agrega columnas de mensajes configurables para /inicio y /fin."""
+    DEFAULT_INICIO = (
+        "👋 *Hola!* Un operador se está comunicando con vos directamente.\n\n"
+        "🤖 El bot _no responderá_ durante las próximas *2 horas*.\n\n"
+        "_(Si el operador no continúa, el sistema volverá al menú automático.)_"
+    )
+    DEFAULT_FIN = "✅ La sesión con el operador ha finalizado. Si necesitás más ayuda, ¡escribinos! 😊"
+    _add_column_if_missing(
+        "bot_config",
+        "operator_inicio_message",
+        f"operator_inicio_message TEXT DEFAULT '{DEFAULT_INICIO}'",
+    )
+    _add_column_if_missing(
+        "bot_config",
+        "operator_fin_message",
+        f"operator_fin_message TEXT DEFAULT '{DEFAULT_FIN}'",
+    )
+
+
 def _run_schema_migrations() -> int:
     migrations = [
         (1, _migration_v1_bot_config_columns),
@@ -314,6 +334,7 @@ def _run_schema_migrations() -> int:
         (8, _migration_v8_ensure_scheduled_template_columns),
         (9, _migration_v9_scheduled_calendar_link_config),
         (10, _migration_v10_scheduled_ticket_calendar_fields),
+        (11, _migration_v11_operator_command_messages),
     ]
 
     current = _get_schema_version()

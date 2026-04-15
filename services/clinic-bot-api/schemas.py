@@ -66,6 +66,8 @@ class BotConfigUpdate(BaseModel):
     admin_idle_timeout_sec: Optional[int] = None
     handoff_message: Optional[str] = None
     farewell_message: Optional[str] = None
+    operator_inicio_message: Optional[str] = None
+    operator_fin_message: Optional[str] = None
     scheduled_confirmation_template: Optional[str] = None
     scheduled_reminder_template: Optional[str] = None
     scheduled_calendar_link_enabled: Optional[bool] = None
@@ -88,6 +90,8 @@ class BotConfigResponse(BaseModel):
     area_codes: Optional[str]
     handoff_message: Optional[str] = None
     farewell_message: Optional[str] = None
+    operator_inicio_message: Optional[str] = None
+    operator_fin_message: Optional[str] = None
     scheduled_confirmation_template: Optional[str] = None
     scheduled_reminder_template: Optional[str] = None
     scheduled_calendar_link_enabled: bool = False
