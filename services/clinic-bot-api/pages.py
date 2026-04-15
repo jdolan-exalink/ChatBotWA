@@ -4646,6 +4646,34 @@ def get_dashboard_page() -> str:
                             </div>
 
                             <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                <h3 style="color: #f1f5f9; margin-bottom: 12px;">🔔 Mensaje al Abrir Sesión de Operador (/inicio)</h3>
+                                <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
+                                    Este mensaje se envía al cliente cuando el operador escribe <strong>/inicio</strong>, <strong>/iniciar</strong>, <strong>/abrir</strong> o <strong>/ticket</strong> para abrir una sesión directa.
+                                </p>
+                                <div class="form-group">
+                                    <label>Mensaje de Inicio de Sesión</label>
+                                    <textarea id="operatorInicioMessage" rows="5" placeholder="👋 Un operador se está comunicando con vos..."></textarea>
+                                </div>
+                                <div class="buttons-group">
+                                    <button type="submit" class="btn btn-primary">💾 Guardar</button>
+                                </div>
+                            </div>
+
+                            <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                <h3 style="color: #f1f5f9; margin-bottom: 12px;">✅ Mensaje al Cerrar Sesión del Operador (/fin vía SALUDOS)</h3>
+                                <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
+                                    Este mensaje se envía al cliente cuando el operador escribe <strong>SALUDOS</strong> para cerrar una sesión iniciada con <strong>/inicio</strong>.
+                                </p>
+                                <div class="form-group">
+                                    <label>Mensaje de Cierre de Sesión</label>
+                                    <textarea id="operatorFinMessage" rows="4" placeholder="✅ La sesión con el operador ha finalizado..."></textarea>
+                                </div>
+                                <div class="buttons-group">
+                                    <button type="submit" class="btn btn-primary">💾 Guardar</button>
+                                </div>
+                            </div>
+
+                            <div style="background: rgba(30, 41, 59, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
                                 <h3 style="color: #f1f5f9; margin-bottom: 12px;">📅 Recordatorios Programados</h3>
                                 <p style="color:#94a3b8;font-size:0.85em;margin-bottom:10px;">
                                     Variables disponibles: <strong>{RECORDATORIO}</strong>, <strong>{FECHA}</strong>, <strong>{HORA}</strong>, <strong>{TURNO}</strong>, <strong>{AVISO}</strong>, <strong>{NOTA}</strong>, <strong>{NOTA_BLOQUE}</strong>, <strong>{CALENDAR_LINK}</strong> y <strong>{CALENDAR_LINK_BLOQUE}</strong>.
@@ -6604,6 +6632,12 @@ def get_dashboard_page() -> str:
                     if (document.getElementById('farewellMessage')) {
                         document.getElementById('farewellMessage').value = config.farewell_message || '';
                     }
+                    if (document.getElementById('operatorInicioMessage')) {
+                        document.getElementById('operatorInicioMessage').value = config.operator_inicio_message || '';
+                    }
+                    if (document.getElementById('operatorFinMessage')) {
+                        document.getElementById('operatorFinMessage').value = config.operator_fin_message || '';
+                    }
                     if (document.getElementById('scheduledConfirmationTemplate')) {
                         document.getElementById('scheduledConfirmationTemplate').value = config.scheduled_confirmation_template || '';
                     }
@@ -6645,6 +6679,10 @@ def get_dashboard_page() -> str:
                     const calendarBaseUrlEl = document.getElementById('scheduledCalendarLinkBaseUrl');
                     if (handoffEl) handoffEl.value = config.handoff_message || '';
                     if (farewellEl) farewellEl.value = config.farewell_message || '';
+                    const inicioEl = document.getElementById('operatorInicioMessage');
+                    const finEl = document.getElementById('operatorFinMessage');
+                    if (inicioEl) inicioEl.value = config.operator_inicio_message || '';
+                    if (finEl) finEl.value = config.operator_fin_message || '';
                     if (confirmationEl) confirmationEl.value = config.scheduled_confirmation_template || '';
                     if (reminderEl) reminderEl.value = config.scheduled_reminder_template || '';
                     if (calendarEnabledEl) calendarEnabledEl.checked = !!config.scheduled_calendar_link_enabled;
@@ -6704,6 +6742,8 @@ def get_dashboard_page() -> str:
                         body: JSON.stringify({
                             handoff_message: document.getElementById('handoffMessage').value,
                             farewell_message: document.getElementById('farewellMessage').value,
+                            operator_inicio_message: document.getElementById('operatorInicioMessage') ? document.getElementById('operatorInicioMessage').value : undefined,
+                            operator_fin_message: document.getElementById('operatorFinMessage') ? document.getElementById('operatorFinMessage').value : undefined,
                             scheduled_confirmation_template: document.getElementById('scheduledConfirmationTemplate').value,
                             scheduled_reminder_template: document.getElementById('scheduledReminderTemplate').value,
                             scheduled_calendar_link_enabled: document.getElementById('scheduledCalendarLinkEnabled').checked,
