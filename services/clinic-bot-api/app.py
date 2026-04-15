@@ -1829,8 +1829,27 @@ def _menu_main() -> str:
 
 def _menu_nav(choice: str, section: str) -> tuple[str, str]:
     """Navega la jerarquía de menú. Devuelve (respuesta, nueva_seccion)."""
-    if not choice.isdigit():
+    # Normalizar elección: aceptar "1", "1.", "1️⃣" y variantes con espacios
+    def _normalize_choice(ch: str) -> str:
+        if not ch:
+            return ""
+        ch = ch.strip()
+        # Mapa simple para emojis de número con variante VS16
+        emoji_map = {
+            "0️⃣": "0", "1️⃣": "1", "2️⃣": "2", "3️⃣": "3", "4️⃣": "4",
+            "5️⃣": "5", "6️⃣": "6", "7️⃣": "7", "8️⃣": "8", "9️⃣": "9"
+        }
+        for e, d in emoji_map.items():
+            if e in ch:
+                ch = ch.replace(e, d)
+        # Extraer primer grupo de dígitos (maneja '1.', '1)')
+        m = re.search(r"(\d+)", ch)
+        return m.group(1) if m else ""
+
+    norm = _normalize_choice(choice)
+    if not norm.isdigit():
         return "", section   # texto libre → silent ignore
+    choice = norm
 
     lines   = _get_menu_cached().split("\n")
     path    = [] if section == "main" else section.replace("menu_", "").split("_")
