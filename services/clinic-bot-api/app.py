@@ -2133,7 +2133,10 @@ async def webhook(req: Request):
                 ).first()
                 if row and row.human_mode:
                     _touch_human_mode_timeout(db, op_chat_id)
-                _chat_nav.pop(op_chat_id, None)
+                    # Solo limpiar nav si hay un operador activo (human_mode=True).
+                    # Si el mensaje fromMe es una respuesta automática del bot,
+                    # NO borrar el estado de navegación del usuario.
+                    _chat_nav.pop(op_chat_id, None)
         finally:
             db.close()
         return {"ok": True, "i": "from_me_msg", "chat": op_chat_id}

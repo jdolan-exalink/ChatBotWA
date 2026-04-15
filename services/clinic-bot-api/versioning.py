@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess
 
 
-DEFAULT_APP_VERSION = "2.3.10"
+DEFAULT_APP_VERSION = "2.3.11"
 
 
 def _normalize_version(raw_version: str) -> str:
