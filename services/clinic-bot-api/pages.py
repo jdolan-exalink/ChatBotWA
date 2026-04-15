@@ -1091,9 +1091,12 @@ def get_user_panel_page() -> str:
                 <div class="card">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <h2>Listado de Tickets</h2>
-                        <button class="btn btn-primary btn-sm" onclick="loadTickets()"><i class="fas fa-sync"></i> Refrescar</button>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="openOperatorTicketModal()">✍️ Iniciar Conversación</button>
+                            <button class="btn btn-primary btn-sm" onclick="loadTickets()"><i class="fas fa-sync"></i> Refrescar</button>
+                        </div>
                     </div>
-                    
+
                     <div id="ticketsGrid" style="display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; padding-right: 10px;">
                         <div class="empty-state">Cargando tickets...</div>
                     </div>
@@ -1184,6 +1187,26 @@ def get_user_panel_page() -> str:
                     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
                         <button class="btn btn-secondary" onclick="closeTicketScheduleModal()">Cancelar</button>
                         <button class="btn btn-primary" onclick="saveTicketScheduledMessage()">Guardar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal: Iniciar Conversación desde Operador -->
+            <div id="operatorOpenModal" class="modal">
+                <div class="modal-content" style="max-width:440px;">
+                    <h3 style="margin-top:0;">✍️ Iniciar Conversación</h3>
+                    <p style="color:#94a3b8; font-size:0.87em; margin-bottom:18px;">El número quedará en modo operador. Después de 2 horas sin actividad vuelve al bot automáticamente.</p>
+                    <div class="form-group" style="text-align:left;">
+                        <label>Teléfono <span style="color:#94a3b8;font-size:0.85em;">(ej: 5491112345678)</span></label>
+                        <input type="text" id="operatorOpenPhone" placeholder="5491112345678" style="width:100%;">
+                    </div>
+                    <div class="form-group" style="text-align:left; margin-top:14px;">
+                        <label>Mensaje inicial <span style="color:#94a3b8;font-size:0.85em;">(opcional)</span></label>
+                        <textarea id="operatorOpenText" rows="3" placeholder="Hola! Te contactamos desde..." style="width:100%;resize:vertical;"></textarea>
+                    </div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                        <button class="btn btn-secondary" onclick="closeOperatorTicketModal()">Cancelar</button>
+                        <button class="btn btn-primary" id="operatorOpenBtn" onclick="createOperatorTicket()">Abrir Ticket</button>
                     </div>
                 </div>
             </div>
@@ -2238,12 +2261,15 @@ def get_user_panel_page() -> str:
                     if(t.is_deleted) statusLabel += ' (BORRADO por ' + (t.deleted_by || 'Unknown') + ')';
 
                     const schedBadge = t.has_scheduled_message ? '<span style="background: rgba(100,116,139,0.2); color: #cbd5e1; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-left: 8px;">⏳ Programado</span>' : '';
+                    const dirBadge = t.direccion === 'salida'
+                        ? '<span style="background:rgba(139,92,246,0.2);color:#c4b5fd;padding:2px 7px;border-radius:4px;font-size:0.78em;margin-left:8px;">📤 Salida</span>'
+                        : '<span style="background:rgba(6,182,212,0.15);color:#67e8f9;padding:2px 7px;border-radius:4px;font-size:0.78em;margin-left:8px;">📥 Entrada</span>';
 
                     html += `
                         <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(226,232,240,0.08);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
                             <div style="flex:1;min-width:0;">
-                                <div style="font-weight:600;color:#f1f5f9;font-size:0.95em;">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${schedBadge}</div>
-                                <div style="color:${badgeColor};font-weight:500;font-size:0.88em;margin-top:4px;">${statusLabel} | Origen: ${t.menu_breadcrumb || t.menu_section || '-'}</div>
+                                <div style="font-weight:600;color:#f1f5f9;font-size:0.95em;">${t.ticket_id || '-'} | Tel: ${t.phone_number} ${dirBadge} ${schedBadge}</div>
+                                <div style="color:${badgeColor};font-weight:500;font-size:0.88em;margin-top:4px;">${statusLabel} | ${t.menu_breadcrumb || t.menu_section || '-'}</div>
                                 <div style="font-size:0.75em;color:#64748b;margin-top:3px;">Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString() : '-'}</div>
                             </div>
                             <div style="display:flex;gap:8px;flex-shrink:0;">
@@ -2468,6 +2494,53 @@ def get_user_panel_page() -> str:
                 else if (sectionId === 'programados') { loadSchedList(); }
                 else originalSwitchSection(sectionId, el);
             };
+
+            // ── INICIAR CONVERSACIÓN DESDE OPERADOR ──
+            function openOperatorTicketModal() {
+                document.getElementById('operatorOpenPhone').value = '';
+                document.getElementById('operatorOpenText').value = '';
+                document.getElementById('operatorOpenBtn').disabled = false;
+                document.getElementById('operatorOpenBtn').textContent = 'Abrir Ticket';
+                document.getElementById('operatorOpenModal').classList.add('show');
+                setTimeout(() => document.getElementById('operatorOpenPhone').focus(), 100);
+            }
+
+            function closeOperatorTicketModal() {
+                document.getElementById('operatorOpenModal').classList.remove('show');
+            }
+
+            async function createOperatorTicket() {
+                const phone = document.getElementById('operatorOpenPhone').value.trim();
+                const text  = document.getElementById('operatorOpenText').value.trim();
+                if (!phone) { alert('Ingresá un número de teléfono'); return; }
+                const btn = document.getElementById('operatorOpenBtn');
+                btn.disabled = true;
+                btn.textContent = 'Abriendo...';
+                try {
+                    const res = await fetch('/api/human-mode/open', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + localStorage.getItem('token')
+                        },
+                        body: JSON.stringify({ phone_number: phone, text: text })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        closeOperatorTicketModal();
+                        loadTickets();
+                        showToast('Conversación abierta: ' + (data.ticket_id || ''));
+                    } else {
+                        alert(data.detail || 'Error al abrir conversación');
+                        btn.disabled = false;
+                        btn.textContent = 'Abrir Ticket';
+                    }
+                } catch(e) {
+                    alert('Error de conexión: ' + e.message);
+                    btn.disabled = false;
+                    btn.textContent = 'Abrir Ticket';
+                }
+            }
 
             </script>
     </body>
@@ -4308,7 +4381,10 @@ def get_dashboard_page() -> str:
                 <div class="card">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <h2 style="margin:0;">Listado de Tickets</h2>
-                        <button class="btn btn-primary btn-sm" onclick="loadAdminTickets()">🔄 Refrescar</button>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="openAdminOperatorTicketModal()">✍️ Iniciar Conversación</button>
+                            <button class="btn btn-primary btn-sm" onclick="loadAdminTickets()">🔄 Refrescar</button>
+                        </div>
                     </div>
                     <div id="adminTicketsGrid" style="display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; padding-right: 10px;">
                         <div class="empty-state">Cargando tickets...</div>
@@ -4399,8 +4475,28 @@ def get_dashboard_page() -> str:
                 </div>
             </div>
             
+            <!-- Modal: Iniciar Conversación (Admin) -->
+            <div id="adminOperatorOpenModal" class="modal">
+                <div class="modal-content" style="max-width:440px;">
+                    <h3 style="margin-top:0;">✍️ Iniciar Conversación</h3>
+                    <p style="color:#94a3b8; font-size:0.87em; margin-bottom:18px;">El número quedará en modo operador. Después de 2 horas sin actividad vuelve al bot automáticamente.</p>
+                    <div class="form-group" style="text-align:left;">
+                        <label>Teléfono <span style="color:#94a3b8;font-size:0.85em;">(ej: 5491112345678)</span></label>
+                        <input type="text" id="adminOperatorOpenPhone" placeholder="5491112345678" style="width:100%;">
+                    </div>
+                    <div class="form-group" style="text-align:left; margin-top:14px;">
+                        <label>Mensaje inicial <span style="color:#94a3b8;font-size:0.85em;">(opcional)</span></label>
+                        <textarea id="adminOperatorOpenText" rows="3" placeholder="Hola! Te contactamos desde..." style="width:100%;resize:vertical;"></textarea>
+                    </div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                        <button class="btn btn-secondary" onclick="closeAdminOperatorTicketModal()">Cancelar</button>
+                        <button class="btn btn-primary" id="adminOperatorOpenBtn" onclick="createAdminOperatorTicket()">Abrir Ticket</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- USUARIOS (modales globales, el contenido está en config/sistema) -->
-            
+
             <!-- MODAL CREAR USUARIO -->
             <div class="modal" id="createUserModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center; z-index: 1000;">
                 <div style="background: rgba(18, 24, 40, 0.95); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 20px; padding: 40px; max-width: 500px; width: 90%;">
@@ -4694,7 +4790,8 @@ def get_dashboard_page() -> str:
 
                         <p style="margin-top: 14px; color: #94a3b8; font-size: 0.84em; line-height: 1.5;">
                             Endpoint para integraciones: <code style="background: rgba(15, 23, 42, 0.7); padding: 2px 6px; border-radius: 6px;">POST /api/external/notifications</code><br>
-                            Header requerido: <code style="background: rgba(15, 23, 42, 0.7); padding: 2px 6px; border-radius: 6px;">X-API-Key: &lt;tu_token&gt;</code>
+                            Auth soportada: <code style="background: rgba(15, 23, 42, 0.7); padding: 2px 6px; border-radius: 6px;">X-API-Key: &lt;tu_token&gt;</code> o <code style="background: rgba(15, 23, 42, 0.7); padding: 2px 6px; border-radius: 6px;">?api_key=&lt;tu_token&gt;</code> / <code style="background: rgba(15, 23, 42, 0.7); padding: 2px 6px; border-radius: 6px;">?APIKEY=&lt;tu_token&gt;</code><br>
+                            Tambien acepta envio por parametros en la misma URL.
                         </p>
                     </div>
 
@@ -5170,6 +5267,53 @@ def get_dashboard_page() -> str:
                     return parts.slice(1).join(' -> ');
                 }
                 return parts.join(' -> ');
+            }
+
+            // ── INICIAR CONVERSACIÓN DESDE OPERADOR (Admin) ──
+            function openAdminOperatorTicketModal() {
+                document.getElementById('adminOperatorOpenPhone').value = '';
+                document.getElementById('adminOperatorOpenText').value = '';
+                document.getElementById('adminOperatorOpenBtn').disabled = false;
+                document.getElementById('adminOperatorOpenBtn').textContent = 'Abrir Ticket';
+                document.getElementById('adminOperatorOpenModal').classList.add('show');
+                setTimeout(() => document.getElementById('adminOperatorOpenPhone').focus(), 100);
+            }
+
+            function closeAdminOperatorTicketModal() {
+                document.getElementById('adminOperatorOpenModal').classList.remove('show');
+            }
+
+            async function createAdminOperatorTicket() {
+                const phone = document.getElementById('adminOperatorOpenPhone').value.trim();
+                const text  = document.getElementById('adminOperatorOpenText').value.trim();
+                if (!phone) { alert('Ingresá un número de teléfono'); return; }
+                const btn = document.getElementById('adminOperatorOpenBtn');
+                btn.disabled = true;
+                btn.textContent = 'Abriendo...';
+                try {
+                    const res = await fetch('/api/human-mode/open', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + token
+                        },
+                        body: JSON.stringify({ phone_number: phone, text: text })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        closeAdminOperatorTicketModal();
+                        loadAdminTickets();
+                        showToast('Conversación abierta: ' + (data.ticket_id || ''));
+                    } else {
+                        alert(data.detail || 'Error al abrir conversación');
+                        btn.disabled = false;
+                        btn.textContent = 'Abrir Ticket';
+                    }
+                } catch(e) {
+                    alert('Error de conexión: ' + e.message);
+                    btn.disabled = false;
+                    btn.textContent = 'Abrir Ticket';
+                }
             }
 
             async function loadAdminTickets() {

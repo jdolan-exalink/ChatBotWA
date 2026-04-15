@@ -207,7 +207,8 @@ Authorization: Bearer <jwt_admin_token>
 ## 3. Envío de notificaciones WhatsApp (integración externa)
 
 **Endpoint:** `POST /api/external/notifications`  
-**Auth:** API Key (X-Api-Key o Bearer)
+**Alternativa:** `GET /api/external/notifications` con query params  
+**Auth:** API Key (`X-Api-Key`, `Bearer`, `api_key`, `apikey`, `apiKey` o `APIKEY`)
 
 ### Formatos de número de teléfono (todos válidos)
 
@@ -244,6 +245,14 @@ Content-Type: application/json
   "phone_number": "5491112345678",
   "access_token": "turnero"
 }
+```
+
+---
+
+### Ejemplo 1B — Mensaje libre vía parámetros
+
+```http
+GET /api/external/notifications?api_key=wabot_ext_M9V-Web7mCYTK83aGc-4MAFQGtX0kBSy&event_type=custom&phone_number=5491112345678&message=Hola%21%20Tu%20turno%20fue%20confirmado
 ```
 
 ---
@@ -322,6 +331,7 @@ Content-Type: application/json
 | `custom` o cualquier otro | Texto genérico con metadata | cualquier clave:valor |
 
 > **Tip:** Si se especifica `message`, siempre se usa ese texto sin importar el `event_type`.
+> Si se usan query params, cualquier parámetro extra se agrega automáticamente a `metadata`.
 
 ---
 
@@ -334,6 +344,7 @@ Content-Type: application/json
 | `403` | `event_type no permitido` | El token tiene restricción de event_types |
 | `400` | `phone_number inválido` | Número vacío o formato no reconocido |
 | `400` | `message vacío` | El mensaje resultante está vacío |
+| `400` | `metadata debe ser un JSON valido cuando se envia por parametros` | El parámetro `metadata` no contiene un objeto JSON parseable |
 | `400` | `event_type requerido` | Campo `event_type` faltante o vacío |
 
 ---

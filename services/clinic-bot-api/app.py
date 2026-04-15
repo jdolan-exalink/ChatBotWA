@@ -1569,6 +1569,21 @@ def _archive_ticket(db: Session, row: ConversationState, reason: str, closed_by:
         elif reason == "cancelado":
             t_status = "cancelado"
 
+        # Leer direccion desde extra_data para preservarla en el historial
+        extra = {}
+        if row.extra_data:
+            try:
+                extra = json.loads(row.extra_data)
+            except Exception:
+                pass
+        direccion = extra.get("direccion", "entrada")
+        menu_section = row.last_bot_menu or ""
+        menu_breadcrumb = row.menu_breadcrumb or ""
+        if direccion == "salida":
+            opened_by = extra.get("opened_by", "Operador")
+            menu_section = "salida"
+            menu_breadcrumb = f"📤 Ticket de salida (iniciado por {opened_by})"
+
         hist = TicketHistory(
             ticket_id=row.ticket_id or "",
             phone_number=row.phone_number,
@@ -1578,13 +1593,13 @@ def _archive_ticket(db: Session, row: ConversationState, reason: str, closed_by:
             opened_at=opened,
             closed_at=now,
             duration_seconds=duration,
-            menu_section=row.last_bot_menu,
-            menu_breadcrumb=row.menu_breadcrumb,
+            menu_section=menu_section,
+            menu_breadcrumb=menu_breadcrumb,
             ticket_status=t_status,
         )
         db.add(hist)
         db.flush()
-        _logc(f"[TICKET] Archivado {row.ticket_id} | reason={reason} | {duration}s")
+        _logc(f"[TICKET] Archivado {row.ticket_id} | reason={reason} | {duration}s | dir={direccion}")
     except Exception as e:
         _logc(f"[TICKET] Error archivando {getattr(row,'ticket_id','')} : {e}")
 
@@ -1650,6 +1665,42 @@ def _start_human_mode_silent(db: Session, chat_id: str):
     _logc(f"[HUMAN] Activado por operador {chat_id} | expire={row.human_mode_expire}")
 
 
+def _start_operator_initiated_ticket(db: Session, chat_id: str, operator_name: str = "Operador"):
+    """Abre un ticket de SALIDA iniciado por el operador.
+    - Siempre genera ticket_id nuevo.
+    - Timeout de 2h renovable desde el último mensaje.
+    - Marca operator_initiated=True y direccion=salida en extra_data.
+    """
+    import uuid as _uuid
+    row = db.query(ConversationState).filter(
+        ConversationState.phone_number == chat_id
+    ).first()
+    if not row:
+        row = ConversationState(phone_number=chat_id)
+        db.add(row)
+
+    now = datetime.utcnow()
+    row.ticket_id = f"TKT-{_uuid.uuid4().hex[:8].upper()}"  # siempre nuevo
+    row.human_mode = True
+    row.human_mode_expire = now + timedelta(hours=2)
+    row.handoff_active = True
+    row.current_state = "IN_AGENT"
+    row.ticket_status = "pendiente"
+    row.assigned_agent_name = operator_name
+    row.handoff_started_at = now  # siempre resetear inicio
+    row.closed_at = None
+    row.last_message_at = now
+
+    row.extra_data = json.dumps({
+        "operator_initiated": True,
+        "opened_by": operator_name,
+        "direccion": "salida",
+    })
+
+    db.commit()
+    _logc(f"[HUMAN] Ticket salida abierto {chat_id} | ticket={row.ticket_id} | expire={row.human_mode_expire}")
+
+
 def _resume_ticket_from_history(db: Session, hist: TicketHistory) -> ConversationState:
     """Reabre un ticket histórico sobre el mismo chat, sin generar uno nuevo."""
     row = db.query(ConversationState).filter(
@@ -1686,8 +1737,20 @@ def _touch_human_mode_timeout(db: Session, chat_id: str):
     if not row or not row.human_mode:
         return
     now = datetime.utcnow()
-    # Mientras espera operador, mantener ventana corta; con operador activo, ventana estándar.
-    duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS if row.current_state == "WAITING_AGENT" else HUMAN_MODE_DEFAULT_HOURS
+    # Para tickets iniciados por operador, siempre 2h desde último mensaje.
+    # Mientras espera operador, ventana corta; con operador activo, ventana estándar.
+    extra = {}
+    if row.extra_data:
+        try:
+            extra = json.loads(row.extra_data)
+        except Exception:
+            pass
+    if extra.get("operator_initiated"):
+        duration_hours = 2
+    elif row.current_state == "WAITING_AGENT":
+        duration_hours = HUMAN_MODE_WAITING_AGENT_HOURS
+    else:
+        duration_hours = HUMAN_MODE_DEFAULT_HOURS
     row.human_mode_expire = now + timedelta(hours=duration_hours)
     row.last_message_at = now
     db.commit()
@@ -1997,12 +2060,23 @@ async def webhook(req: Request):
             elif op_text == "/fin":
                 await _close_ticket_with_fin(db, op_chat_id, closed_by="Operador")
                 return {"ok": True, "i": "from_me_fin", "chat": op_chat_id}
+            elif op_text.lower() in {"/iniciar", "/abrir", "/ticket"}:
+                # Abre ticket de salida: siempre nuevo, 2h renovables desde último mensaje
+                _start_operator_initiated_ticket(db, op_chat_id, operator_name="Operador")
+                _chat_nav.pop(op_chat_id, None)
+                return {"ok": True, "i": "from_me_iniciar", "chat": op_chat_id}
             else:
-                _start_human_mode_silent(db, op_chat_id)
+                # Texto libre del operador: solo renovar timer si ya hay sesión activa.
+                # No se auto-activa modo humano sin comando explícito.
+                row = db.query(ConversationState).filter(
+                    ConversationState.phone_number == op_chat_id
+                ).first()
+                if row and row.human_mode:
+                    _touch_human_mode_timeout(db, op_chat_id)
                 _chat_nav.pop(op_chat_id, None)
         finally:
             db.close()
-        return {"ok": True, "i": "from_me_human_mode", "chat": op_chat_id}
+        return {"ok": True, "i": "from_me_msg", "chat": op_chat_id}
 
     chat_id = (msg.get("from") or msg.get("chatId") or msg.get("chat_id") or "").strip()
 
@@ -2077,7 +2151,98 @@ def _extract_external_api_key(req: Request) -> str:
     auth = (req.headers.get("authorization") or "").strip()
     if auth.lower().startswith("bearer "):
         return auth[7:].strip()
+    query_key = _get_query_param_ci(req, "api_key", "apikey", "apiKey", "APIKEY", "x_api_key", "x-api-key")
+    if query_key:
+        return query_key
     return ""
+
+
+def _get_query_param_ci(req: Request, *names: str) -> str:
+    wanted = {name.lower() for name in names}
+    for key, value in req.query_params.items():
+        if key.lower() not in wanted:
+            continue
+        value = value.strip()
+        if value:
+            return value
+    return ""
+
+
+def _parse_external_metadata_from_query(req: Request) -> dict[str, Any]:
+    reserved = {
+        "api_key", "apikey", "x_api_key", "x-api-key",
+        "event_type", "eventtype",
+        "phone_number", "phonenumber", "phone",
+        "message", "text",
+        "recipient_name", "recipientname",
+        "source_system", "sourcesystem",
+        "metadata",
+    }
+    metadata: dict[str, Any] = {}
+
+    raw_metadata = _get_query_param_ci(req, "metadata")
+    if raw_metadata:
+        try:
+            parsed = json.loads(raw_metadata)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(400, "metadata debe ser un JSON valido cuando se envia por parametros") from exc
+        if not isinstance(parsed, dict):
+            raise HTTPException(400, "metadata debe ser un objeto JSON")
+        metadata.update(parsed)
+
+    for key, value in req.query_params.items():
+        if key.lower() in reserved:
+            continue
+        value = value.strip()
+        if value:
+            metadata[key] = value
+
+    return metadata
+
+
+async def _build_external_notification_payload(req: Request) -> ExternalNotificationPayload:
+    body_data: dict[str, Any] = {}
+    raw_body = await req.body()
+    if raw_body:
+        try:
+            parsed_body = json.loads(raw_body)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(400, "JSON invalido") from exc
+        if not isinstance(parsed_body, dict):
+            raise HTTPException(400, "El body debe ser un objeto JSON")
+        body_data = parsed_body
+
+    body_metadata = body_data.get("metadata")
+    metadata: dict[str, Any] = {}
+    if isinstance(body_metadata, dict):
+        metadata.update(body_metadata)
+    elif body_metadata not in (None, ""):
+        raise HTTPException(400, "metadata debe ser un objeto JSON")
+
+    metadata.update(_parse_external_metadata_from_query(req))
+
+    def _pick_field(query_names: tuple[str, ...], body_name: str) -> str | None:
+        query_value = _get_query_param_ci(req, *query_names)
+        if query_value:
+            return query_value
+        value = body_data.get(body_name)
+        if value is None:
+            return None
+        return str(value).strip()
+
+    payload_data: dict[str, Any] = {
+        "event_type": _pick_field(("event_type", "eventType"), "event_type") or "",
+        "phone_number": _pick_field(("phone_number", "phoneNumber", "phone"), "phone_number") or "",
+        "message": _pick_field(("message", "text"), "message"),
+        "recipient_name": _pick_field(("recipient_name", "recipientName"), "recipient_name"),
+        "source_system": _pick_field(("source_system", "sourceSystem"), "source_system"),
+        "metadata": metadata or None,
+    }
+
+    try:
+        return ExternalNotificationPayload(**payload_data)
+    except Exception as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 async def _get_external_access(req: Request, db: Session = Depends(get_db)) -> ExternalAccessToken:
@@ -2259,6 +2424,61 @@ async def reply_to_chat(req: Request, cu=Depends(get_current_user), db: Session 
     return {"ok": True, "closed": False, "phone_number": chat_id}
 
 
+@app.post("/api/human-mode/open")
+async def open_operator_ticket(req: Request, cu=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Abre una conversación iniciada desde el panel del operador."""
+    import uuid as _uuid
+    body = await req.json()
+    phone = str(body.get("phone_number") or "").strip()
+    text  = str(body.get("text") or "").strip()
+    if not phone:
+        raise HTTPException(400, "phone_number requerido")
+
+    normalized = _normalize_phone(phone)
+    chat_id = f"{normalized}@c.us"
+
+    row = db.query(ConversationState).filter(ConversationState.phone_number == chat_id).first()
+    if row and row.is_blocked:
+        raise HTTPException(400, "Este número está bloqueado")
+    if row and row.human_mode:
+        raise HTTPException(400, "Ya existe una conversación activa para este número")
+
+    now = datetime.utcnow()
+    if not row:
+        row = ConversationState(phone_number=chat_id)
+        db.add(row)
+
+    ticket_id = f"TKT-{_uuid.uuid4().hex[:8].upper()}"
+    row.human_mode = True
+    row.human_mode_expire = now + timedelta(hours=2)
+    row.handoff_active = True
+    row.current_state = "IN_AGENT"
+    row.ticket_status = "pendiente"
+    row.ticket_id = ticket_id
+    row.handoff_started_at = now
+    row.last_message_at = now
+    row.assigned_agent_name = cu.get("username")
+
+    row.closed_at = None
+    row.extra_data = json.dumps({
+        "operator_initiated": True,
+        "opened_by": cu.get("username"),
+        "direccion": "salida",
+    })
+
+    db.commit()
+    db.refresh(row)
+    _logc(f"[HUMAN] Ticket salida abierto por {cu.get('username')} → {chat_id} | ticket={ticket_id}")
+
+    if text:
+        try:
+            await _send_wha(chat_id, text)
+        except Exception as e:
+            _logc(f"[HUMAN] Error enviando mensaje inicial: {e}")
+
+    return {"ok": True, "ticket_id": ticket_id, "phone_number": chat_id}
+
+
 @app.get("/api/tickets/list")
 async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(get_db)):
     is_admin = cu.get("is_admin", False)
@@ -2270,13 +2490,23 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
         history_rows = db.query(TicketHistory).filter(TicketHistory.is_deleted == False).all()
     
     tickets = []
-    
+
+    def _parse_extra(raw: str | None) -> dict:
+        if not raw:
+            return {}
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+
     for r in active_rows:
         schedule_summary = _get_active_ticket_schedule_summary(
             db,
             phone_number=r.phone_number,
             ticket_id=r.ticket_id or "",
         )
+        extra = _parse_extra(r.extra_data)
+        direccion = extra.get("direccion", "entrada")
         tickets.append({
             "id": f"act_{r.id}",
             "ticket_id": r.ticket_id,
@@ -2289,6 +2519,7 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
             "scheduled_turno": schedule_summary.get("scheduled_turno") if schedule_summary else None,
             "menu_section": r.last_bot_menu,
             "menu_breadcrumb": getattr(r, "menu_breadcrumb", r.last_bot_menu),
+            "direccion": direccion,
             "opened_at": r.handoff_started_at.isoformat() if r.handoff_started_at else None,
             "closed_at": None,
             "duration": None,
@@ -2301,6 +2532,7 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
             phone_number=r.phone_number,
             ticket_id=r.ticket_id or "",
         )
+        hist_direccion = "salida" if r.menu_section == "salida" else "entrada"
         tickets.append({
             "id": f"hist_{r.id}",
             "ticket_id": r.ticket_id,
@@ -2313,6 +2545,7 @@ async def get_tickets_list(cu=Depends(get_current_user), db: Session = Depends(g
             "scheduled_turno": schedule_summary.get("scheduled_turno") if schedule_summary else None,
             "menu_section": r.menu_section,
             "menu_breadcrumb": getattr(r, "menu_breadcrumb", r.menu_section),
+            "direccion": hist_direccion,
             "opened_at": r.opened_at.isoformat() if r.opened_at else None,
             "closed_at": r.closed_at.isoformat() if r.closed_at else None,
             "duration": r.duration_seconds,
@@ -2694,11 +2927,11 @@ async def toggle_scheduled(sid: int, cu=Depends(get_current_user), db: Session =
 # ──────────────────────────────────────────────────────────────
 #  EXTERNAL INTEGRATIONS
 # ──────────────────────────────────────────────────────────────
-@app.post("/api/external/notifications")
-async def external_notification(
-    payload: ExternalNotificationPayload,
-    access: ExternalAccessToken = Depends(_get_external_access),
+async def _external_notification_impl(
+    req: Request,
+    access: ExternalAccessToken,
 ):
+    payload = await _build_external_notification_payload(req)
     event_type = (payload.event_type or "").strip().lower()
     if not event_type:
         raise HTTPException(400, "event_type requerido")
@@ -2722,6 +2955,22 @@ async def external_notification(
         "phone_number": normalized_phone,
         "access_token": access.name,
     }
+
+
+@app.post("/api/external/notifications")
+async def external_notification(
+    req: Request,
+    access: ExternalAccessToken = Depends(_get_external_access),
+):
+    return await _external_notification_impl(req, access)
+
+
+@app.get("/api/external/notifications")
+async def external_notification_via_query(
+    req: Request,
+    access: ExternalAccessToken = Depends(_get_external_access),
+):
+    return await _external_notification_impl(req, access)
 
 
 # ──────────────────────────────────────────────────────────────

@@ -1,5 +1,9 @@
 # Integracion con Sistemas Externos
 
+Para integracion bidireccional con tickets, estados, lectura de mensajes y cierre por Access Token, ver tambien:
+
+- `ESPECIFICACION_INTEGRACION_TICKETS_EXTERNOS.md`
+
 Esta guia permite conectar ERPs, CRMs, sistemas de turnos o facturacion para enviar notificaciones por WhatsApp usando la API del bot.
 
 ## 1) Crear Access Token en Admin
@@ -24,14 +28,22 @@ Tambien podras:
 ## 2) Endpoint para enviar notificaciones
 
 - Metodo: `POST`
+- Metodo alternativo: `GET` o `POST` con parametros en query string
 - URL: `/api/external/notifications`
 - Auth: header `X-API-Key` con la API key generada en Admin
+- Auth alternativa: parametro `api_key`, `apikey`, `apiKey` o `APIKEY`
 
 Headers:
 
 ```http
 Content-Type: application/json
 X-API-Key: wabot_ext_xxxxxxxxxxxxxxxxx
+```
+
+Tambien podes llamar el endpoint solo con parametros:
+
+```http
+GET /api/external/notifications?api_key=wabot_ext_xxxxxxxxxxxxxxxxx&event_type=custom&phone_number=%2B5491122334455&message=Hola%20desde%20parametros
 ```
 
 Body base:
@@ -158,6 +170,20 @@ curl -X POST http://localhost:8088/api/external/notifications \
   }'
 ```
 
+### 4.4 Mensaje directo via parametros
+
+```bash
+curl "http://localhost:8088/api/external/notifications?api_key=wabot_ext_TU_API_KEY&event_type=custom&phone_number=%2B5491177788899&message=Tu%20pedido%20A-5543%20ya%20esta%20listo"
+```
+
+### 4.5 Recordatorio via parametros
+
+Si no envias `message`, podes pasar campos sueltos y se toman como `metadata`:
+
+```bash
+curl -X POST "http://localhost:8088/api/external/notifications?api_key=wabot_ext_TU_API_KEY&event_type=appointment_reminder&phone_number=%2B5491122334455&recipient_name=Maria%20Lopez&date=2026-03-20&time=09:30&professional=Dra.%20Gomez&location=Sede%20Centro"
+```
+
 ## 5) Respuestas de la API
 
 Exito:
@@ -178,7 +204,13 @@ Errores comunes:
 - `403`: `event_type` no permitido para ese Access Token.
 - `400`: payload invalido (por ejemplo `phone_number` incorrecto o `event_type` vacio).
 
-## 6) Seguridad recomendada
+## 6) Notas sobre parametros
+
+- Si mandas JSON y query params al mismo tiempo, los parametros tienen prioridad.
+- `metadata` puede enviarse como JSON string en el parametro `metadata`.
+- Cualquier parametro extra distinto de `event_type`, `phone_number`, `message`, `recipient_name`, `source_system` y `api_key` se agrega automaticamente a `metadata`.
+
+## 7) Seguridad recomendada
 
 - Crear un token por sistema externo (no compartir entre apps).
 - Definir `event_type` restringidos por token cuando sea posible.
